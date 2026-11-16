@@ -95,6 +95,15 @@ after the problem window, and cancelling an order that a seller confirmed but
 never packed within fourteen days (the stock returns to sale; both sides are
 told). The second is a placeholder decision; see A.6.
 
+**Fifth, the tracking page by secure link** (the blueprint's D.14). The
+"order placed" message now carries a link that opens the order page without
+signing in: the timeline of every part, the expected time, the seller's and
+the rider's contact once allowed, the items and the totals. It cannot be
+guessed (a 256-bit signature), it dies after sixty days, and it leaves out
+the handover code, the recipient's name and phones, and every button. A
+forged, expired or borrowed link gets the same "not found" as an order that
+does not exist.
+
 ## A.3 The concurrency guarantee, extended
 
 Every new operation was raced against its rivals with real threads and real
@@ -120,18 +129,19 @@ From the `apps/api` folder, against a real PostgreSQL 17 in Docker, with the
 test database rebuilt from empty:
 
 ```
-uv run pytest                  ->  799 passed in 251.12s (0:04:11)
+uv run pytest                  ->  801 passed in 290.38s (0:04:50)
 uv run ruff check .            ->  All checks passed!
-uv run ruff format --check .   ->  124 files already formatted
+uv run ruff format --check .   ->  125 files already formatted
 uv run mypy markx              ->  Success: no issues found in 85 source files
 uv run alembic check           ->  No new upgrade operations detected.
 ```
 
-That is 799 tests, 20 more than the 779 this session inherited: ten in
-`tests/api/test_fulfilment.py` and four in
-`tests/db/test_fulfilment_contention.py`, and six in the seller isolation sweep, which attacks every new seller route automatically. One existing test changed its
-expectation: the worker test now lists the two new jobs among the jobs that
-ran. No test was weakened. No migration was needed: the tables for
+That is 801 tests, 22 more than the 779 this session inherited: ten in
+`tests/api/test_fulfilment.py`, four in
+`tests/db/test_fulfilment_contention.py`, two in `tests/api/test_tracking.py`,
+and six in the seller isolation sweep, which attacks every new seller route
+automatically. One existing test changed its expectation: the worker test
+now lists the two new jobs among the jobs that ran. No test was weakened. No migration was needed: the tables for
 shipments, tracking events, fee charges and the ledger existed since the
 first session and were waiting for this code.
 
@@ -142,12 +152,9 @@ found in existing code.
 
 ## A.5 What is NOT built
 
-- **The tracking page by secure link** (an order page that opens from a
-  Telegram or SMS link without signing in). The signed-in page exists; the
-  link does not. Next session's first feature.
 - **Disputes and refunds.** The states exist in the diagram and the database,
   and the fee reversal column exists; no route enters them. A buyer who has a
-  problem inside the 72-hour window has no button yet.
+  problem inside the 72-hour window has no button yet, on either page.
 - **The next-best offer** when a seller declines, reviews, problem reports,
   the staff dispatch board, the bot, search, the web app. No real outside
   adapter: Telegram, SMS, the bot check and the private document store have
@@ -230,7 +237,7 @@ you. Continue the project from its existing state; do not rebuild it.
 3. `docs/HANDOFF.md` — this file.
 4. `docs/DEVELOPMENT_STATUS.md` — what exists, what is tested, what is not.
    Start work from "The exact next task" at its end.
-5. `docs/DECISIONS.md` — D-001 to D-047 are settled engineering decisions you
+5. `docs/DECISIONS.md` — D-001 to D-048 are settled engineering decisions you
    may rely on; **D-043 is provisional** and the founder may change it. F-01
    to F-07 are open. **Do not implement an F-recommendation unless the
    founder tells you to in this session.**
@@ -251,29 +258,35 @@ From `apps/api`:
 
 ```bash
 uv sync
-uv run pytest                  # expect 799 passed, three to six minutes
+uv run pytest                  # expect 801 passed, three to six minutes
 uv run ruff check .            # expect: All checks passed!
-uv run ruff format --check .   # expect: 124 files already formatted
+uv run ruff format --check .   # expect: 125 files already formatted
 uv run mypy markx              # expect: no issues in 85 source files
 uv run alembic upgrade head
 uv run alembic check           # expect: No new upgrade operations detected.
 ```
 
 Report the real numbers, whatever they are. Do not hide a failure, do not
-weaken a test to make it pass, and do not claim the 799 figure until you have
-seen it yourself. Fix any genuine regression before starting new work.
+weaken a test to make it pass, and do not claim the 801 figure until you have
+seen it yourself (the count is 801 only if the five checks below printed
+it; see A.4). Fix any genuine regression before starting new work.
 
 **4. Task two — review what the fourth session built**
 
 Review the fulfilment half of `markx/orders/service.py` (from the comment
-`# -- fulfilment`), `markx/payments/ledger.py`, the new parts of
-`markx/orders/selectors.py`, `schemas.py` and `router.py`, with
-`tests/api/test_fulfilment.py` and `tests/db/test_fulfilment_contention.py`.
+`# -- fulfilment` to the end, the tracking link included),
+`markx/payments/ledger.py`, the new parts of `markx/orders/selectors.py`,
+`schemas.py` and `router.py`, with `tests/api/test_fulfilment.py`,
+`tests/api/test_tracking.py` and `tests/db/test_fulfilment_contention.py`.
 Look for:
 
 - **The handover code.** Can it reach anyone but the signed-in buyer, through
-  any response, log line, notification parameter or error detail? Is it
-  shown outside `ready`, `out_for_delivery`, `delivery_failed`?
+  any response (the tracking page above all), log line, notification
+  parameter or error detail? Is it shown outside `ready`,
+  `out_for_delivery`, `delivery_failed`?
+- **The tracking link.** Does the page leak the recipient's name or phone,
+  or anything a stranger with the link should not have? Is the link itself
+  ever written to a log or an audit row?
 - **Correctness.** Can a shipment change status without a `tracking_events`
   row? Can a part be completed or returned twice? Can `commit_stock` be
   reached with nothing held? Does the wrong-code `db.commit()` inside
@@ -286,17 +299,14 @@ Look for:
 Fix what is genuinely wrong, with a test that fails before the fix and passes
 after it. If the review finds nothing, say so plainly and move on.
 
-**5. Task three — the tracking page by secure link, then the next-best offer**
+**5. Task three — the next-best offer**
 
-- A signed link over the order id and an expiry, as `issue_document_link` in
-  `markx/sellers/service.py` does, served without sign-in. It shows the
-  timeline, the expected time, the seller's and rider's contact after
-  confirmation, a "report a problem" placeholder, and **never the handover
-  code**. Record in `docs/DECISIONS.md` how long the link lives and what it
-  leaves out.
-- When a seller declines or expires, suggest the next-best offer for the
-  same variant from the ranked list (C-26): a selector, then a notification
-  template carrying the offer id, tested with the bazaar's two sellers.
+When a seller declines or expires, suggest the next-best offer for the same
+variant from the ranked list (C-26): a selector over the product page's
+ranking in `markx/offers/selectors.py`, excluding the seller that failed,
+then a notification template to the buyer carrying the offer id, tested with
+the bazaar's two sellers (Beta declines, Alpha's offer is suggested, and the
+reverse).
 
 **6. Task four — disputes and refunds, Release 1 form**
 
@@ -359,11 +369,11 @@ really printed, what you could not verify, and what needs a decision.
 | P7 Seller listings and inventory | Done on the API side and tested. Seller Telegram bot missing |
 | P8 Search | Not started. The tables exist |
 | P9 Cart and checkout | Done on the API side and tested. Web screens missing |
-| **P10 Multi-seller orders** | **Done on the API side** from placement to completion, both delivery modes, with the handover code, failed deliveries, returns, the payment record, the fee and the ledger posting. **Not done:** the tracking page by secure link, the next-best offer, disputes and refunds, reviews, the bot |
+| **P10 Multi-seller orders** | **Done on the API side** from placement to completion, both delivery modes, with the handover code, failed deliveries, returns, the payment record, the fee and the ledger posting, and the tracking page by secure link. **Not done:** the next-best offer, disputes and refunds, reviews, the bot |
 | P11 Admin operations | Three routes exist: find an order by code, dispatch, reissue a handover code. The rest not started |
 | P12 onwards | Not started. The ledger posting helper exists |
 
-**Numbers:** 799 tests pass. 65 database tables. Seven migrations, `0001`
+**Numbers:** 801 tests pass. 65 database tables. Seven migrations, `0001`
 to `0007`; none added this session. 85 application source files, all
 strictly typed.
 

@@ -337,6 +337,7 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
         "code": order.code,
         "status": derive_order_status(str(so["status"]) for so in seller_orders),
         "created_at": order.created_at,
+        "tracking_path": service.issue_tracking_link(order).path,
         "payment_mode": order.payment_mode,
         "currency": order.currency,
         "items_total_santim": order.items_total_santim,
@@ -504,8 +505,29 @@ def _staff_order_out(db: Session, order: Order | None, language: str) -> dict[st
     if order is None:
         raise NotFound("order_not_found", "That order was not found.")
     out = _buyer_order_out(db, order, language)
+    out["tracking_path"] = None
     for seller_order in out["seller_orders"]:
         seller_order["handover_code"] = None
+    return out
+
+
+# -- orders: the tracking page -------------------------------------------------------------
+
+_TRACKING_ADDRESS_KEYS = ("zone_code", "zone_name_am", "zone_name_en", "area_name_am", "area_name_en", "city")  # fmt: skip
+
+
+def tracking_view(db: Session, order: Order, language: str) -> dict[str, Any]:
+    """The order as the secure link shows it (D.14): the timeline of every
+    part, the expected time, the seller's and rider's contact once allowed,
+    the items and totals. Not the handover code, not the recipient's name,
+    phones or pin, and no action: those need the signed-in page."""
+    out = _buyer_order_out(db, order, language)
+    out["tracking_path"] = None
+    out["address"] = {key: out["address"].get(key) for key in _TRACKING_ADDRESS_KEYS}
+    for seller_order in out["seller_orders"]:
+        seller_order["handover_code"] = None
+        seller_order["can_cancel"] = False
+        seller_order["can_confirm_received"] = False
     return out
 
 

@@ -288,6 +288,22 @@ def confirm_my_seller_order_received(
     return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
 
 
+@router.get("/track/{order_id}", response_model=OrderOut, tags=["orders"])
+def track_order(
+    order_id: uuid.UUID,
+    expires: Annotated[int, Query(ge=0)],
+    signature: Annotated[str, Query(min_length=20, max_length=64)],
+    response: Response,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """The buyer's order page from a secure link, without signing in (D.14).
+    It never shows the handover code."""
+    order = service.open_tracking_link(db, order_id, expires=expires, signature=signature)
+    response.headers["Cache-Control"] = "no-store"
+    return OrderOut.model_validate(selectors.tracking_view(db, order, lang))
+
+
 # -- the seller's orders -----------------------------------------------------------
 
 

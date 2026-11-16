@@ -144,8 +144,10 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   code, D-044), `report_delivery_failed`, `return_to_seller`,
   `complete_seller_order` (the only caller of `commit_stock`, and the fee,
   D-045), `confirm_received`, `record_direct_payment` (D-046),
-  `staff_reissue_handover_code`, and the jobs
-  `complete_after_problem_window` and `cancel_overdue_fulfilment` (D-043).
+  `staff_reissue_handover_code`, the jobs
+  `complete_after_problem_window` and `cancel_overdue_fulfilment` (D-043),
+  and the tracking link (`issue_tracking_link`, `open_tracking_link`,
+  D-048).
   **A seller order changes status only through `_move`**, which refuses any
   move that is not an arrow and writes the status event in the same
   transaction. Migration `0007` makes the database refuse the same things, so
@@ -163,9 +165,12 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
 - Who sees what: a buyer's order is found only together with the buyer's
   id; a seller order only together with its seller's id, and it shows only
   that seller's lines (`selectors.py`). Phone numbers appear after the
-  seller confirms and vanish if the part ends undelivered.
+  seller confirms and vanish if the part ends undelivered. The public
+  tracking page (`tracking_view`) is the buyer's page minus the handover
+  code, the recipient's details and the actions.
 - Tests: `tests/unit/test_order_rules.py`, `tests/api/test_cart.py`,
-  `tests/api/test_checkout.py`, `tests/api/test_fulfilment.py` (placed to
+  `tests/api/test_checkout.py`, `tests/api/test_tracking.py` (the secure
+  link), `tests/api/test_fulfilment.py` (placed to
   completed for two sellers, the handover code and its lockout, failed
   deliveries and returns, the payment record, the fee and the ledger, the
   overdue hold), `tests/db/test_checkout_contention.py` and

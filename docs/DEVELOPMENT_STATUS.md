@@ -30,7 +30,8 @@ six-digit code, and records the direct payment; the part completes when the
 buyer confirms or the problem window passes, at which point the stock leaves
 the shelf and the fee is charged. A silent seller's order expires, a failed
 delivery is retried or returned, and an order nobody packs for fourteen days
-is cancelled. **Not built after P10:** the tracking page by secure link, the
+is cancelled. The buyer's order page also opens from a signed link without
+sign-in, never showing the handover code. **Not built after P10:** the
 next-best offer, disputes and refunds, reviews, the bot, the web app, search.
 Nothing is deployed anywhere.
 
@@ -41,7 +42,7 @@ Nothing is deployed anywhere.
 | 1 | `617a276` to `6f36391` | Blueprint, schema, sign-in, permissions, delivery zones, addresses, catalogue, documents. 454 tests |
 | 2 | `8a6e583` to `8df958b` | Status corrections, sellers (P6), offers and inventory (P7). 647 tests |
 | 3 | `399507e`, `bd835ef`, `7079cb5`, `eb52d2f` | Review fixes (a moderation bypass, lock ordering), the worker, cart and checkout (P9), multi-seller orders (P10, first half). 779 tests |
-| 4 | see `git log` | The second half of P10: ready, dispatch, the handover code, delivered, completed with `commit_stock` and the fee charge posted to the ledger, failed deliveries and returns, the direct payment record, the overdue-hold job, the staff orders desk's first three routes. 799 tests |
+| 4 | see `git log` | The second half of P10: ready, dispatch, the handover code, delivered, completed with `commit_stock` and the fee charge posted to the ledger, failed deliveries and returns, the direct payment record, the overdue-hold job, the staff orders desk's first three routes, the tracking page by secure link. 801 tests |
 
 ## Blueprint phase tracking
 
@@ -58,7 +59,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P7 | Seller listings and inventory | **Done on the API side.** Offers, price history, inventory and movements, quick edit, product proposals, the ranked offers list, the check-in, the stale-offer job **now run by the worker**, and a staff takedown that holds (D-032). **Not done:** the seller Telegram bot, the web screens |
 | P8 | Search and product discovery | **Not started** (tables exist) |
 | P9 | Cart and checkout | **Done on the API side.** Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Not done:** the web screens, the legal disclosure wording (a founder input), and guest checkout as such: a visitor's cart survives signing in, but the order is placed by a signed-in account (see D-036) |
-| P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`). **Not done:** the tracking page by secure link, the next-best-offer suggestion, `disputed` and `refunded`, reviews and problem reports, the bot, the web screens. Criteria 3 and 5 need the bot and real buyers |
+| P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`). **Not done:** the next-best-offer suggestion, `disputed` and `refunded`, reviews and problem reports, the bot, the web screens. Criteria 3 and 5 need the bot and real buyers |
 | P11–P16 | Everything else | **Not started** (tables exist; no behaviour) |
 
 ## What is built and tested
@@ -299,7 +300,8 @@ runs one pass). Decisions D-034 and D-035.
 
 Code: `markx/orders/`, `markx/payments/ledger.py`. Routes: `/cart...`,
 `/checkout/quote`, `/checkout`, `/me/orders...`,
-`/seller/{seller_id}/orders...`, `/admin/orders...`. Decisions D-036 to D-047.
+`/seller/{seller_id}/orders...`, `/admin/orders...`, `/track/{order_id}`.
+Decisions D-036 to D-048.
 
 - **The cart** lives on the server. A visitor's cart is found by a secret in
   an `HttpOnly` cookie (only its hash is stored); it moves into the person's
@@ -397,6 +399,19 @@ Code: `markx/orders/`, `markx/payments/ledger.py`. Routes: `/cart...`,
   buyer, the worker and the payment record racing to complete; twenty wrong
   codes at once counting exactly five; the worker's cancellation racing the
   seller's dispatch.
+- **The tracking page by secure link (D.14, D-048).** `GET
+  /track/{order_id}?expires=&signature=` without sign-in: a 256-bit
+  signature over the order id and a sixty-day expiry, one `404` for a forged,
+  expired or retargeted link. The page is the buyer's view minus the
+  handover code, the recipient's name, phones, pin and notes, and the
+  actions; the seller's and rider's contact appear under the usual rules.
+  The "placed" notification carries the path for the Telegram or SMS
+  message; the signed-in page carries a fresh one; staff and sellers get
+  none. Tests (`tests/api/test_tracking.py`, 2): the page before and after
+  dispatch, in both languages, with the code shown on the signed-in page
+  and absent here; a forged signature, a shifted expiry, another order's
+  signature, an unknown order, a missing parameter, a link sixty-one days
+  old, a link that claims to live too long.
 
 ## What exists but is NOT tested
 
@@ -508,9 +523,9 @@ Be careful with these. They were written and never exercised.
 
 ```text
 $ cd apps/api
-$ uv run pytest               ->  799 passed in 251.12s (0:04:11)
+$ uv run pytest               ->  801 passed in 290.38s (0:04:50)
 $ uv run ruff check .         ->  All checks passed!
-$ uv run ruff format --check . ->  124 files already formatted
+$ uv run ruff format --check . ->  125 files already formatted
 $ uv run mypy markx           ->  Success: no issues found in 85 source files
 $ uv run alembic check        ->  No new upgrade operations detected.
 ```
@@ -520,9 +535,10 @@ the test database from empty. At the start of the session, before any change,
 the same commands gave 779 passed in 217.85s, a clean lint, 121 formatted
 files, 84 typed source files and no migration difference: the third session's
 report was accurate. mypy runs in strict mode and the application code
-contains no `type: ignore`. The suite treats warnings as errors. The new
-fulfilment tests were run three times (the two files alone twice, then the
-whole suite).
+contains no `type: ignore`. The suite treats warnings as errors. The whole
+suite was run twice in the session (799 passed after the fulfilment commit,
+then the figure above after the tracking link); the new test files were run
+several more times on their own.
 
 | File | Tests |
 | --- | --- |
@@ -554,6 +570,7 @@ whole suite).
 | `tests/api/test_cart.py` | 22 |
 | `tests/api/test_checkout.py` | 21 |
 | `tests/api/test_fulfilment.py` | 10 |
+| `tests/api/test_tracking.py` | 2 |
 | `tests/worker/test_worker.py` | 22 |
 
 No end-to-end test exists, because no web app exists.
@@ -589,14 +606,13 @@ Work in this order. Finish and push each step before starting the next.
    taken out of the written order (cart, sellers, offers, seller orders,
    shipment, stock), and a way to complete or return a part twice. Fix what
    is wrong with a test that fails first.
-2. **The buyer's tracking page by secure link** (blueprint D.14, C-10): a
-   signed link over the order id and an expiry, as `issue_document_link` in
-   `markx/sellers/service.py` does for documents, opening the order page
-   without sign-in. It shows the timeline, the expected time, the seller's
-   and rider's contact after confirmation, and **never the handover code**
-   (the signed-in page keeps that). Then the next-best-offer suggestion when
-   a seller declines or expires (C-26): a selector over the ranked offers
-   for the same variant, then a notification template carrying the offer id.
+2. **The next-best-offer suggestion** when a seller declines or expires
+   (C-26): a selector over the ranked offers for the same variant (the
+   product page's ranking in `markx/offers/selectors.py`), then a
+   notification template to the buyer carrying the offer id, tested with the
+   bazaar's two sellers. Review the tracking page (`tracking_view`,
+   `open_tracking_link`, D-048) while you are there: it must never show the
+   handover code or the recipient's details.
 3. **Disputes and refunds in Release 1 form** (G.6: `delivered -> disputed`,
    `disputed -> completed | refunded`): the buyer's "report a problem" inside
    the window, which pauses completion; staff resolve it, with the fee

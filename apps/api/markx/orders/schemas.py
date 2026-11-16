@@ -193,6 +193,8 @@ class OrderOut(ApiModel):
     # Derived from the seller orders on every read; never stored.
     status: str
     created_at: datetime
+    # The secure link to this page without sign-in (D.14); only on the buyer's own view.
+    tracking_path: str | None
     payment_mode: str
     currency: str
     items_total_santim: int

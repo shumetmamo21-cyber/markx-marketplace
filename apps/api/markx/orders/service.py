@@ -44,7 +44,13 @@ from markx.core.errors import Conflict, NotFound, PermissionDenied, ValidationFa
 from markx.core.ids import uuid7
 from markx.core.money import Money
 from markx.core.phone import InvalidPhoneNumber, normalize_phone
-from markx.core.security import constant_time_equal, derive_numeric_code, hash_token, new_token
+from markx.core.security import (
+    constant_time_equal,
+    derive_numeric_code,
+    hash_token,
+    new_token,
+    sign,
+)
 from markx.delivery.models import (
     MAX_HANDOVER_ATTEMPTS,
     DeliveryArea,
@@ -99,6 +105,9 @@ from markx.sellers.models import Seller, SellerMember, SellerStatus, Store
 MAX_CART_LINES = 30
 EXPIRY_BATCH = 200
 HANDOVER_CODE_PURPOSE = "handover"
+# A tracking link outlives the longest order: fourteen days of hold, delivery,
+# the problem window, and time to read the message (D-048).
+TRACKING_LINK_SECONDS = 60 * 24 * 3600
 _RULE_ORDER = (RuleScope.SELLER, RuleScope.PLAN, RuleScope.CATEGORY, RuleScope.DEFAULT)
 
 
@@ -832,8 +841,14 @@ def place_order(
         db.flush()
         _notify_seller(db, seller_order, order, "order.placed_for_seller")
     notifications.notify(
-        db, user.id, "order.placed", {"order_id": str(order.id), "order_code": order.code}
-    )
+        db, user.id, "order.placed",
+        {
+            "order_id": str(order.id),
+            "order_code": order.code,
+            # The page that opens from a Telegram or SMS message without sign-in (D.14).
+            "tracking_path": issue_tracking_link(order, now=now).path,
+        },
+    )  # fmt: skip
     clear_cart(db, cart)
     db.flush()
     return order, False
@@ -1604,3 +1619,44 @@ def staff_reissue_handover_code(
     )  # fmt: skip
     _notify_buyer(db, seller_order, _parent(db, seller_order), "order.handover_code_reissued")
     return seller_order
+
+
+# -- the tracking page by secure link (D.14, C-10) ------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TrackingLink:
+    path: str
+    expires_at: datetime
+
+
+def _tracking_signature(order_id: uuid.UUID, expires: int) -> str:
+    return sign("order-tracking-link", str(order_id), str(expires), length=43)
+
+
+def issue_tracking_link(order: Order, *, now: datetime | None = None) -> TrackingLink:
+    """A link to the buyer's order page that needs no sign-in. It cannot be
+    guessed (a 256-bit signature over the order id and its expiry), it shows
+    only what the buyer needs, and it never shows the handover code."""
+    expires = int((now or _now()).timestamp()) + TRACKING_LINK_SECONDS
+    return TrackingLink(
+        path=f"/api/v1/track/{order.id}?expires={expires}&signature={_tracking_signature(order.id, expires)}",
+        expires_at=datetime.fromtimestamp(expires, UTC),
+    )
+
+
+def open_tracking_link(
+    db: Session, order_id: uuid.UUID, *, expires: int, signature: str, now: datetime | None = None
+) -> Order:
+    """The order behind a tracking link, or "not found" for a link that is
+    forged, expired or for an order that does not exist: one answer for all."""
+    invalid = NotFound("tracking_link_invalid", "This link is not valid any more.")
+    moment = int((now or _now()).timestamp())
+    if not constant_time_equal(signature, _tracking_signature(order_id, expires)):
+        raise invalid
+    if expires < moment or expires > moment + TRACKING_LINK_SECONDS:
+        raise invalid
+    order = db.get(Order, order_id)
+    if order is None:
+        raise invalid
+    return order

@@ -805,6 +805,31 @@ and writes the `tracking_events` row with a source (`seller`, `staff`,
 locked after the seller order with `key_share=True`: tracking events point at
 it, so a plain `FOR UPDATE` would meet D-027 again.
 
+## D-048 The tracking link: sixty days, signed, no code, no name
+
+**Follows** blueprint D.14 and C-10. **Accepted.**
+
+`issue_tracking_link(order)` returns
+`/api/v1/track/{order_id}?expires=...&signature=...`, the signature being
+`sign("order-tracking-link", order_id, expires)` at 43 characters (256 bits),
+the same scheme as document links (D-021). It lives sixty days from issue:
+longer than a fourteen-day hold, a delivery and a 72-hour problem window, with
+time to read the message. The buyer's "placed" notification carries the path
+for the Telegram or SMS message, and the signed-in order page carries a fresh
+one. The staff desk and the seller views never carry it.
+
+`GET /track/{order_id}` needs no sign-in and answers `no-store`.
+`open_tracking_link` compares the signature in constant time, refuses an
+expiry in the past or further ahead than any link is issued for (so a forged
+"never expires" link fails even if the secret leaked once), and gives one
+answer, `404 tracking_link_invalid`, for a forged, expired or retargeted link
+and for an order that does not exist. `tracking_view` is the buyer's page with
+four things removed: the handover code, the recipient's name, phones, pin and
+notes (the address keeps only zone, area and city), the action flags
+(`can_cancel`, `can_confirm_received` are false), and the link itself. The
+seller's and rider's contact appear under the same rules as on the signed-in
+page (D-041). Reporting a problem from the page is the dispute work.
+
 ---
 
 ## Decisions that need the founder
