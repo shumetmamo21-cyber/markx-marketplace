@@ -696,8 +696,9 @@ def merge_product(db: Session, actor: Actor, source_id: uuid.UUID, into_id: uuid
     if target.status != ProductStatus.APPROVED:
         raise Conflict("merge_target_not_approved", "Merge into an approved product.")
 
-    # Moving live offers between products needs the offers module, which is not
-    # built yet. Until it is, a product that has offers cannot be merged.
+    # Moving offers to the survivor means mapping each variant of the duplicate
+    # onto a variant of the survivor, and two sellers' offers may then collide.
+    # That mapping is not built, so a product that has offers cannot be merged.
     has_offers = db.scalar(
         select(func.count())
         .select_from(Offer)

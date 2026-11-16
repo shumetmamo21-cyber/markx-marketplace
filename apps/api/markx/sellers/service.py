@@ -93,7 +93,9 @@ def get_seller(db: Session, seller_id: uuid.UUID, *, lock: bool = False) -> Sell
     """For staff routes. Seller routes use `require_seller` instead."""
     query = select(Seller).where(Seller.id == seller_id)
     if lock:
-        query = query.with_for_update()
+        # FOR NO KEY UPDATE: it serialises changes to the seller without
+        # blocking rows elsewhere (offers, documents) that only reference it.
+        query = query.with_for_update(key_share=True)
     seller = db.scalar(query)
     if seller is None:
         raise NotFound("seller_not_found", "That seller was not found.")
@@ -106,7 +108,7 @@ def _lock(db: Session, seller: Seller) -> Seller:
     locked = db.scalar(
         select(Seller)
         .where(Seller.id == seller.id)
-        .with_for_update()
+        .with_for_update(key_share=True)
         .execution_options(populate_existing=True)
     )
     assert locked is not None
@@ -373,7 +375,7 @@ def start_application(db: Session, actor: Actor, user: User, data: ApplicationIn
 
     # One application at a time per person. The user's row is the lock, so two
     # simultaneous requests cannot both pass this check.
-    db.execute(select(User.id).where(User.id == user.id).with_for_update())
+    db.execute(select(User.id).where(User.id == user.id).with_for_update(key_share=True))
     in_progress = db.scalar(
         select(Seller.id)
         .join(SellerMember, SellerMember.seller_id == Seller.id)

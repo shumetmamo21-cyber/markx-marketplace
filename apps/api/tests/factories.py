@@ -297,3 +297,26 @@ def make_seller(
     submit_application(client, seller_id)
     approve_seller(staff, seller_id, level)
     return client, seller_id
+
+
+# -- offers --------------------------------------------------------------------
+
+
+def offer_body(variant_id: str, **overrides: Any) -> dict[str, Any]:
+    return {
+        "variant_id": variant_id,
+        "condition": "new",
+        "price_santim": 1_850_000,
+        "quantity": 5,
+        "warranty_months": 12,
+        "delivers_by_seller_rider": True,
+        **overrides,
+    }
+
+
+def make_offer(
+    client: ApiClient, seller_id: str, variant_id: str, **overrides: Any
+) -> dict[str, Any]:
+    response = client.post(f"/seller/{seller_id}/offers", json=offer_body(variant_id, **overrides))
+    assert response.status_code == 201, response.text
+    return dict(response.json())
