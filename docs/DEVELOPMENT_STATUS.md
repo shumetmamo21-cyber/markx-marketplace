@@ -56,9 +56,18 @@ All of it is in `apps/api`. Test command and result are at the end.
 - Migration `0002`: history tables are append-only (privileges revoked from the
   app role **and** a trigger that refuses UPDATE/DELETE for every role); a
   deferred constraint trigger makes every ledger transaction balance.
+- Migration `0003`: fixes a bug in `0002`'s ledger trigger (see "Lessons").
 - Tested: migrations apply from an empty database; models and migrations do
   not differ; trigram matching works on Ethiopic text; no foreign key cascades
   into orders or money.
+- Tested by connecting as each role and attacking with plain SQL
+  (`tests/db/test_protection.py`): the application role cannot update, delete
+  or truncate the audit log, and neither can the schema owner; an unbalanced
+  ledger transaction is refused at commit and a balanced one commits; ledger
+  entries cannot be changed after they are written; the application role
+  cannot change the schema or disable a trigger; the read-only role can read
+  business data, write nothing, and cannot read credentials; no MarkX role is
+  a superuser. This meets blueprint P2's first completion criterion.
 
 ### API foundation
 
@@ -96,11 +105,6 @@ Be careful with these. They were written and never exercised.
 - **Address endpoints** (`/me/addresses`). They need delivery areas, and
   nothing creates delivery areas yet.
 - **Data-request endpoints** (`/me/data-requests`).
-- **Append-only triggers and the ledger balance trigger.** They are in
-  migration `0002` and apply cleanly, but no test yet tries to break them.
-- **The read-only role's restrictions.**
-- **Lint and type checks.** Ruff and mypy are configured in `pyproject.toml`
-  and have **not been run**. Expect findings.
 - Models for sellers, catalogue, offers, inventory, delivery, orders, payments,
   ledger, reviews, cases, search and analytics: the tables exist and are
   constrained; **no service, route or test uses them**.
@@ -119,6 +123,13 @@ Be careful with these. They were written and never exercised.
   form (see "Next task").
 - Anything on AWS. Nothing has been deployed and no cloud resource was created.
 
+## Lessons
+
+- **Untested code was wrong.** Migration `0002` shipped a ledger trigger that
+  made every ledger insert fail. It applied cleanly and looked correct. The
+  first test that inserted a ledger row found it. Treat every item under
+  "exists but is NOT tested" as probably broken until a test says otherwise.
+
 ## Known problems
 
 - None found in the tested code. The untested items above are unknowns, not
@@ -130,12 +141,16 @@ Be careful with these. They were written and never exercised.
 ## Tests executed
 
 ```text
-$ cd apps/api && uv run pytest
-336 passed in 42.34s
+$ cd apps/api
+$ uv run pytest           ->  377 passed in 44.42s
+$ uv run ruff check .     ->  All checks passed!
+$ uv run mypy markx       ->  Success: no issues found in 53 source files
+$ uv run alembic check    ->  No new upgrade operations detected.
 ```
 
 Run on 16 November 2026 against PostgreSQL 17.12 in Docker, after rebuilding
-the test database from empty. Breakdown:
+the test database from empty. mypy runs in strict mode and the application
+code contains no `type: ignore`. The suite treats warnings as errors.
 
 | File | Tests |
 | --- | --- |
@@ -145,6 +160,7 @@ the test database from empty. Breakdown:
 | `tests/unit/test_codes.py` | 7 |
 | `tests/unit/test_permissions.py` | 144 |
 | `tests/db/test_migrations.py` | 8 |
+| `tests/db/test_protection.py` | 41 |
 | `tests/api/test_health.py` | 7 |
 | `tests/api/test_auth_otp.py` | 35 |
 | `tests/api/test_auth_staff.py` | 14 |
@@ -157,24 +173,17 @@ No end-to-end test exists, because no web app exists.
 
 Work in this order. Finish and push each step before starting the next.
 
-1. **Run `uv run ruff check .` and `uv run mypy markx` in `apps/api`, fix what
-   they report, and commit.** Do not silence a finding without a reason.
-2. **Write `tests/db/test_protection.py`**: as `markx_app`, an UPDATE or DELETE
-   on `audit_log` must fail; as `markx_migrator` it must fail too (trigger); an
-   unbalanced ledger transaction must fail at commit; `markx_readonly` cannot
-   read `sessions`. This closes blueprint P2's first completion criterion.
-3. **Delivery zones** (`markx/delivery`): service and admin routes to create
+1. **Delivery zones** (`markx/delivery`): service and admin routes to create
    zones, areas and rates; a public route listing areas. Then test the address
    endpoints that depend on them.
-4. **Catalogue** (blueprint P5): categories, attributes, brands, products,
+2. **Catalogue** (blueprint P5): categories, attributes, brands, products,
    variants, translations; staff create, approve, merge and archive; the
    duplicate-variant rule tested at the database.
-5. **Sellers** (P6): application, staff review, verification levels, members,
+3. **Sellers** (P6): application, staff review, verification levels, members,
    store page; a test that one seller cannot read another's data.
-6. **Offers and inventory** (P7), then **search** (P8), **cart and checkout**
+4. **Offers and inventory** (P7), then **search** (P8), **cart and checkout**
    (P9) and **multi-seller orders** (P10). The concurrency tests in blueprint
    P9 (100 buyers, one unit, exactly one order) are mandatory.
-7. **The web app** (P4), starting with the shell at `/am` and `/en`.
+5. **The web app** (P4), starting with the shell at `/am` and `/en`.
 
-Steps 1 and 2 are small and should be done first because they turn two
-"written but untested" items into tested ones.
+Keep `ruff`, `mypy`, `alembic check` and `pytest` green at every commit.
