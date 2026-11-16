@@ -139,23 +139,38 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   hours. Both are pure and unit-tested.
 - `service.py` holds the critical operations: the cart, `build_quote`,
   `place_order`, `seller_respond`, `cancel_by_buyer`,
-  `expire_unanswered_orders`. **A seller order changes status only through
-  `_move`**, which refuses any move that is not an arrow and writes the
-  status event in the same transaction. Migration `0007` makes the database
-  refuse the same things, so a route cannot get round it.
+  `expire_unanswered_orders`, and after confirmation `mark_ready`,
+  `seller_dispatch` / `staff_dispatch`, `confirm_delivery` (the handover
+  code, D-044), `report_delivery_failed`, `return_to_seller`,
+  `complete_seller_order` (the only caller of `commit_stock`, and the fee,
+  D-045), `confirm_received`, `record_direct_payment` (D-046),
+  `staff_reissue_handover_code`, and the jobs
+  `complete_after_problem_window` and `cancel_overdue_fulfilment` (D-043).
+  **A seller order changes status only through `_move`**, which refuses any
+  move that is not an arrow and writes the status event in the same
+  transaction. Migration `0007` makes the database refuse the same things, so
+  a route cannot get round it. **A shipment changes only through `_track`**,
+  which writes the tracking event beside it.
 - **Locks are taken in one order, each kind in ascending id:** the buyer's
-  cart, then sellers, then offers, then seller orders, then stock through
-  `hold_stock`. Sellers, offers and seller orders are locked with
-  `with_for_update(key_share=True)` (D-027). Reservations are locked `FOR
-  UPDATE` when released, so stock is given back at most once.
+  cart, then sellers, then offers, then seller orders, then the seller
+  order's shipment, then stock through `hold_stock`, `release_stock` and
+  `commit_stock`. Sellers, offers, seller orders, shipments and payment
+  intents are locked with `with_for_update(key_share=True)` (D-027).
+  Reservations are locked `FOR UPDATE` when released or committed, so stock
+  is given back, or taken off the shelf, at most once.
+- `markx/payments/ledger.py` posts balanced ledger transactions; the fee on
+  a completed seller order is its only caller today.
 - Who sees what: a buyer's order is found only together with the buyer's
   id; a seller order only together with its seller's id, and it shows only
   that seller's lines (`selectors.py`). Phone numbers appear after the
   seller confirms and vanish if the part ends undelivered.
 - Tests: `tests/unit/test_order_rules.py`, `tests/api/test_cart.py`,
-  `tests/api/test_checkout.py`, and `tests/db/test_checkout_contention.py`
-  for the races (100 checkouts of the last unit, and every pair of
-  operations that share locks).
+  `tests/api/test_checkout.py`, `tests/api/test_fulfilment.py` (placed to
+  completed for two sellers, the handover code and its lockout, failed
+  deliveries and returns, the payment record, the fee and the ledger, the
+  overdue hold), `tests/db/test_checkout_contention.py` and
+  `tests/db/test_fulfilment_contention.py` for the races (100 checkouts of
+  the last unit, and every pair of operations that share locks).
 
 ## Private files
 

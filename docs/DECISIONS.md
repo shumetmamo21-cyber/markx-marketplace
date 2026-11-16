@@ -677,8 +677,133 @@ shows the resulting fee in birr. No rule exists today, so every line carries
 0, which is the blueprint's rule for direct orders in year one: the zero is
 true because no rule was created, not because the code assumes it. No route
 writes `commission_rules` yet (P11, finance staff); a rule can only be
-inserted by hand. The fee is charged when the seller order completes, which
-is not built.
+inserted by hand. The fee is charged when the seller order completes (D-045).
+
+## D-043 An overdue fulfilment hold cancels the order and frees the stock
+
+**Fills the gap** D-037 left open (blueprint G.9: "the worker releases
+expired reservations"). **Accepted as PROVISIONAL — FOUNDER MAY CHANGE
+BEFORE LAUNCH.**
+
+When a seller confirms, the stock stays held for `orders.fulfilment_hold_days`
+(14). The worker job `orders.cancel_overdue_fulfilment` (every ten minutes)
+finds a seller order that is still `confirmed` or `ready` when that hold
+expires, cancels it as the system with reason `fulfilment_hold_expired`,
+releases the stock, cancels the shipment and the payment intent, and tells the
+buyer and the seller's order handlers. A part that is `out_for_delivery` or
+`delivery_failed` is never touched by the hold: the goods are on the road, and
+the diagram allows no cancellation from there anyway.
+
+Why cancel rather than only warn staff: the hold exists to bound how long a
+shop's stock can be tied up by an order nobody packs, and a reservation that
+is released while its order stays open would break the one invariant the
+stock tests enforce (reserved stock equals held reservations), so release and
+cancellation have to go together. The alternative, a staff warning with the
+order left open, is one setting and one job away: lengthen
+`orders.fulfilment_hold_days`, or replace the job's `_move` with a
+notification. The founder's view (asked in session three, A.6) has not been
+received; this is the engineer's placeholder.
+
+## D-044 The handover code is derived, compared in constant time, and locks after five
+
+**Follows** blueprint C-15, D.13, D-011 and G.7 (`confirm_delivery`).
+**Accepted.**
+
+`handover_code(shipment)` is `derive_numeric_code("handover", shipment.id,
+shipment.code_version)`: six digits from the server secret. No column holds it
+and no log prints it; the buyer's own order page shows it from `ready` until
+the handover (`AWAITING_HANDOVER`: `ready`, `out_for_delivery`,
+`delivery_failed`), to the signed-in buyer only. The seller's views, the staff
+orders desk and every list leave it out.
+
+`confirm_delivery` compares the entered code with `hmac.compare_digest`. A
+wrong code raises `handover_attempts`, and **the count is committed before
+the request fails**, as login codes do (`verify_otp`), so a failed request
+cannot be a free try. At `MAX_HANDOVER_ATTEMPTS` (5, also a CHECK constraint)
+the shipment is locked: the right code is refused too, until staff with
+`intervene_in_orders` call `reissue-code`, which raises `code_version` (the
+old code is dead) and restarts the count, audit-logged with a reason. Twenty
+wrong codes at the same instant count exactly five: the seller order's lock
+serialises them.
+
+A rider order is handed over only from `out_for_delivery`; a collection order
+straight from `ready` (`ready -> delivered`), and it is never dispatched
+(`collection_order`). Delivery sets `delivered_at` and
+`problem_window_ends_at = now + orders.problem_window_hours` (72).
+
+## D-045 Completion commits the stock and charges the fee; the ledger gets only a non-zero fee
+
+**Follows** blueprint G.6, G.7 (`complete_seller_order`), G.9, G.10 rule 4
+and J.8. **Accepted.**
+
+`complete_seller_order` runs under the seller order's lock, from `delivered`
+only, by the buyer at once (`confirm-received`) or by the worker job
+`orders.complete_after_problem_window` (every five minutes) once
+`problem_window_ends_at` has passed. It commits each held reservation in
+ascending offer id through `markx.offers.service.commit_stock` (the only code
+that lowers `on_hand`), marks the reservation `committed`, and then writes one
+`fee_charges` row: item value is the seller order's goods total, the amount is
+the sum over lines of `line_total × commission_bps` rounded half up to a
+santim (`Money.portion_bps`), never including the delivery fee. The rate is the
+one copied onto the line at placement (D-042); nothing is looked up again.
+`seller_orders.commission_santim` holds the same figure and the seller's view
+shows it as `fee_santim` once completed.
+
+The ledger: `markx/payments/ledger.py` posts one balanced transaction per
+charge, `fee:{seller_order_id}` as its idempotency key, debiting
+`seller_receivable:{seller_id}` (an asset: what the seller owes MarkX on
+direct orders) and crediting `commission_income`. Accounts are created on
+first use. A zero fee posts nothing, because a ledger entry must be above zero
+(G.8 rule 1) and an empty transaction is noise; the `fee_charges` row still
+records that the zero was charged. The device cap per order (`cap_santim`,
+J.8 "[A]") is not applied yet: no rule carries one, and `cap_applied` stays
+false. The reversal on refund is for the dispute work. Nothing here moves
+money (G.10 rule 1): the receivable is invoiced outside MarkX until payouts
+exist.
+
+The parent order's derived status (D-038) reads `completed` as soon as every
+part has been handed over, even while one is still `delivered` and inside its
+problem window. That is the rule as written in session three and tested; it
+is kept, and the buyer's page shows each part's own status beside it.
+
+## D-046 A direct payment is the seller's word, recorded with the server's time
+
+**Follows** blueprint D.12 (Release 1). **Accepted.**
+
+`record_direct_payment`: a member who handles orders, on the seller's own part
+while it is `confirmed`, `ready`, `out_for_delivery`, `delivery_failed`,
+`delivered`, `completed` or `disputed` (`PAYABLE`), once. It writes
+`paid_method` and `paid_at` (the server's clock, never a time from the
+browser), moves the payment intent to `succeeded` with the method and
+`settled_at`, adds a `payment_attempts` row marked `recorded_by: seller`, and
+audit-logs the action with the amount. The seller order's status does not move:
+`paid` is the Protected-prepay state and a direct order never enters it. A
+screenshot proves nothing and no redirect is involved; this is a deliberate
+action by a signed-in member, kept as exactly that. Staff cannot record it
+yet (P11).
+
+## D-047 Failed deliveries, retries and returns
+
+**Follows** blueprint G.6 and J.10. **Accepted.**
+
+`report_delivery_failed` (`out_for_delivery -> delivery_failed`) needs a
+reason, kept on the shipment and in the tracking event; the handover code
+stays live for the retry. `seller_dispatch` from `delivery_failed` is the
+retry: the first `dispatched_at` is kept, the failure reason cleared.
+`return_to_seller` (`delivery_failed -> returned`) releases the held stock
+through `_release_everything`, cancels the pending payment intent and marks
+the shipment `returned`; the reason becomes `closed_reason`
+(`CLOSED_WITH_REASON`). Contact details stay visible after a return, as
+session three's rule already said: the two sides may still need to speak.
+Staff may dispatch (`/admin/orders/seller-orders/{id}/dispatch`, for a partner
+courier or on a seller's behalf) and find any order by its code
+(`/admin/orders/{code}`, `find_orders`); the dispatch board itself is P11.
+
+Every shipment change goes through `_track`, which sets the shipment's status
+and writes the `tracking_events` row with a source (`seller`, `staff`,
+`system`, never a person's name) in the same transaction. The shipment is
+locked after the seller order with `key_share=True`: tracking events point at
+it, so a plain `FOR UPDATE` would meet D-027 again.
 
 ---
 

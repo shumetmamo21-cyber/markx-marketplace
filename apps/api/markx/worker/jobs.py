@@ -58,6 +58,16 @@ JOBS: tuple[Job, ...] = (
         lambda db, now: orders.expire_unanswered_orders(db, now=now),
     ),
     Job(
+        "orders.complete_after_problem_window",
+        timedelta(minutes=5),
+        lambda db, now: orders.complete_after_problem_window(db, now=now),
+    ),
+    Job(
+        "orders.cancel_overdue_fulfilment",
+        timedelta(minutes=10),
+        lambda db, now: orders.cancel_overdue_fulfilment(db, now=now),
+    ),
+    Job(
         "offers.mark_stale",
         timedelta(hours=1),
         lambda db, now: offers.mark_stale_offers(db, now=now),

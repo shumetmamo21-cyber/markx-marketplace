@@ -25,6 +25,7 @@ from markx.notifications.sms import read_dev_sms_inbox
 from markx.offers.router import admin_router as offers_admin_router
 from markx.offers.router import public_router as offers_public_router
 from markx.offers.router import router as offers_router
+from markx.orders.router import admin_router as orders_admin_router
 from markx.orders.router import router as orders_router
 from markx.orders.router import seller_router as orders_seller_router
 from markx.sellers.router import admin_router as sellers_admin_router
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     api.include_router(offers_admin_router)
     api.include_router(orders_router)
     api.include_router(orders_seller_router)
+    api.include_router(orders_admin_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
     app.include_router(api)

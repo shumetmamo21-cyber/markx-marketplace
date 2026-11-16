@@ -6,6 +6,8 @@
 `/me/orders...`                  the buyer's own orders
 `/seller/{seller_id}/orders...`  one seller's part of orders, scoped by
                                  `require_seller`
+`/admin/orders...`               the staff orders desk: find an order, dispatch
+                                 a parcel, issue the buyer a new handover code
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ import uuid
 from datetime import timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 
 from markx.accounts.deps import (
     CurrentPrincipal,
@@ -22,9 +24,10 @@ from markx.accounts.deps import (
     Principal,
     SellerContext,
     require_seller,
+    require_staff,
 )
 from markx.accounts.models import SessionKind
-from markx.accounts.permissions import SellerCapability, seller_can
+from markx.accounts.permissions import SellerCapability, StaffCapability, seller_can
 from markx.core import ratelimit
 from markx.core.config import get_config
 from markx.core.errors import PermissionDenied
@@ -37,14 +40,21 @@ from markx.orders.schemas import (
     CartOut,
     CheckoutIn,
     DeclineIn,
+    DispatchIn,
+    HandoverIn,
     OrderOut,
+    PaymentRecordIn,
     QuoteIn,
     QuoteOut,
+    ReasonIn,
     SellerOrderOut,
 )
 
 router = APIRouter()
 seller_router = APIRouter(prefix="/seller/{seller_id}", tags=["seller: orders"])
+admin_router = APIRouter(prefix="/admin/orders", tags=["admin: orders"])
+OrderFinder = Annotated[Principal, Depends(require_staff(StaffCapability.FIND_ORDERS))]
+OrderIntervener = Annotated[Principal, Depends(require_staff(StaffCapability.INTERVENE_IN_ORDERS))]
 
 CART_COOKIE = "markx_cart"
 CART_COOKIE_DAYS = 30
@@ -260,6 +270,24 @@ def cancel_my_seller_order(
     return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
 
 
+@router.post(
+    "/me/orders/{order_id}/seller-orders/{seller_order_id}/confirm-received",
+    response_model=OrderOut,
+    tags=["orders"],
+)
+def confirm_my_seller_order_received(
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    buyer: Buyer,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """ "The goods are right": the part completes now rather than when the
+    problem window closes."""
+    service.confirm_received(db, buyer.user, order_id, seller_order_id)
+    return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
+
+
 # -- the seller's orders -----------------------------------------------------------
 
 
@@ -324,3 +352,135 @@ def decline_seller_order(
         db, context.seller, context.member, seller_order_id, accept=False, reason=body.reason
     )
     return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/ready", response_model=SellerOrderOut)
+def mark_seller_order_ready(
+    seller_order_id: uuid.UUID, context: OrderHandler, db: Db, lang: LangQuery = "am"
+) -> SellerOrderOut:
+    """Packed and waiting for the rider or the buyer (G.6)."""
+    service.mark_ready(db, context.seller, context.member, seller_order_id)
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/dispatch", response_model=SellerOrderOut)
+def dispatch_seller_order(
+    seller_order_id: uuid.UUID,
+    body: DispatchIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """With the rider (S-12). Also the retry after a failed handover."""
+    service.seller_dispatch(
+        db, context.seller, context.member, seller_order_id,
+        rider_name=body.rider_name, rider_phone=body.rider_phone,
+    )  # fmt: skip
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/handover", response_model=SellerOrderOut)
+def hand_over_seller_order(
+    seller_order_id: uuid.UUID,
+    body: HandoverIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """Enter the buyer's handover code (C-15). Wrong attempts are limited."""
+    service.seller_confirm_delivery(
+        db, context.seller, context.member, seller_order_id, code=body.code
+    )
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/delivery-failed", response_model=SellerOrderOut)
+def report_seller_order_delivery_failed(
+    seller_order_id: uuid.UUID,
+    body: ReasonIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    service.report_delivery_failed(
+        db, context.seller, context.member, seller_order_id, reason=body.reason
+    )
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/return", response_model=SellerOrderOut)
+def return_seller_order(
+    seller_order_id: uuid.UUID,
+    body: ReasonIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """The goods are back on the shelf; the stock returns."""
+    service.return_to_seller(
+        db, context.seller, context.member, seller_order_id, reason=body.reason
+    )
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/payment", response_model=SellerOrderOut)
+def record_seller_order_payment(
+    seller_order_id: uuid.UUID,
+    body: PaymentRecordIn,
+    context: OrderHandler,
+    request: Request,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """The buyer paid the seller directly (D.12): the seller's word, recorded."""
+    service.record_direct_payment(
+        db, context.seller, context.member, context.principal.actor(request), seller_order_id,
+        method=body.method,
+    )  # fmt: skip
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+# -- the staff orders desk -----------------------------------------------------------
+
+
+@admin_router.get("/{code}", response_model=OrderOut)
+def staff_read_order(
+    code: Annotated[str, Path(pattern=r"^MX-[34679ACDEFGHJKMNPQRTUVWXY]{6}$")],
+    staff: OrderFinder,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """Any order by its code, with every part and its full timeline (P11)."""
+    return OrderOut.model_validate(selectors.staff_order(db, code, lang))
+
+
+@admin_router.post("/seller-orders/{seller_order_id}/dispatch", response_model=OrderOut)
+def staff_dispatch_seller_order(
+    seller_order_id: uuid.UUID,
+    body: DispatchIn,
+    staff: OrderIntervener,
+    request: Request,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    seller_order = service.staff_dispatch(
+        db, staff.actor(request), seller_order_id,
+        rider_name=body.rider_name, rider_phone=body.rider_phone,
+    )  # fmt: skip
+    return OrderOut.model_validate(selectors.staff_order_by_id(db, seller_order.order_id, lang))
+
+
+@admin_router.post("/seller-orders/{seller_order_id}/reissue-code", response_model=OrderOut)
+def staff_reissue_handover_code(
+    seller_order_id: uuid.UUID,
+    body: ReasonIn,
+    staff: OrderIntervener,
+    request: Request,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """A new handover code for the buyer, after a lockout or a leak."""
+    seller_order = service.staff_reissue_handover_code(
+        db, staff.actor(request), seller_order_id, reason=body.reason
+    )
+    return OrderOut.model_validate(selectors.staff_order_by_id(db, seller_order.order_id, lang))

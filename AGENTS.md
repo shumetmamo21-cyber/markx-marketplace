@@ -89,7 +89,13 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
   seller orders, then stock, each kind in ascending id. See "Orders" in
   `docs/ARCHITECTURE.md`.
 - **The worker must be running** for stale offers to hide, payout changes to
-  apply and unanswered orders to expire: `uv run python -m markx.worker`.
+  apply, unanswered orders to expire, delivered orders to complete after the
+  problem window and overdue fulfilment holds to cancel:
+  `uv run python -m markx.worker`.
+- **A shipment changes only through `_track`** in `markx/orders/service.py`,
+  and the handover code is never stored, logged or shown to anyone but the
+  signed-in buyer (D-044). `commit_stock` is called only from
+  `complete_seller_order`.
 
 ## 4. The working branch
 

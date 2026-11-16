@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, StringConstraints
 
-from markx.core.schemas import ApiModel
+from markx.core.schemas import ApiModel, PhoneText, ShortText
 from markx.orders.models import MAX_QUANTITY_PER_LINE
 
 DeliveryMethod = Literal["seller_rider", "partner_courier", "shop_collection"]
@@ -132,6 +132,28 @@ class SellerContactOut(ApiModel):
     shop_address: str
 
 
+class TrackingEventOut(ApiModel):
+    status: str
+    note: str | None
+    source: str
+    occurred_at: datetime
+
+
+class ShipmentOut(ApiModel):
+    """The delivery of one seller order (J.10). The handover code is never here."""
+
+    status: str
+    method: str
+    promised_hours: int | None
+    rider_name: str | None
+    # Shown to the buyer only once the parcel is on its way.
+    rider_phone: str | None
+    dispatched_at: datetime | None
+    delivered_at: datetime | None
+    failure_reason: str | None
+    events: list[TrackingEventOut]
+
+
 class BuyerSellerOrderOut(ApiModel):
     id: uuid.UUID
     store_slug: str
@@ -147,7 +169,18 @@ class BuyerSellerOrderOut(ApiModel):
     promised_hours: int | None
     payment_method: str | None
     payment_reference: str
+    ready_at: datetime | None
+    delivered_at: datetime | None
+    completed_at: datetime | None
+    problem_window_ends_at: datetime | None
+    paid_method: str | None
+    paid_at: datetime | None
     can_cancel: bool
+    can_confirm_received: bool
+    # The one-time code (C-15), shown only while a handover is awaited and
+    # only to the signed-in buyer. Give it only after seeing the goods.
+    handover_code: str | None
+    shipment: ShipmentOut
     # Null until the seller confirms (blueprint C.5).
     seller_contact: SellerContactOut | None
     items: list[OrderItemOut]
@@ -174,6 +207,23 @@ class CancelIn(ApiModel):
 
 
 class DeclineIn(ApiModel):
+    reason: Reason
+
+
+class DispatchIn(ApiModel):
+    rider_name: ShortText | None = None
+    rider_phone: PhoneText | None = None
+
+
+class HandoverIn(ApiModel):
+    code: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9]{6}$")]
+
+
+class PaymentRecordIn(ApiModel):
+    method: PaymentMethod
+
+
+class ReasonIn(ApiModel):
     reason: Reason
 
 
@@ -209,10 +259,20 @@ class SellerOrderOut(ApiModel):
     delivery_fee_santim: int
     total_santim: int
     estimated_fee_santim: int
+    # The fee actually charged, once the order completed (D.19).
+    fee_santim: int | None
     delivery_method: str
     promised_hours: int | None
     payment_method: str | None
     payment_reference: str
+    ready_at: datetime | None
+    delivered_at: datetime | None
+    completed_at: datetime | None
+    problem_window_ends_at: datetime | None
+    paid_method: str | None
+    paid_at: datetime | None
+    handover_attempts_left: int
+    shipment: ShipmentOut
     delivery_area: DeliveryAreaOut
     # Null until this seller confirms (blueprint C.5).
     buyer: BuyerContactOut | None

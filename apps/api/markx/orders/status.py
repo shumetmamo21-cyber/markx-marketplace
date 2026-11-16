@@ -30,6 +30,15 @@ ALLOWED_MOVES: dict[S, frozenset[S]] = {
 
 # Ended before the goods changed hands: the held stock goes back (G.6).
 ENDED_WITHOUT_DELIVERY = frozenset({S.DECLINED, S.EXPIRED, S.CANCELLED})
+# Ended with a reason worth keeping on the row, for either side to read.
+CLOSED_WITH_REASON = ENDED_WITHOUT_DELIVERY | {S.RETURNED}
+# The handover code is live: the buyer sees it, the seller or rider enters it.
+AWAITING_HANDOVER = frozenset({S.READY, S.OUT_FOR_DELIVERY, S.DELIVERY_FAILED})
+# The buyer owes the seller directly (D.12): the seller may record the payment.
+PAYABLE = frozenset({
+    S.CONFIRMED, S.READY, S.OUT_FOR_DELIVERY, S.DELIVERY_FAILED, S.DELIVERED, S.COMPLETED,
+    S.DISPUTED,
+})  # fmt: skip
 FINAL = frozenset(state for state, moves in ALLOWED_MOVES.items() if not moves)
 OPEN = frozenset(ALLOWED_MOVES) - FINAL
 _HANDED_OVER = frozenset({S.DELIVERED, S.COMPLETED, S.DISPUTED})

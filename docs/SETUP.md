@@ -93,8 +93,10 @@ uv run python -m markx.worker          # runs until Ctrl-C
 uv run python -m markx.worker --once   # one pass, then exit
 ```
 
-It runs the scheduled jobs (hiding stale offers, applying payout-account
-changes) and sends what is waiting in the outbox. On a laptop nothing leaves
+It runs the scheduled jobs (expiring unanswered orders, completing delivered
+orders after the problem window, cancelling orders whose fulfilment hold ran
+out, hiding stale offers, applying payout-account changes) and sends what is
+waiting in the outbox. On a laptop nothing leaves
 the machine: a "sent" Telegram message is a line in
 `MARKX_STORAGE_DIR/dev/push-outbox.jsonl`. `scheduled_jobs` in the database
 shows when each job last ran and whether it failed.
@@ -162,6 +164,15 @@ create at `/admin/delivery/zones`), then `PUT /cart/items/{offer_id}`,
 `/seller/{seller_id}/orders/{seller_order_id}/confirm` or `/decline`. With
 the worker running, an unanswered order expires half an hour of business
 time later.
+
+After confirming, the seller takes the part through `/ready`, `/dispatch`
+(rider orders; a collection order skips this) and `/handover` with the
+six-digit code the buyer reads on `GET /me/orders/{order_id}`. The seller
+records the direct payment at `/payment`. The buyer closes the part at
+`/me/orders/{order_id}/seller-orders/{seller_order_id}/confirm-received`, or
+the worker closes it 72 hours after delivery. Staff find any order at
+`/admin/orders/{code}` and issue a new handover code at
+`/admin/orders/seller-orders/{seller_order_id}/reissue-code`.
 
 ## Configuration
 

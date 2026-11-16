@@ -34,6 +34,8 @@ from sqlalchemy.orm import Session
 from markx.accounts import service as accounts
 from markx.accounts.models import Address, User, UserStatus
 from markx.accounts.permissions import SELLER_PERMISSIONS, SellerCapability, seller_can
+from markx.audit import service as audit
+from markx.audit.service import Actor
 from markx.catalog import selectors as catalog_selectors
 from markx.catalog.models import Product, ProductStatus, ProductVariant
 from markx.core import settings_store
@@ -41,19 +43,28 @@ from markx.core.codes import new_order_code
 from markx.core.errors import Conflict, NotFound, PermissionDenied, ValidationFailed
 from markx.core.ids import uuid7
 from markx.core.money import Money
-from markx.core.security import hash_token, new_token
+from markx.core.phone import InvalidPhoneNumber, normalize_phone
+from markx.core.security import constant_time_equal, derive_numeric_code, hash_token, new_token
 from markx.delivery.models import (
+    MAX_HANDOVER_ATTEMPTS,
     DeliveryArea,
     DeliveryMode,
     DeliveryRate,
     DeliveryZone,
     Shipment,
     ShipmentStatus,
+    TrackingEvent,
 )
 from markx.delivery.selectors import active_rates_for_zone
 from markx.notifications import service as notifications
 from markx.offers import service as offers
-from markx.offers.models import Inventory, InventoryReservation, Offer, OfferStatus
+from markx.offers.models import (
+    Inventory,
+    InventoryReservation,
+    Offer,
+    OfferStatus,
+    ReservationStatus,
+)
 from markx.orders.deadlines import response_deadline
 from markx.orders.models import (
     MAX_QUANTITY_PER_LINE,
@@ -67,12 +78,27 @@ from markx.orders.models import (
     SellerOrder,
     SellerOrderStatus,
 )
-from markx.orders.status import ENDED_WITHOUT_DELIVERY, OPEN, move_allowed
-from markx.payments.models import CommissionRule, IntentStatus, PaymentIntent, RuleScope
+from markx.orders.status import (
+    AWAITING_HANDOVER,
+    CLOSED_WITH_REASON,
+    OPEN,
+    PAYABLE,
+    move_allowed,
+)
+from markx.payments import ledger
+from markx.payments.models import (
+    CommissionRule,
+    FeeCharge,
+    IntentStatus,
+    PaymentAttempt,
+    PaymentIntent,
+    RuleScope,
+)
 from markx.sellers.models import Seller, SellerMember, SellerStatus, Store
 
 MAX_CART_LINES = 30
 EXPIRY_BATCH = 200
+HANDOVER_CODE_PURPOSE = "handover"
 _RULE_ORDER = (RuleScope.SELLER, RuleScope.PLAN, RuleScope.CATEGORY, RuleScope.DEFAULT)
 
 
@@ -836,7 +862,7 @@ def _move(
     seller_order.status = to.value
     if to == SellerOrderStatus.CONFIRMED:
         seller_order.confirmed_at = now
-    if to in ENDED_WITHOUT_DELIVERY:
+    if to in CLOSED_WITH_REASON:
         seller_order.closed_reason = reason
     db.add(
         OrderStatusEvent(
@@ -1036,3 +1062,545 @@ def expire_unanswered_orders(db: Session, *, now: datetime | None = None) -> int
         _notify_buyer(db, seller_order, order, "order.seller_did_not_answer")
         _notify_seller(db, seller_order, order, "order.expired_unanswered")
     return len(due)
+
+
+# -- fulfilment: the second half of the life cycle (G.6, J.9, J.10) -----------------------
+
+
+def handover_code(shipment: Shipment) -> str:
+    """The buyer's one-time code (C-15). Derived, never stored (D-011): the
+    buyer's page can show it again at any time, and a copy of the database
+    reveals nothing. Raising `code_version` issues a new one."""
+    return derive_numeric_code(HANDOVER_CODE_PURPOSE, str(shipment.id), str(shipment.code_version))
+
+
+def _own_seller_order(
+    db: Session, seller: Seller, member: SellerMember, seller_order_id: uuid.UUID
+) -> SellerOrder:
+    """This seller's own part of an order, locked, for a member who handles
+    orders. Another seller's part looks exactly like one that does not exist."""
+    if not seller_can(member.role, SellerCapability.HANDLE_ORDERS):
+        raise PermissionDenied("permission_denied", "Your role in this store does not allow this.")
+    return _lock_seller_order(db, seller_order_id, seller_id=seller.id)
+
+
+def _lock_seller_order(
+    db: Session, seller_order_id: uuid.UUID, *, seller_id: uuid.UUID | None = None
+) -> SellerOrder:
+    query = select(SellerOrder).where(SellerOrder.id == seller_order_id)
+    if seller_id is not None:
+        query = query.where(SellerOrder.seller_id == seller_id)
+    seller_order = db.scalar(
+        query.with_for_update(key_share=True).execution_options(populate_existing=True)
+    )
+    if seller_order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    return seller_order
+
+
+def _shipment(db: Session, seller_order: SellerOrder) -> Shipment:
+    """The seller order's one shipment, locked after the seller order (the
+    tracking events point at it, so never a plain FOR UPDATE: D-027)."""
+    shipment = db.scalar(
+        select(Shipment)
+        .where(Shipment.seller_order_id == seller_order.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    assert shipment is not None, "a seller order is always created with its shipment"
+    return shipment
+
+
+def _track(
+    db: Session,
+    shipment: Shipment,
+    status: ShipmentStatus,
+    *,
+    actor_type: ActorType,
+    actor_user_id: uuid.UUID | None,
+    note: str | None = None,
+) -> None:
+    """Every change to a shipment writes its tracking event (J.10)."""
+    shipment.status = status.value
+    db.add(
+        TrackingEvent(
+            shipment_id=shipment.id,
+            status=status.value,
+            note=note,
+            source=actor_type.value,
+            actor_user_id=actor_user_id,
+            occurred_at=func.clock_timestamp(),
+        )
+    )
+    db.flush()
+
+
+def mark_ready(
+    db: Session,
+    seller: Seller,
+    member: SellerMember,
+    seller_order_id: uuid.UUID,
+    *,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The order is packed (`confirmed -> ready`). A rider or collection order
+    now carries a live handover code; a partner-courier job would appear on
+    the staff dispatch board (P11, not built), so for now the seller dispatches."""
+    now = now or _now()
+    seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    _move(
+        db, seller_order, SellerOrderStatus.READY, actor_type=ActorType.SELLER,
+        actor_user_id=member.user_id, reason=None, now=now,
+    )  # fmt: skip
+    seller_order.ready_at = now
+    shipment = _shipment(db, seller_order)
+    _track(db, shipment, ShipmentStatus.READY, actor_type=ActorType.SELLER, actor_user_id=member.user_id)  # fmt: skip
+    order = _parent(db, seller_order)
+    template = (
+        "order.ready_for_collection"
+        if shipment.mode == DeliveryMode.SHOP_COLLECTION
+        else "order.ready"
+    )
+    _notify_buyer(db, seller_order, order, template)
+    return seller_order
+
+
+def _dispatch(
+    db: Session,
+    seller_order: SellerOrder,
+    *,
+    actor_type: ActorType,
+    actor_user_id: uuid.UUID | None,
+    rider_name: str | None,
+    rider_phone: str | None,
+    now: datetime,
+) -> SellerOrder:
+    """`ready -> out_for_delivery`, or a retry after a failed handover."""
+    shipment = _shipment(db, seller_order)
+    if shipment.mode == DeliveryMode.SHOP_COLLECTION:
+        raise Conflict(
+            "collection_order",
+            "The buyer collects this order at the shop: enter their handover code instead.",
+        )
+    _move(
+        db, seller_order, SellerOrderStatus.OUT_FOR_DELIVERY, actor_type=actor_type,
+        actor_user_id=actor_user_id, reason=None, now=now,
+    )  # fmt: skip
+    if shipment.dispatched_at is None:
+        shipment.dispatched_at = now
+    if rider_name is not None:
+        shipment.rider_name = rider_name
+    if rider_phone is not None:
+        try:
+            shipment.rider_phone = normalize_phone(rider_phone)
+        except InvalidPhoneNumber as exc:
+            raise ValidationFailed("phone_invalid", "Enter an Ethiopian mobile number.") from exc
+    shipment.failure_reason = None
+    _track(db, shipment, ShipmentStatus.OUT_FOR_DELIVERY, actor_type=actor_type, actor_user_id=actor_user_id)  # fmt: skip
+    _notify_buyer(db, seller_order, _parent(db, seller_order), "order.out_for_delivery")
+    return seller_order
+
+
+def seller_dispatch(
+    db: Session,
+    seller: Seller,
+    member: SellerMember,
+    seller_order_id: uuid.UUID,
+    *,
+    rider_name: str | None = None,
+    rider_phone: str | None = None,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The seller's rider leaves with the parcel (S-12)."""
+    seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    return _dispatch(
+        db, seller_order, actor_type=ActorType.SELLER, actor_user_id=member.user_id,
+        rider_name=rider_name, rider_phone=rider_phone, now=now or _now(),
+    )  # fmt: skip
+
+
+def staff_dispatch(
+    db: Session,
+    actor: Actor,
+    seller_order_id: uuid.UUID,
+    *,
+    rider_name: str | None = None,
+    rider_phone: str | None = None,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """Staff send a parcel out, for a partner courier (J.9) or on a seller's
+    behalf. Audit-logged; the event names the role, never the person."""
+    seller_order = _lock_seller_order(db, seller_order_id)
+    _dispatch(
+        db, seller_order, actor_type=ActorType.STAFF, actor_user_id=actor.user_id,
+        rider_name=rider_name, rider_phone=rider_phone, now=now or _now(),
+    )  # fmt: skip
+    audit.record_by(
+        db, actor, "seller_order.dispatch", "seller_order", seller_order.id,
+        after={"rider_name": rider_name},
+    )  # fmt: skip
+    return seller_order
+
+
+def confirm_delivery(
+    db: Session,
+    seller_order: SellerOrder,
+    *,
+    code: str,
+    actor_type: ActorType,
+    actor_user_id: uuid.UUID | None,
+    now: datetime,
+) -> SellerOrder:
+    """The buyer gives the code and the goods change hands (G.7, C-15).
+
+    The code is compared in constant time against the derived value. A wrong
+    code counts, and the count is kept even though the request fails, as for
+    login codes; after `MAX_HANDOVER_ATTEMPTS` nothing is accepted until
+    staff issue a new code. A right code marks `delivered` and starts the
+    problem window.
+    """
+    if seller_order.status not in (SellerOrderStatus.READY, SellerOrderStatus.OUT_FOR_DELIVERY):
+        raise Conflict("order_not_awaiting_handover", "This order is not waiting for a handover.")
+    shipment = _shipment(db, seller_order)
+    if (
+        seller_order.status == SellerOrderStatus.READY
+        and shipment.mode != DeliveryMode.SHOP_COLLECTION
+    ):
+        raise Conflict("order_not_dispatched", "Dispatch the order before entering the code.")
+    if shipment.handover_attempts >= MAX_HANDOVER_ATTEMPTS:
+        raise Conflict(
+            "handover_code_locked",
+            "Too many wrong codes. Ask MarkX to issue the buyer a new code.",
+        )
+    if not constant_time_equal(code.strip(), handover_code(shipment)):
+        shipment.handover_attempts += 1
+        attempts_left = MAX_HANDOVER_ATTEMPTS - shipment.handover_attempts
+        # The wrong attempt must be remembered even though this request fails.
+        db.commit()
+        if attempts_left <= 0:
+            raise Conflict(
+                "handover_code_locked",
+                "Too many wrong codes. Ask MarkX to issue the buyer a new code.",
+                details={"attempts_left": 0},
+            )
+        raise Conflict(
+            "handover_code_wrong",
+            "That is not the buyer's code.",
+            details={"attempts_left": attempts_left},
+        )
+    _move(
+        db, seller_order, SellerOrderStatus.DELIVERED, actor_type=actor_type,
+        actor_user_id=actor_user_id, reason=None, now=now,
+    )  # fmt: skip
+    seller_order.delivered_at = now
+    seller_order.problem_window_ends_at = now + timedelta(
+        hours=settings_store.get_int(db, "orders.problem_window_hours")
+    )
+    shipment.delivered_at = now
+    _track(db, shipment, ShipmentStatus.DELIVERED, actor_type=actor_type, actor_user_id=actor_user_id)  # fmt: skip
+    _notify_buyer(db, seller_order, _parent(db, seller_order), "order.delivered")
+    return seller_order
+
+
+def seller_confirm_delivery(
+    db: Session,
+    seller: Seller,
+    member: SellerMember,
+    seller_order_id: uuid.UUID,
+    *,
+    code: str,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The seller, or its rider through the seller's account, enters the
+    buyer's code at the door or at the counter."""
+    seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    return confirm_delivery(
+        db, seller_order, code=code, actor_type=ActorType.SELLER, actor_user_id=member.user_id,
+        now=now or _now(),
+    )  # fmt: skip
+
+
+def report_delivery_failed(
+    db: Session,
+    seller: Seller,
+    member: SellerMember,
+    seller_order_id: uuid.UUID,
+    *,
+    reason: str,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The handover did not happen (`out_for_delivery -> delivery_failed`).
+    The reason is recorded; a retry dispatches again."""
+    now = now or _now()
+    seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    _move(
+        db, seller_order, SellerOrderStatus.DELIVERY_FAILED, actor_type=ActorType.SELLER,
+        actor_user_id=member.user_id, reason=reason, now=now,
+    )  # fmt: skip
+    shipment = _shipment(db, seller_order)
+    shipment.failure_reason = reason
+    _track(
+        db, shipment, ShipmentStatus.DELIVERY_FAILED, actor_type=ActorType.SELLER,
+        actor_user_id=member.user_id, note=reason,
+    )  # fmt: skip
+    _notify_buyer(db, seller_order, _parent(db, seller_order), "order.delivery_failed")
+    return seller_order
+
+
+def return_to_seller(
+    db: Session,
+    seller: Seller,
+    member: SellerMember,
+    seller_order_id: uuid.UUID,
+    *,
+    reason: str,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The goods go back to the shelf (`delivery_failed -> returned`): the
+    held stock is released and the pending payment intent cancelled."""
+    now = now or _now()
+    seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    _move(
+        db, seller_order, SellerOrderStatus.RETURNED, actor_type=ActorType.SELLER,
+        actor_user_id=member.user_id, reason=reason, now=now,
+    )  # fmt: skip
+    _release_everything(db, [seller_order.id], actor_user_id=member.user_id, now=now)
+    shipment = _shipment(db, seller_order)
+    _track(
+        db, shipment, ShipmentStatus.RETURNED, actor_type=ActorType.SELLER,
+        actor_user_id=member.user_id, note=reason,
+    )  # fmt: skip
+    _notify_buyer(db, seller_order, _parent(db, seller_order), "order.returned")
+    return seller_order
+
+
+def complete_seller_order(
+    db: Session,
+    seller_order: SellerOrder,
+    *,
+    actor_type: ActorType,
+    actor_user_id: uuid.UUID | None,
+    now: datetime,
+) -> SellerOrder:
+    """`delivered -> completed` (G.7): the stock leaves the shop and the fee
+    is charged.
+
+    The caller holds the seller order's lock. Each held reservation is
+    committed in ascending offer id order through `commit_stock`, the only
+    code that lowers `on_hand`; then the fee is computed from the rate copied
+    onto each line at placement (D-042), on item value only (J.8), written to
+    `fee_charges` and, when above zero, posted to the ledger (G.10 rule 4).
+    """
+    _move(
+        db, seller_order, SellerOrderStatus.COMPLETED, actor_type=actor_type,
+        actor_user_id=actor_user_id, reason=None, now=now,
+    )  # fmt: skip
+    seller_order.completed_at = now
+    held = list(
+        db.scalars(
+            select(InventoryReservation)
+            .join(OrderItem, OrderItem.id == InventoryReservation.order_item_id)
+            .where(
+                OrderItem.seller_order_id == seller_order.id,
+                InventoryReservation.status == ReservationStatus.HELD,
+            )
+            .order_by(InventoryReservation.offer_id, InventoryReservation.id)
+            .with_for_update(of=InventoryReservation)
+        )
+    )
+    for reservation in held:
+        offers.commit_stock(
+            db, reservation.offer_id, reservation.quantity, reference_type="order_item",
+            reference_id=reservation.order_item_id, actor_user_id=actor_user_id,
+        )  # fmt: skip
+        reservation.status = ReservationStatus.COMMITTED.value
+        reservation.closed_at = now
+    items = list(
+        db.scalars(
+            select(OrderItem)
+            .where(OrderItem.seller_order_id == seller_order.id)
+            .order_by(OrderItem.id)
+        )
+    )
+    fee = Money.zero()
+    for item in items:
+        fee += Money(item.line_total_santim).portion_bps(item.commission_bps)
+    seller_order.commission_santim = fee.amount
+    order = _parent(db, seller_order)
+    charge = FeeCharge(
+        seller_order_id=seller_order.id,
+        item_value_santim=seller_order.items_total_santim,
+        amount_santim=fee.amount,
+    )
+    if fee.amount > 0:
+        charge.ledger_transaction_id = ledger.charge_fee(
+            db, seller_id=seller_order.seller_id, seller_order_id=seller_order.id, fee=fee,
+            order_code=order.code,
+        ).id  # fmt: skip
+    db.add(charge)
+    db.flush()
+    _notify_buyer(db, seller_order, order, "order.completed")
+    _notify_seller(db, seller_order, order, "order.completed_for_seller")
+    return seller_order
+
+
+def confirm_received(
+    db: Session,
+    user: User,
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    *,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The buyer says the goods are right: the part completes at once instead
+    of when the problem window closes (G.6)."""
+    now = now or _now()
+    order = db.scalar(select(Order).where(Order.id == order_id, Order.buyer_user_id == user.id))
+    if order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    seller_order = db.scalar(
+        select(SellerOrder)
+        .where(SellerOrder.id == seller_order_id, SellerOrder.order_id == order.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    if seller_order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    if seller_order.status != SellerOrderStatus.DELIVERED:
+        raise Conflict("order_not_delivered", "Only a delivered order can be confirmed received.")
+    return complete_seller_order(
+        db, seller_order, actor_type=ActorType.BUYER, actor_user_id=user.id, now=now
+    )
+
+
+def complete_after_problem_window(db: Session, *, now: datetime | None = None) -> int:
+    """Scheduled job: a delivered seller order whose problem window passed
+    without a report completes (G.6: "the window passed"). Returns how many."""
+    now = now or _now()
+    due = list(
+        db.scalars(
+            select(SellerOrder)
+            .where(
+                SellerOrder.status == SellerOrderStatus.DELIVERED,
+                SellerOrder.problem_window_ends_at <= now,
+            )
+            .order_by(SellerOrder.id)
+            .limit(EXPIRY_BATCH)
+            .with_for_update(key_share=True, skip_locked=True)
+        )
+    )
+    for seller_order in due:
+        complete_seller_order(
+            db, seller_order, actor_type=ActorType.SYSTEM, actor_user_id=None, now=now
+        )
+    return len(due)
+
+
+def cancel_overdue_fulfilment(db: Session, *, now: datetime | None = None) -> int:
+    """Scheduled job (D-043): a confirmed or ready seller order whose
+    fulfilment hold on the stock has expired is cancelled and its stock
+    returns. A parcel already on the road is never touched here."""
+    now = now or _now()
+    overdue = (
+        select(OrderItem.seller_order_id)
+        .join(InventoryReservation, InventoryReservation.order_item_id == OrderItem.id)
+        .where(
+            InventoryReservation.status == ReservationStatus.HELD,
+            InventoryReservation.expires_at <= now,
+        )
+    )
+    due = list(
+        db.scalars(
+            select(SellerOrder)
+            .where(
+                SellerOrder.status.in_((SellerOrderStatus.CONFIRMED, SellerOrderStatus.READY)),
+                SellerOrder.id.in_(overdue),
+            )
+            .order_by(SellerOrder.id)
+            .limit(EXPIRY_BATCH)
+            .with_for_update(key_share=True, skip_locked=True)
+        )
+    )
+    for seller_order in due:
+        _move(
+            db, seller_order, SellerOrderStatus.CANCELLED, actor_type=ActorType.SYSTEM,
+            actor_user_id=None, reason="fulfilment_hold_expired", now=now,
+        )  # fmt: skip
+    _release_everything(db, [so.id for so in due], actor_user_id=None, now=now)
+    for seller_order in due:
+        order = _parent(db, seller_order)
+        _notify_buyer(db, seller_order, order, "order.cancelled_not_fulfilled")
+        _notify_seller(db, seller_order, order, "order.cancelled_not_fulfilled_for_seller")
+    return len(due)
+
+
+def record_direct_payment(
+    db: Session,
+    seller: Seller,
+    member: SellerMember,
+    actor: Actor,
+    seller_order_id: uuid.UUID,
+    *,
+    method: str,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The seller says the buyer paid them directly (D.12, Release 1).
+
+    Recorded as the seller's word, with the method and the server's time; the
+    status does not move (`paid` belongs to Protected prepay). Never from a
+    browser redirect: this is a signed-in member's deliberate action, and it
+    is audit-logged.
+    """
+    now = now or _now()
+    seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    if seller_order.status not in PAYABLE:
+        raise Conflict("payment_not_recordable", "This order is not one the buyer owes you for.")
+    if seller_order.paid_at is not None:
+        raise Conflict("already_paid", "A payment was already recorded for this order.")
+    intent = db.scalar(
+        select(PaymentIntent)
+        .where(PaymentIntent.seller_order_id == seller_order.id)
+        .with_for_update(key_share=True)
+    )
+    assert intent is not None, "a seller order is always created with its payment intent"
+    seller_order.paid_method = method
+    seller_order.paid_at = now
+    intent.status = IntentStatus.SUCCEEDED.value
+    intent.method = method
+    intent.settled_at = now
+    db.add(
+        PaymentAttempt(
+            intent_id=intent.id,
+            status="succeeded",
+            raw_result={"recorded_by": "seller", "method": method},
+            recorded_by_user_id=member.user_id,
+        )
+    )
+    db.flush()
+    audit.record_by(
+        db, actor, "seller_order.record_payment", "seller_order", seller_order.id,
+        after={"method": method, "amount_santim": intent.amount_santim},
+    )  # fmt: skip
+    _notify_buyer(db, seller_order, _parent(db, seller_order), "order.payment_recorded")
+    return seller_order
+
+
+def staff_reissue_handover_code(
+    db: Session, actor: Actor, seller_order_id: uuid.UUID, *, reason: str
+) -> SellerOrder:
+    """Staff issue the buyer a new code, after a lockout or a leak: the
+    version rises, so the old code is dead, and the attempt count restarts."""
+    seller_order = _lock_seller_order(db, seller_order_id)
+    if seller_order.status not in AWAITING_HANDOVER:
+        raise Conflict("order_not_awaiting_handover", "This order is not waiting for a handover.")
+    shipment = _shipment(db, seller_order)
+    before = shipment.code_version
+    shipment.code_version += 1
+    shipment.handover_attempts = 0
+    db.flush()
+    audit.record_by(
+        db, actor, "shipment.reissue_handover_code", "shipment", shipment.id,
+        before={"code_version": before}, after={"code_version": shipment.code_version, "reason": reason},
+    )  # fmt: skip
+    _notify_buyer(db, seller_order, _parent(db, seller_order), "order.handover_code_reissued")
+    return seller_order

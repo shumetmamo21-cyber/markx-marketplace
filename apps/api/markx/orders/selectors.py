@@ -20,11 +20,11 @@ from sqlalchemy.orm import Session
 from markx.catalog.models import ProductTranslation
 from markx.core.errors import NotFound
 from markx.core.money import Money
-from markx.delivery.models import DeliveryZone, Shipment
+from markx.delivery.models import MAX_HANDOVER_ATTEMPTS, DeliveryZone, Shipment, TrackingEvent
 from markx.delivery.selectors import active_rates_for_zone
 from markx.orders import service
 from markx.orders.models import Cart, Order, OrderItem, OrderStatusEvent, SellerOrder
-from markx.orders.status import contact_visible, derive_order_status
+from markx.orders.status import AWAITING_HANDOVER, contact_visible, derive_order_status
 from markx.payments.models import PaymentIntent
 from markx.sellers.models import Seller, Store
 
@@ -221,6 +221,43 @@ def _shipments(db: Session, ids: list[uuid.UUID]) -> dict[uuid.UUID, Shipment]:
     }
 
 
+def _tracking(
+    db: Session, shipments: dict[uuid.UUID, Shipment]
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    by_shipment: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    if shipments:
+        for event in db.scalars(
+            select(TrackingEvent)
+            .where(TrackingEvent.shipment_id.in_([s.id for s in shipments.values()]))
+            .order_by(TrackingEvent.occurred_at, TrackingEvent.id)
+        ):
+            by_shipment.setdefault(event.shipment_id, []).append(
+                {
+                    "status": event.status,
+                    "note": event.note,
+                    "source": event.source,
+                    "occurred_at": event.occurred_at,
+                }
+            )
+    return by_shipment
+
+
+def _shipment_out(
+    shipment: Shipment, events: list[dict[str, Any]], *, show_rider: bool
+) -> dict[str, Any]:
+    return {
+        "status": shipment.status,
+        "method": shipment.mode,
+        "promised_hours": shipment.promised_hours,
+        "rider_name": shipment.rider_name if show_rider else None,
+        "rider_phone": shipment.rider_phone if show_rider else None,
+        "dispatched_at": shipment.dispatched_at,
+        "delivered_at": shipment.delivered_at,
+        "failure_reason": shipment.failure_reason,
+        "events": events,
+    }
+
+
 def _intents(db: Session, ids: list[uuid.UUID]) -> dict[uuid.UUID, PaymentIntent]:
     if not ids:
         return {}
@@ -248,10 +285,12 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
     ids = [seller_order.id for seller_order, _, _ in rows]
     items, events = _items(db, ids), _events(db, ids)
     shipments, intents = _shipments(db, ids), _intents(db, ids)
+    tracking = _tracking(db, shipments)
     seller_orders = []
     for seller_order, seller, store in rows:
         shipment, intent = shipments[seller_order.id], intents[seller_order.id]
         shows_contact = contact_visible(seller_order.status, seller_order.confirmed_at is not None)
+        awaiting_handover = seller_order.status in AWAITING_HANDOVER
         seller_orders.append(
             {
                 "id": seller_order.id,
@@ -268,7 +307,21 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
                 "promised_hours": shipment.promised_hours,
                 "payment_method": intent.method,
                 "payment_reference": intent.reference,
+                "ready_at": seller_order.ready_at,
+                "delivered_at": seller_order.delivered_at,
+                "completed_at": seller_order.completed_at,
+                "problem_window_ends_at": seller_order.problem_window_ends_at,
+                "paid_method": seller_order.paid_method,
+                "paid_at": seller_order.paid_at,
                 "can_cancel": seller_order.status in _BUYER_MAY_CANCEL,
+                "can_confirm_received": seller_order.status == "delivered",
+                # Only the signed-in buyer, only while a handover is awaited.
+                "handover_code": service.handover_code(shipment) if awaiting_handover else None,
+                "shipment": _shipment_out(
+                    shipment,
+                    tracking.get(shipment.id, []),
+                    show_rider=shows_contact and shipment.dispatched_at is not None,
+                ),
                 "seller_contact": {
                     "phone": seller.contact_phone,
                     "shop_address": seller.shop_address,
@@ -324,6 +377,7 @@ def _seller_order_out(
     items: list[OrderItem],
     events: list[dict[str, Any]],
     shipment: Shipment,
+    tracking: list[dict[str, Any]],
     intent: PaymentIntent,
     language: str,
     *,
@@ -349,10 +403,20 @@ def _seller_order_out(
         "total_santim": seller_order.total_santim,
         # Shown in birr before the seller confirms (blueprint D.19).
         "estimated_fee_santim": fee.amount,
+        "fee_santim": seller_order.commission_santim if seller_order.completed_at else None,
         "delivery_method": shipment.mode,
         "promised_hours": shipment.promised_hours,
         "payment_method": intent.method,
         "payment_reference": intent.reference,
+        "ready_at": seller_order.ready_at,
+        "delivered_at": seller_order.delivered_at,
+        "completed_at": seller_order.completed_at,
+        "problem_window_ends_at": seller_order.problem_window_ends_at,
+        "paid_method": seller_order.paid_method,
+        "paid_at": seller_order.paid_at,
+        "handover_attempts_left": MAX_HANDOVER_ATTEMPTS - shipment.handover_attempts,
+        # The seller's own rider: always shown to the seller.
+        "shipment": _shipment_out(shipment, tracking, show_rider=True),
         # Enough to decide whether the order can be delivered, and no more.
         "delivery_area": {
             key: address.get(key)
@@ -397,11 +461,12 @@ def seller_orders(
     ids = [seller_order.id for seller_order, _ in rows]
     items, events = _items(db, ids), _events(db, ids)
     shipments, intents = _shipments(db, ids), _intents(db, ids)
+    tracking = _tracking(db, shipments)
     return [
         _seller_order_out(
             order, seller_order, items.get(seller_order.id, []), events.get(seller_order.id, []),
-            shipments[seller_order.id], intents[seller_order.id], language,
-            may_see_contact=may_see_contact,
+            shipments[seller_order.id], tracking.get(shipments[seller_order.id].id, []),
+            intents[seller_order.id], language, may_see_contact=may_see_contact,
         )
         for seller_order, order in rows
     ]  # fmt: skip
@@ -424,8 +489,31 @@ def seller_order(
         raise NotFound("order_not_found", "That order was not found.")
     found, order = row
     ids = [found.id]
+    shipments = _shipments(db, ids)
     return _seller_order_out(
         order, found, _items(db, ids).get(found.id, []), _events(db, ids).get(found.id, []),
-        _shipments(db, ids)[found.id], _intents(db, ids)[found.id], language,
-        may_see_contact=may_see_contact,
+        shipments[found.id], _tracking(db, shipments).get(shipments[found.id].id, []),
+        _intents(db, ids)[found.id], language, may_see_contact=may_see_contact,
     )  # fmt: skip
+
+
+# -- orders: staff ---------------------------------------------------------------------
+
+
+def _staff_order_out(db: Session, order: Order | None, language: str) -> dict[str, Any]:
+    if order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    out = _buyer_order_out(db, order, language)
+    for seller_order in out["seller_orders"]:
+        seller_order["handover_code"] = None
+    return out
+
+
+def staff_order(db: Session, code: str, language: str) -> dict[str, Any]:
+    """The whole order by its code, for the orders desk (P11): every part,
+    with the handover code left out. Staff never need it."""
+    return _staff_order_out(db, db.scalar(select(Order).where(Order.code == code)), language)
+
+
+def staff_order_by_id(db: Session, order_id: uuid.UUID, language: str) -> dict[str, Any]:
+    return _staff_order_out(db, db.get(Order, order_id), language)
