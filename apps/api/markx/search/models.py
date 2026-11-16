@@ -43,7 +43,11 @@ class SearchDocument(Base):
         ),
         Index("ix_search_documents_skeleton_keys", "skeleton_keys", postgresql_using="gin"),
         Index("ix_search_documents_facets", "facets", postgresql_using="gin"),
-        Index("ix_search_documents_category_path", "category_path", postgresql_ops={"category_path": "text_pattern_ops"}),
+        Index(
+            "ix_search_documents_category_path",
+            "category_path",
+            postgresql_ops={"category_path": "text_pattern_ops"},
+        ),
         Index("ix_search_documents_brand_id", "brand_id"),
         Index("ix_search_documents_min_price", "min_price_santim"),
     )
@@ -54,7 +58,9 @@ class SearchDocument(Base):
     # Normalised names, brand, model and aliases in every language.
     search_text: Mapped[str] = mapped_column(Text, nullable=False)
     tsv: Mapped[Any] = mapped_column(TSVECTOR, nullable=False)
-    skeleton_keys: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+    skeleton_keys: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
     category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     category_path: Mapped[str] = mapped_column(Text, nullable=False)
     brand_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -78,7 +84,11 @@ class SearchQuery(UUIDPrimaryKey, CreatedAt, Base):
     __tablename__ = "search_queries"
     __table_args__ = (
         in_check("script", ("ethiopic", "latin")),
-        Index("ix_search_queries_zero_results", "created_at", postgresql_where=text("result_count = 0")),
+        Index(
+            "ix_search_queries_zero_results",
+            "created_at",
+            postgresql_where=text("result_count = 0"),
+        ),
     )
 
     query: Mapped[str] = mapped_column(Text, nullable=False)

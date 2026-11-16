@@ -83,7 +83,8 @@ def test_the_grids_cover_every_capability_and_role() -> None:
     assert set(STAFF_GRID) == set(StaffCapability)
     assert set(SELLER_ROLES) == {r.value for r in SellerRole}
     assert set(STAFF_ROLES) == {r.value for r in StaffRole}
-    assert len(SELLER_CELLS) == 13 * 5 and len(STAFF_CELLS) == 15 * 5
+    assert len(SELLER_CELLS) == 13 * 5
+    assert len(STAFF_CELLS) == 15 * 5
 
 
 def test_unknown_roles_are_denied_by_default() -> None:

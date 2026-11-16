@@ -162,9 +162,7 @@ class Address(UUIDPrimaryKey, Timestamps, Base):
             f"phone2 is null or phone2 ~ '{PHONE_PATTERN}'", name="phone2_international_format"
         ),
         CheckConstraint("length(btrim(landmark)) > 0", name="landmark_present"),
-        CheckConstraint(
-            "(latitude is null) = (longitude is null)", name="map_pin_complete"
-        ),
+        CheckConstraint("(latitude is null) = (longitude is null)", name="map_pin_complete"),
         CheckConstraint(
             "latitude is null or (latitude between -90 and 90 and longitude between -180 and 180)",
             name="map_pin_in_range",

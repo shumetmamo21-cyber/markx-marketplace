@@ -30,27 +30,130 @@ class SettingSpec:
 
 _SPECS: tuple[SettingSpec, ...] = (
     # Sellers
-    SettingSpec("sellers.invite_only", True, "bool", "Only invited sellers may apply (blueprint D.3)."),
-    SettingSpec("sellers.individual_enabled", False, "bool", "Individual sellers may apply. Off until the founder's legal check (section O, question 10)."),
-    SettingSpec("sellers.min_level_to_publish", 2, "int", "Verification level a seller needs before its offers are shown.", 0, 3),
+    SettingSpec(
+        "sellers.invite_only", True, "bool", "Only invited sellers may apply (blueprint D.3)."
+    ),
+    SettingSpec(
+        "sellers.individual_enabled",
+        False,
+        "bool",
+        "Individual sellers may apply. Off until the founder's legal check (section O, question 10).",
+    ),
+    SettingSpec(
+        "sellers.min_level_to_publish",
+        2,
+        "int",
+        "Verification level a seller needs before its offers are shown.",
+        0,
+        3,
+    ),
     # Offers
-    SettingSpec("offers.sink_after_days", 3, "int", "An offer whose price was not confirmed for this many days sinks in the ranking.", 1, 60),
-    SettingSpec("offers.stale_after_days", 14, "int", "An offer whose price was not confirmed for this many days is hidden (blueprint D.7).", 1, 90),
+    SettingSpec(
+        "offers.sink_after_days",
+        3,
+        "int",
+        "An offer whose price was not confirmed for this many days sinks in the ranking.",
+        1,
+        60,
+    ),
+    SettingSpec(
+        "offers.stale_after_days",
+        14,
+        "int",
+        "An offer whose price was not confirmed for this many days is hidden (blueprint D.7).",
+        1,
+        90,
+    ),
     # Orders
-    SettingSpec("orders.response_window_minutes", 30, "int", "How long a seller has to answer an order, in business hours.", 5, 1440),
-    SettingSpec("orders.business_open_hour", 8, "int", "Business day start, Addis Ababa time (24-hour clock).", 0, 23),
-    SettingSpec("orders.business_close_hour", 20, "int", "Business day end, Addis Ababa time (24-hour clock).", 1, 24),
-    SettingSpec("orders.problem_window_hours", 72, "int", "How long after delivery a buyer may report a problem.", 1, 720),
-    SettingSpec("orders.max_open_direct_orders", 3, "int", "Open pay-at-the-door orders one buyer may hold (blueprint D.10, AD-13).", 1, 50),
-    SettingSpec("orders.max_order_value_santim", 30_000_000, "int", "Largest order total accepted, in santim (AD-13).", 100, 10_000_000_000),
+    SettingSpec(
+        "orders.response_window_minutes",
+        30,
+        "int",
+        "How long a seller has to answer an order, in business hours.",
+        5,
+        1440,
+    ),
+    SettingSpec(
+        "orders.business_open_hour",
+        8,
+        "int",
+        "Business day start, Addis Ababa time (24-hour clock).",
+        0,
+        23,
+    ),
+    SettingSpec(
+        "orders.business_close_hour",
+        20,
+        "int",
+        "Business day end, Addis Ababa time (24-hour clock).",
+        1,
+        24,
+    ),
+    SettingSpec(
+        "orders.problem_window_hours",
+        72,
+        "int",
+        "How long after delivery a buyer may report a problem.",
+        1,
+        720,
+    ),
+    SettingSpec(
+        "orders.max_open_direct_orders",
+        3,
+        "int",
+        "Open pay-at-the-door orders one buyer may hold (blueprint D.10, AD-13).",
+        1,
+        50,
+    ),
+    SettingSpec(
+        "orders.max_order_value_santim",
+        30_000_000,
+        "int",
+        "Largest order total accepted, in santim (AD-13).",
+        100,
+        10_000_000_000,
+    ),
     # Sign-in
-    SettingSpec("auth.otp_per_phone_per_hour", 5, "int", "Login codes one phone number may request per hour.", 1, 100),
-    SettingSpec("auth.otp_per_ip_per_hour", 20, "int", "Login codes one network address may request per hour.", 1, 1000),
-    SettingSpec("auth.sms_daily_budget", 500, "int", "SMS messages MarkX may send per day; sending stops when spent (blueprint D.2).", 0, 1_000_000),
+    SettingSpec(
+        "auth.otp_per_phone_per_hour",
+        5,
+        "int",
+        "Login codes one phone number may request per hour.",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "auth.otp_per_ip_per_hour",
+        20,
+        "int",
+        "Login codes one network address may request per hour.",
+        1,
+        1000,
+    ),
+    SettingSpec(
+        "auth.sms_daily_budget",
+        500,
+        "int",
+        "SMS messages MarkX may send per day; sending stops when spent (blueprint D.2).",
+        0,
+        1_000_000,
+    ),
     # Trust
-    SettingSpec("disputes.decision_due_hours", 48, "int", "Hours within which staff decide a problem case (blueprint D.17).", 1, 720),
+    SettingSpec(
+        "disputes.decision_due_hours",
+        48,
+        "int",
+        "Hours within which staff decide a problem case (blueprint D.17).",
+        1,
+        720,
+    ),
     # Payments
-    SettingSpec("payments.protected_enabled", False, "bool", "Protected checkout through a licensed provider. Release 2; needs Gate C."),
+    SettingSpec(
+        "payments.protected_enabled",
+        False,
+        "bool",
+        "Protected checkout through a licensed provider. Release 2; needs Gate C.",
+    ),
 )
 
 SETTINGS: dict[str, SettingSpec] = {spec.key: spec for spec in _SPECS}
@@ -90,13 +193,15 @@ def get_setting(db: Session, key: str) -> bool | int | str:
 
 def get_int(db: Session, key: str) -> int:
     value = get_setting(db, key)
-    assert isinstance(value, int) and not isinstance(value, bool), key
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"setting {key!r} is not a whole number")
     return value
 
 
 def get_bool(db: Session, key: str) -> bool:
     value = get_setting(db, key)
-    assert isinstance(value, bool), key
+    if not isinstance(value, bool):
+        raise TypeError(f"setting {key!r} is not a switch")
     return value
 
 

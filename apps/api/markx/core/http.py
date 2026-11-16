@@ -137,7 +137,9 @@ def enforce_request_origin(request: Request) -> None:
         raise PermissionDenied("csrf_origin_mismatch", "This request came from another site.")
 
 
-def _json_error(status_code: int, code: str, message: str, details: dict[str, Any] | None = None) -> JSONResponse:
+def _json_error(
+    status_code: int, code: str, message: str, details: dict[str, Any] | None = None
+) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
         content=error_body(code, message, current_request_id(), details),
@@ -160,7 +162,9 @@ def install_error_handlers(app: FastAPI) -> None:
             {"field": ".".join(str(part) for part in error["loc"][1:]), "problem": error["msg"]}
             for error in exc.errors()
         ]
-        return _json_error(422, "validation_failed", "Some fields are not valid.", {"fields": fields})
+        return _json_error(
+            422, "validation_failed", "Some fields are not valid.", {"fields": fields}
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:

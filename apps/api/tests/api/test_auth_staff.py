@@ -17,7 +17,14 @@ from tests.factories import STAFF_PASSWORD, make_staff, staff_client
 PHONE = "0911000100"
 
 
-def _sign_in(client: ApiClient, secret: str, *, password: str = STAFF_PASSWORD, code: str | None = None, phone: str = PHONE):  # type: ignore[no-untyped-def]
+def _sign_in(
+    client: ApiClient,
+    secret: str,
+    *,
+    password: str = STAFF_PASSWORD,
+    code: str | None = None,
+    phone: str = PHONE,
+):  # type: ignore[no-untyped-def]
     return client.post(
         "/auth/staff/sign-in",
         json={"phone": phone, "password": password, "totp_code": code or pyotp.TOTP(secret).now()},
@@ -45,18 +52,26 @@ def test_the_authenticator_secret_is_stored_encrypted(db: DbSession) -> None:
 def test_the_password_is_hashed_with_argon2id(db: DbSession) -> None:
     make_staff(db, PHONE)
     stored = db.scalars(select(StaffMember)).one().password_hash
-    assert stored.startswith("$argon2id$") and STAFF_PASSWORD not in stored
+    assert stored.startswith("$argon2id$")
+    assert STAFF_PASSWORD not in stored
 
 
 def test_a_short_password_is_refused(db: DbSession) -> None:
     with pytest.raises(ValidationFailed) as excinfo:
         accounts.create_staff(
-            db, raw_phone=PHONE, name="X", role=StaffRole.SUPPORT, password="short", actor_user_id=None
+            db,
+            raw_phone=PHONE,
+            name="X",
+            role=StaffRole.SUPPORT,
+            password="short",
+            actor_user_id=None,
         )
     assert excinfo.value.code == "password_too_short"
 
 
-@pytest.mark.parametrize("case", ["wrong_password", "wrong_code", "unknown_phone", "non_ethiopian_phone"])
+@pytest.mark.parametrize(
+    "case", ["wrong_password", "wrong_code", "unknown_phone", "non_ethiopian_phone"]
+)
 def test_every_failure_looks_the_same(client: ApiClient, db: DbSession, case: str) -> None:
     secret = make_staff(db, PHONE)
     if case == "wrong_password":
@@ -79,7 +94,8 @@ def test_an_authenticator_code_cannot_be_replayed(client: ApiClient, db: DbSessi
     code = pyotp.TOTP(secret).now()
     assert _sign_in(client, secret, code=code).status_code == 200
     replay = _sign_in(ApiClient(), secret, code=code)
-    assert replay.status_code == 401 and error_code(replay) == "staff_credentials_invalid"
+    assert replay.status_code == 401
+    assert error_code(replay) == "staff_credentials_invalid"
 
 
 def test_five_failures_lock_the_staff_account(client: ApiClient, db: DbSession) -> None:
@@ -87,7 +103,8 @@ def test_five_failures_lock_the_staff_account(client: ApiClient, db: DbSession) 
     for _ in range(5):
         assert _sign_in(client, secret, password="wrong password!!").status_code == 401
     locked = _sign_in(client, secret)
-    assert locked.status_code == 429 and error_code(locked) == "staff_locked"
+    assert locked.status_code == 429
+    assert error_code(locked) == "staff_locked"
     db.execute(text("update staff_members set locked_until = now() - interval '1 second'"))
     db.commit()
     assert _sign_in(client, secret).status_code == 200
@@ -108,7 +125,8 @@ def test_a_phone_code_session_never_carries_staff_powers(db: DbSession) -> None:
     make_staff(db, PHONE)
     customer = ApiClient()
     me = customer.sign_in(PHONE)["me"]
-    assert me["session_kind"] == "customer" and me["staff"] is None
+    assert me["session_kind"] == "customer"
+    assert me["staff"] is None
 
 
 def test_sign_ins_and_failures_are_audited(client: ApiClient, db: DbSession) -> None:
@@ -118,13 +136,17 @@ def test_sign_ins_and_failures_are_audited(client: ApiClient, db: DbSession) -> 
     actions = db.scalars(select(AuditLog.action).order_by(AuditLog.occurred_at)).all()
     assert actions == ["staff.create", "staff.sign_in_failed", "staff.sign_in"]
     entry = db.scalars(select(AuditLog).where(AuditLog.action == "staff.sign_in")).one()
-    assert str(entry.ip) == "203.0.113.10" and entry.request_id
+    assert str(entry.ip) == "203.0.113.10"
+    assert entry.request_id
 
 
 def test_staff_sessions_are_short_lived(db: DbSession) -> None:
     client = staff_client(db, PHONE)
     minutes = db.execute(
-        text("select extract(epoch from (expires_at - created_at)) / 60, extract(epoch from (idle_expires_at - created_at)) / 60 from sessions where kind = 'staff'")
+        text(
+            "select extract(epoch from (expires_at - created_at)) / 60, extract(epoch from (idle_expires_at - created_at)) / 60 from sessions where kind = 'staff'"
+        )
     ).one()
-    assert round(minutes[0]) == 720 and round(minutes[1]) == 30
+    assert round(minutes[0]) == 720
+    assert round(minutes[1]) == 30
     assert client.get("/me").status_code == 200

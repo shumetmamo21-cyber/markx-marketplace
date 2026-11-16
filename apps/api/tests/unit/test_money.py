@@ -70,7 +70,7 @@ def test_portion_in_basis_points_rounds_half_up(amount: int, bps: int, expected:
 
 @pytest.mark.parametrize("bps", [-1, 10_001, 2.5, True])
 def test_portion_rejects_bad_basis_points(bps: object) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="basis points must be"):
         Money(100).portion_bps(bps)  # type: ignore[arg-type]
 
 
@@ -91,7 +91,7 @@ def test_parses_what_a_seller_types(text: str, santim: int) -> None:
 
 @pytest.mark.parametrize("text", ["", "abc", "12.345", "1,25", "-5", "12,5000", "1e3", "12.", ".5"])
 def test_rejects_malformed_birr_text(text: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="not a valid birr amount"):
         Money.from_birr_text(text)
 
 

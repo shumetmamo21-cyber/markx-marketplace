@@ -33,16 +33,21 @@ def test_models_and_migrations_do_not_differ(migrator_engine: Engine) -> None:
 
 def test_trigram_extension_is_enabled(migrator_engine: Engine) -> None:
     with migrator_engine.connect() as connection:
-        assert connection.execute(
-            text("select count(*) from pg_extension where extname = 'pg_trgm'")
-        ).scalar_one() == 1
+        assert (
+            connection.execute(
+                text("select count(*) from pg_extension where extname = 'pg_trgm'")
+            ).scalar_one()
+            == 1
+        )
 
 
 def test_database_uses_the_builtin_utf8_locale(migrator_engine: Engine) -> None:
     # Trigram matching on Ethiopic text depends on it (docs/reports).
     with migrator_engine.connect() as connection:
         provider, locale = connection.execute(
-            text("select datlocprovider::text, datlocale from pg_database where datname = current_database()")
+            text(
+                "select datlocprovider::text, datlocale from pg_database where datname = current_database()"
+            )
         ).one()
     assert (provider, locale) == ("b", "C.UTF-8")
 
@@ -59,16 +64,20 @@ def test_trigrams_exist_for_ethiopic_text(migrator_engine: Engine) -> None:
 
 def test_every_table_has_a_primary_key(migrator_engine: Engine) -> None:
     with migrator_engine.connect() as connection:
-        missing = connection.execute(
-            text(
-                """
+        missing = (
+            connection.execute(
+                text(
+                    """
                 select c.relname from pg_class c
                 join pg_namespace n on n.oid = c.relnamespace
                 where n.nspname = 'public' and c.relkind = 'r'
                   and not exists (select 1 from pg_constraint p where p.conrelid = c.oid and p.contype = 'p')
                 """
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert missing == []
 
 

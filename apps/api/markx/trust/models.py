@@ -46,14 +46,19 @@ class Review(UUIDPrimaryKey, Timestamps, Base):
         in_check("moderation_status", ("published", "hidden")),
         CheckConstraint("product_rating between 1 and 5", name="product_rating_range"),
         CheckConstraint("seller_rating between 1 and 5", name="seller_rating_range"),
-        CheckConstraint("(seller_reply is null) = (seller_replied_at is null)", name="reply_fields_together"),
+        CheckConstraint(
+            "(seller_reply is null) = (seller_replied_at is null)", name="reply_fields_together"
+        ),
         Index("ix_reviews_product_id", "product_id"),
         Index("ix_reviews_seller_id", "seller_id"),
     )
 
     # One review per order item (G.8 rule 2).
     order_item_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("order_items.id", ondelete="RESTRICT"), unique=True, nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("order_items.id", ondelete="RESTRICT"),
+        unique=True,
+        nullable=False,
     )
     buyer_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False

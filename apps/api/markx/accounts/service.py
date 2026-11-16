@@ -13,10 +13,11 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from urllib.parse import parse_qsl
 
 import pyotp
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session as DbSession
 
@@ -265,7 +266,9 @@ def verify_login_code(
     had_other_sessions = (
         db.scalar(
             select(Session.id)
-            .where(Session.user_id == user.id, Session.revoked_at.is_(None), Session.expires_at > now)
+            .where(
+                Session.user_id == user.id, Session.revoked_at.is_(None), Session.expires_at > now
+            )
             .limit(1)
         )
         is not None
@@ -364,7 +367,7 @@ def end_all_sessions(db: DbSession, user_id: uuid.UUID) -> int:
         .where(Session.user_id == user_id, Session.revoked_at.is_(None))
         .values(revoked_at=_now())
     )
-    return int(result.rowcount or 0)  # type: ignore[attr-defined]
+    return int(cast(CursorResult[Any], result).rowcount or 0)
 
 
 # --------------------------------------------------------------------------- staff
@@ -478,7 +481,9 @@ def staff_sign_in(
             decrypt_text(staff.totp_secret_encrypted), totp_code.strip(), now
         )
     # A code that was already used is refused, so it cannot be replayed.
-    replayed = step is not None and staff.totp_last_step is not None and step <= staff.totp_last_step
+    replayed = (
+        step is not None and staff.totp_last_step is not None and step <= staff.totp_last_step
+    )
     if (
         not password_ok
         or step is None
@@ -531,17 +536,27 @@ def active_staff_for(db: DbSession, user_id: uuid.UUID) -> StaffMember | None:
 # --------------------------------------------------------------------------- Telegram
 
 
-def verify_telegram_init_data(init_data: str, *, now: datetime | None = None) -> dict[str, object]:
+@dataclass(frozen=True, slots=True)
+class TelegramIdentity:
+    id: int
+    first_name: str | None
+
+
+def verify_telegram_init_data(init_data: str, *, now: datetime | None = None) -> TelegramIdentity:
     """Check a Telegram Mini App's signed start-up data (blueprint D.2, F.4).
 
     Telegram signs the data with a key derived from the bot token. Both the
     signature and the timestamp are verified here, on the server, every time.
-    Returns the Telegram user object.
+    Returns the verified Telegram identity.
     """
     bot_token = get_config().telegram_bot_token
     if not bot_token:
-        raise AppError("telegram_not_configured", "Telegram sign-in is not set up.", status_code=503)
-    invalid = PermissionDenied("telegram_signature_invalid", "Telegram sign-in could not be verified.")
+        raise AppError(
+            "telegram_not_configured", "Telegram sign-in is not set up.", status_code=503
+        )
+    invalid = PermissionDenied(
+        "telegram_signature_invalid", "Telegram sign-in could not be verified."
+    )
 
     pairs = dict(parse_qsl(init_data, keep_blank_values=True, strict_parsing=False))
     received_hash = pairs.pop("hash", None)
@@ -563,18 +578,21 @@ def verify_telegram_init_data(init_data: str, *, now: datetime | None = None) ->
 
     try:
         telegram_user = json.loads(pairs.get("user", ""))
-        int(telegram_user["id"])
+        telegram_id = int(telegram_user["id"])
     except (ValueError, KeyError, TypeError):
         raise invalid from None
-    return dict(telegram_user)
+    first_name = telegram_user.get("first_name")
+    return TelegramIdentity(
+        id=telegram_id, first_name=first_name if isinstance(first_name, str) else None
+    )
 
 
 def telegram_sign_in(
     db: DbSession, *, init_data: str, ip: str | None, user_agent: str | None
 ) -> tuple[User, str]:
     """Sign in a Telegram identity that is already linked to an account."""
-    telegram_user = verify_telegram_init_data(init_data)
-    user = db.scalar(select(User).where(User.telegram_id == int(telegram_user["id"])))  # type: ignore[call-overload]
+    identity = verify_telegram_init_data(init_data)
+    user = db.scalar(select(User).where(User.telegram_id == identity.id))
     if user is None:
         raise Conflict(
             "telegram_not_linked",
@@ -592,12 +610,16 @@ def telegram_sign_in(
 
 def link_telegram(db: DbSession, user: User, *, init_data: str) -> None:
     """One Telegram identity per account, and one account per Telegram identity."""
-    telegram_id = int(verify_telegram_init_data(init_data)["id"])  # type: ignore[call-overload]
+    telegram_id = verify_telegram_init_data(init_data).id
     owner = db.scalar(select(User).where(User.telegram_id == telegram_id))
     if owner is not None and owner.id != user.id:
-        raise Conflict("telegram_already_linked", "This Telegram account is linked to another number.")
+        raise Conflict(
+            "telegram_already_linked", "This Telegram account is linked to another number."
+        )
     if user.telegram_id is not None and user.telegram_id != telegram_id:
-        raise Conflict("telegram_already_linked", "This account is linked to another Telegram account.")
+        raise Conflict(
+            "telegram_already_linked", "This account is linked to another Telegram account."
+        )
     user.telegram_id = telegram_id
 
 

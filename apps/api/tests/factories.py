@@ -50,7 +50,9 @@ def telegram_init_data(
     fields = {
         "auth_date": str(auth_date if auth_date is not None else int(time.time())),
         "query_id": "AAHdF6IQAAAAAN0XohDhrOrc",
-        "user": json.dumps({"id": telegram_id, "first_name": "Abebe", **extra}, separators=(",", ":")),
+        "user": json.dumps(
+            {"id": telegram_id, "first_name": "Abebe", **extra}, separators=(",", ":")
+        ),
     }
     data_check_string = "\n".join(f"{k}={fields[k]}" for k in sorted(fields))
     secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()

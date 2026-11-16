@@ -51,9 +51,7 @@ class Category(UUIDPrimaryKey, CreatedAt, Base):
     __table_args__ = (
         CheckConstraint(f"slug ~ '{SLUG_PATTERN}'", name="slug_format"),
         CheckConstraint("parent_id is null or parent_id <> id", name="not_own_parent"),
-        CheckConstraint(
-            "default_commission_bps between 0 and 10000", name="commission_bps_range"
-        ),
+        CheckConstraint("default_commission_bps between 0 and 10000", name="commission_bps_range"),
         Index("ix_categories_parent_id", "parent_id"),
     )
 
@@ -64,9 +62,7 @@ class Category(UUIDPrimaryKey, CreatedAt, Base):
     # Slugs from the root down, joined by "/": "electronics/phones".
     path: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    default_commission_bps: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    default_commission_bps: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
 
@@ -109,7 +105,9 @@ class AttributeTranslation(Base):
 class AttributeOption(UUIDPrimaryKey, Base):
     __tablename__ = "attribute_options"
     __table_args__ = (
-        CheckConstraint(f"code ~ '{CODE_PATTERN}' or code ~ '^[0-9][a-z0-9_]*$'", name="code_format"),
+        CheckConstraint(
+            f"code ~ '{CODE_PATTERN}' or code ~ '^[0-9][a-z0-9_]*$'", name="code_format"
+        ),
         UniqueConstraint("attribute_id", "code"),
     )
 
@@ -177,7 +175,9 @@ class Product(UUIDPrimaryKey, Timestamps, Base):
         CheckConstraint(
             "(status = 'merged') = (merged_into_id is not null)", name="merged_has_survivor"
         ),
-        CheckConstraint("merged_into_id is null or merged_into_id <> id", name="not_merged_into_self"),
+        CheckConstraint(
+            "merged_into_id is null or merged_into_id <> id", name="not_merged_into_self"
+        ),
         Index("ix_products_category_id", "category_id"),
         Index("ix_products_brand_id", "brand_id"),
         Index("ix_products_status", "status"),
@@ -303,7 +303,7 @@ class RestrictedTerm(UUIDPrimaryKey, CreatedAt, Base):
 
 
 class ProductRequest(UUIDPrimaryKey, CreatedAt, Base):
-    """"Request this product", offered when a search finds nothing (blueprint D.5)."""
+    """ "Request this product", offered when a search finds nothing (blueprint D.5)."""
 
     __tablename__ = "product_requests"
     __table_args__ = (

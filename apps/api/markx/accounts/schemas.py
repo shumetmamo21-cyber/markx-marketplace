@@ -79,14 +79,18 @@ class ProfileIn(ApiModel):
 
 
 class AddressIn(ApiModel):
-    recipient_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)]
+    recipient_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)
+    ]
     phone: PhoneText
     phone2: PhoneText | None = None
     delivery_area_id: uuid.UUID
     landmark: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=300)]
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
-    driver_notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] | None = None
+    driver_notes: (
+        Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] | None
+    ) = None
 
 
 class AddressOut(ApiModel):

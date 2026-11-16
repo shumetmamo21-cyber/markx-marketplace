@@ -85,9 +85,7 @@ class Cart(UUIDPrimaryKey, Timestamps, Base):
 class CartItem(UUIDPrimaryKey, CreatedAt, Base):
     __tablename__ = "cart_items"
     __table_args__ = (
-        CheckConstraint(
-            f"quantity between 1 and {MAX_QUANTITY_PER_LINE}", name="quantity_range"
-        ),
+        CheckConstraint(f"quantity between 1 and {MAX_QUANTITY_PER_LINE}", name="quantity_range"),
         CheckConstraint("price_seen_santim > 0", name="price_seen_positive"),
         UniqueConstraint("cart_id", "offer_id"),
     )
@@ -200,9 +198,7 @@ class OrderItem(UUIDPrimaryKey, Base):
     __tablename__ = "order_items"
     __table_args__ = (
         in_check("condition", Condition),
-        CheckConstraint(
-            f"quantity between 1 and {MAX_QUANTITY_PER_LINE}", name="quantity_range"
-        ),
+        CheckConstraint(f"quantity between 1 and {MAX_QUANTITY_PER_LINE}", name="quantity_range"),
         CheckConstraint("unit_price_santim > 0", name="unit_price_positive"),
         CheckConstraint(
             "line_total_santim = unit_price_santim * quantity", name="line_total_adds_up"

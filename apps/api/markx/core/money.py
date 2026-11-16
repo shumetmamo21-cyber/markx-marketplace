@@ -80,7 +80,7 @@ class Money:
         return Money((self.amount * bps + BPS_DENOMINATOR // 2) // BPS_DENOMINATOR, self.currency)
 
     def format(self, language: Language = "en") -> str:
-        """"ETB 12,500" in English and "12,500 ብር" in Amharic (blueprint I.7)."""
+        """ "ETB 12,500" in English and "12,500 ብር" in Amharic (blueprint I.7)."""
         sign = "-" if self.amount < 0 else ""
         birr, santim = divmod(abs(self.amount), SANTIM_PER_BIRR)
         number = f"{birr:,}" if santim == 0 else f"{birr:,}.{santim:02d}"

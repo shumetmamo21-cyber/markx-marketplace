@@ -97,7 +97,7 @@ def readonly_engine(_database: None) -> Iterator[Engine]:
 
 
 @pytest.fixture(autouse=True)
-def _clean_slate(migrator_engine: Engine) -> Iterator[None]:
+def _clean_slate(migrator_engine: Engine) -> None:
     """Empty every table before each test, so tests cannot depend on each other."""
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with migrator_engine.begin() as connection:
@@ -105,7 +105,6 @@ def _clean_slate(migrator_engine: Engine) -> Iterator[None]:
     inbox = dev_sms_inbox_path()
     if inbox.exists():
         inbox.unlink()
-    yield
 
 
 @pytest.fixture

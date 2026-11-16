@@ -25,6 +25,7 @@ from markx.accounts.schemas import (
     OtpRequestOut,
     OtpVerifyIn,
     ProfileIn,
+    SellerMembershipOut,
     SessionOut,
     StaffOut,
     StaffSignInIn,
@@ -48,15 +49,20 @@ def _set_session_cookies(response: Response, token: str, kind: SessionKind) -> N
         if kind == SessionKind.STAFF
         else config.customer_session_max_minutes
     )
-    common = {
-        "max_age": minutes * 60,
-        "secure": config.cookie_secure,
-        "samesite": "lax",
-        "path": "/",
-    }
     # Scripts cannot read the session cookie; they can read the CSRF token.
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, **common)  # type: ignore[arg-type]
-    response.set_cookie(CSRF_COOKIE, service.csrf_token_for(token), httponly=False, **common)  # type: ignore[arg-type]
+    for name, value, http_only in (
+        (SESSION_COOKIE, token, True),
+        (CSRF_COOKIE, service.csrf_token_for(token), False),
+    ):
+        response.set_cookie(
+            name,
+            value,
+            max_age=minutes * 60,
+            path="/",
+            secure=config.cookie_secure,
+            httponly=http_only,
+            samesite="lax",
+        )
 
 
 def _clear_session_cookies(response: Response) -> None:
@@ -77,7 +83,9 @@ def _me(db: Db, user: User, kind: str, token: str, staff: StaffMember | None) ->
             if staff is not None and kind == SessionKind.STAFF
             else None
         ),
-        sellers=seller_selectors.memberships_for_user(db, user.id),  # type: ignore[arg-type]
+        sellers=[
+            SellerMembershipOut(**m) for m in seller_selectors.memberships_for_user(db, user.id)
+        ],
         unread_notifications=notifications.unread_count(db, user.id),
     )
 
@@ -235,8 +243,7 @@ def delete_address(address_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -
 @router.get("/me/data-requests", response_model=list[DataRequestOut], tags=["me"])
 def list_data_requests(principal: CurrentPrincipal, db: Db) -> list[DataRequestOut]:
     return [
-        DataRequestOut.model_validate(r)
-        for r in service.list_data_requests(db, principal.user.id)
+        DataRequestOut.model_validate(r) for r in service.list_data_requests(db, principal.user.id)
     ]
 
 

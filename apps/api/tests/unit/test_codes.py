@@ -48,4 +48,5 @@ def test_rejects_malformed_codes() -> None:
 def test_numeric_code_keeps_leading_zeros() -> None:
     for _ in range(300):
         code = new_numeric_code(6)
-        assert len(code) == 6 and code.isdigit()
+        assert len(code) == 6
+        assert code.isdigit()

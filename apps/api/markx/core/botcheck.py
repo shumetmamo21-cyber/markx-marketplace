@@ -19,7 +19,7 @@ class FakeBotCheck:
     exercise the refusal path."""
 
     def verify(self, token: str | None, ip: str | None) -> bool:
-        return token != "bot"
+        return token != "bot"  # noqa: S105  (a test sentinel, not a credential)
 
 
 def get_bot_check() -> BotCheck:

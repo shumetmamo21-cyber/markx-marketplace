@@ -59,7 +59,9 @@ class PaymentIntent(UUIDPrimaryKey, CreatedAt, Base):
         in_check("method", DirectPaymentMethod),
         in_check("currency", ("ETB",)),
         CheckConstraint("amount_santim > 0", name="amount_positive"),
-        CheckConstraint("(status = 'succeeded') = (settled_at is not null)", name="settled_has_time"),
+        CheckConstraint(
+            "(status = 'succeeded') = (settled_at is not null)", name="settled_has_time"
+        ),
         # One live intent per seller order: a seller order cannot be paid twice.
         Index(
             "uq_payment_intents_live_per_seller_order",
@@ -222,7 +224,9 @@ class LedgerEntry(UUIDPrimaryKey, CreatedAt, Base):
     )
 
     transaction_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("ledger_transactions.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("ledger_transactions.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ledger_accounts.id", ondelete="RESTRICT"), nullable=False

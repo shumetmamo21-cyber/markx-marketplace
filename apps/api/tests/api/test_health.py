@@ -28,9 +28,12 @@ def test_every_response_carries_a_request_id_and_security_headers(client: ApiCli
 
 
 def test_a_supplied_request_id_is_kept_and_a_hostile_one_is_replaced(client: ApiClient) -> None:
-    assert client.get("/healthz", headers={"X-Request-ID": "abc-123"}).headers["x-request-id"] == "abc-123"
-    hostile = client.get("/healthz", headers={"X-Request-ID": "x\"; drop table users"})
-    assert hostile.headers["x-request-id"] != "x\"; drop table users"
+    assert (
+        client.get("/healthz", headers={"X-Request-ID": "abc-123"}).headers["x-request-id"]
+        == "abc-123"
+    )
+    hostile = client.get("/healthz", headers={"X-Request-ID": 'x"; drop table users'})
+    assert hostile.headers["x-request-id"] != 'x"; drop table users'
 
 
 def test_unknown_route_uses_the_single_error_format(client: ApiClient) -> None:
@@ -44,7 +47,9 @@ def test_unknown_route_uses_the_single_error_format(client: ApiClient) -> None:
 
 
 def test_validation_errors_use_the_single_format_and_do_not_echo_values(client: ApiClient) -> None:
-    response = client.post("/auth/otp/request", json={"phone": "x", "language": "klingon", "extra": 1})
+    response = client.post(
+        "/auth/otp/request", json={"phone": "x", "language": "klingon", "extra": 1}
+    )
     assert response.status_code == 422
     error = response.json()["error"]
     assert error["code"] == "validation_failed"

@@ -52,7 +52,9 @@ def test_only_a_keyed_hash_of_the_code_is_stored(client: ApiClient, db: DbSessio
     assert db.execute(text("select count(*) from outbox")).scalar_one() == 0
 
 
-def test_the_correct_code_signs_in_and_creates_the_account(client: ApiClient, db: DbSession) -> None:
+def test_the_correct_code_signs_in_and_creates_the_account(
+    client: ApiClient, db: DbSession
+) -> None:
     assert db.scalar(select(User)) is None
     _request(client)
     response = _verify(client, latest_code(PHONE))
@@ -66,7 +68,8 @@ def test_the_correct_code_signs_in_and_creates_the_account(client: ApiClient, db
     assert db.scalars(select(User)).one().phone == E164
 
     me = client.get("/me")
-    assert me.status_code == 200 and me.json()["phone"] == E164
+    assert me.status_code == 200
+    assert me.json()["phone"] == E164
 
 
 def test_session_cookie_is_not_readable_by_scripts(client: ApiClient) -> None:
@@ -75,7 +78,8 @@ def test_session_cookie_is_not_readable_by_scripts(client: ApiClient) -> None:
     set_cookies = response.headers.get_list("set-cookie")
     session_cookie = next(c for c in set_cookies if c.startswith("markx_session="))
     csrf_cookie = next(c for c in set_cookies if c.startswith("markx_csrf="))
-    assert "HttpOnly" in session_cookie and "SameSite=lax" in session_cookie
+    assert "HttpOnly" in session_cookie
+    assert "SameSite=lax" in session_cookie
     assert "HttpOnly" not in csrf_cookie
 
 
@@ -84,7 +88,8 @@ def test_only_the_token_hash_is_stored(client: ApiClient, db: DbSession) -> None
     token = client.http.cookies.get("markx_session")
     assert token
     stored = bytes(db.scalars(select(Session)).one().token_hash)
-    assert token.encode() != stored and len(stored) == 32
+    assert token.encode() != stored
+    assert len(stored) == 32
 
 
 def test_second_sign_in_reuses_the_account(client: ApiClient, db: DbSession) -> None:
@@ -95,7 +100,8 @@ def test_second_sign_in_reuses_the_account(client: ApiClient, db: DbSession) -> 
 
 
 @pytest.mark.parametrize(
-    "form", ["0911234567", "911234567", "+251911234567", "251911234567", "00251911234567", "0911 23 45 67"]
+    "form",
+    ["0911234567", "911234567", "+251911234567", "251911234567", "00251911234567", "0911 23 45 67"],
 )
 def test_every_phone_form_reaches_the_same_account(form: str, db: DbSession) -> None:
     ApiClient().sign_in("0911234567")
@@ -122,21 +128,25 @@ def test_a_wrong_code_is_refused_and_counts_down(client: ApiClient) -> None:
     assert _verify(client, code).status_code == 200
 
 
-def test_five_wrong_codes_lock_the_number_for_fifteen_minutes(client: ApiClient, db: DbSession) -> None:
+def test_five_wrong_codes_lock_the_number_for_fifteen_minutes(
+    client: ApiClient, db: DbSession
+) -> None:
     _request(client)
     code = latest_code(PHONE)
     for expected_left in (4, 3, 2, 1):
         response = _verify(client, _wrong(code))
         assert response.json()["error"]["details"]["attempts_left"] == expected_left
     fifth = _verify(client, _wrong(code))
-    assert fifth.status_code == 429 and error_code(fifth) == "otp_locked"
+    assert fifth.status_code == 429
+    assert error_code(fifth) == "otp_locked"
     assert fifth.json()["error"]["details"]["retry_after_seconds"] == 900
     assert fifth.headers["retry-after"] == "900"
 
     # While locked, even the correct code is refused, and no new code is sent.
     assert error_code(_verify(client, code)) == "otp_locked"
     again = _request(client)
-    assert again.status_code == 429 and error_code(again) == "otp_locked"
+    assert again.status_code == 429
+    assert error_code(again) == "otp_locked"
     assert len(read_dev_sms_inbox(E164)) == 1
 
     # After the lock passes, sign-in works again.
@@ -152,7 +162,8 @@ def test_an_expired_code_is_refused(client: ApiClient, db: DbSession) -> None:
     db.execute(update(OtpChallenge).values(expires_at=datetime.now(UTC) - timedelta(seconds=1)))
     db.commit()
     response = _verify(client, code)
-    assert response.status_code == 400 and error_code(response) == "otp_expired"
+    assert response.status_code == 400
+    assert error_code(response) == "otp_expired"
 
 
 def test_a_code_cannot_be_used_twice(client: ApiClient) -> None:
@@ -186,25 +197,30 @@ def test_requests_beyond_the_per_number_limit_are_refused(client: ApiClient, db:
     for _ in range(limit):
         assert _request(client).status_code == 200
     over = _request(client)
-    assert over.status_code == 429 and error_code(over) == "rate_limited"
+    assert over.status_code == 429
+    assert error_code(over) == "rate_limited"
     assert int(over.headers["retry-after"]) > 0
     assert len(read_dev_sms_inbox(E164)) == limit
     # Another number is unaffected by this number's limit.
     assert _request(client, "0922334455").status_code == 200
 
 
-def test_requests_beyond_the_per_address_limit_are_refused(client: ApiClient, db: DbSession) -> None:
+def test_requests_beyond_the_per_address_limit_are_refused(
+    client: ApiClient, db: DbSession
+) -> None:
     settings_store.set_setting(db, "auth.otp_per_ip_per_hour", 3)
     db.commit()
     for i in range(3):
         assert _request(client, f"09112345{i:02d}").status_code == 200
     over = _request(client, "0911234599")
-    assert over.status_code == 429 and error_code(over) == "rate_limited"
+    assert over.status_code == 429
+    assert error_code(over) == "rate_limited"
 
 
 def test_the_bot_check_runs_before_any_sms(client: ApiClient) -> None:
     response = _request(client, bot_token="bot")
-    assert response.status_code == 403 and error_code(response) == "bot_check_failed"
+    assert response.status_code == 403
+    assert error_code(response) == "bot_check_failed"
     assert read_dev_sms_inbox(E164) == []
 
 
@@ -214,13 +230,15 @@ def test_the_daily_sms_budget_cuts_off_sending(client: ApiClient, db: DbSession)
     assert _request(client, "0911000001").status_code == 200
     assert _request(client, "0911000002").status_code == 200
     spent = _request(client, "0911000003")
-    assert spent.status_code == 503 and error_code(spent) == "sms_budget_spent"
+    assert spent.status_code == 503
+    assert error_code(spent) == "sms_budget_spent"
     assert read_dev_sms_inbox("+251911000003") == []
 
 
 def test_me_requires_a_session(client: ApiClient) -> None:
     response = client.get("/me")
-    assert response.status_code == 401 and error_code(response) == "not_authenticated"
+    assert response.status_code == 401
+    assert error_code(response) == "not_authenticated"
 
 
 def test_sign_out_ends_the_session(client: ApiClient) -> None:
@@ -263,7 +281,11 @@ def test_idle_and_absolute_expiry(client: ApiClient, db: DbSession) -> None:
 
     fresh = ApiClient()
     fresh.sign_in("0922334455")
-    db.execute(text("update sessions set created_at = now() - interval '100 days', expires_at = now() - interval '1 second' where revoked_at is null"))
+    db.execute(
+        text(
+            "update sessions set created_at = now() - interval '100 days', expires_at = now() - interval '1 second' where revoked_at is null"
+        )
+    )
     db.commit()
     assert fresh.get("/me").status_code == 401
 
@@ -283,7 +305,8 @@ def test_a_blocked_account_cannot_sign_in(client: ApiClient, db: DbSession) -> N
     assert client.get("/me").status_code == 401
     _request(client)
     response = _verify(client, latest_code(PHONE))
-    assert response.status_code == 403 and error_code(response) == "account_blocked"
+    assert response.status_code == 403
+    assert error_code(response) == "account_blocked"
 
 
 def test_profile_update_and_language_is_remembered(client: ApiClient) -> None:
@@ -311,4 +334,5 @@ def test_logs_never_contain_codes_tokens_or_full_phone_numbers(
     assert logged, "expected request logs"
     assert code not in logged
     assert token not in logged
-    assert E164 not in logged and PHONE not in logged
+    assert E164 not in logged
+    assert PHONE not in logged

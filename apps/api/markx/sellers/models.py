@@ -232,7 +232,10 @@ class Store(UUIDPrimaryKey, Timestamps, Base):
     )
 
     seller_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("sellers.id", ondelete="RESTRICT"), unique=True, nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("sellers.id", ondelete="RESTRICT"),
+        unique=True,
+        nullable=False,
     )
     slug: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)

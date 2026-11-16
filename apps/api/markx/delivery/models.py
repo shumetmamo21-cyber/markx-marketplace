@@ -136,9 +136,7 @@ class Shipment(UUIDPrimaryKey, Timestamps, Base):
     # The handover code is derived from the server secret, this row's id and
     # this version; raising the version issues a new code. Nothing here reveals it.
     code_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    handover_attempts: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, server_default="0"
-    )
+    handover_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_reason: Mapped[str | None] = mapped_column(Text)

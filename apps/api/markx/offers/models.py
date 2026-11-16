@@ -115,7 +115,9 @@ class OfferPriceHistory(UUIDPrimaryKey, Base):
     __tablename__ = "offer_price_history"
     __table_args__ = (
         CheckConstraint("new_price_santim > 0", name="new_price_positive"),
-        CheckConstraint("old_price_santim is null or old_price_santim > 0", name="old_price_positive"),
+        CheckConstraint(
+            "old_price_santim is null or old_price_santim > 0", name="old_price_positive"
+        ),
         Index("ix_offer_price_history_offer_changed", "offer_id", "changed_at"),
     )
 
@@ -171,7 +173,10 @@ class InventoryReservation(UUIDPrimaryKey, CreatedAt, Base):
         UUID(as_uuid=True), ForeignKey("offers.id", ondelete="RESTRICT"), nullable=False
     )
     order_item_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("order_items.id", ondelete="RESTRICT"), unique=True, nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("order_items.id", ondelete="RESTRICT"),
+        unique=True,
+        nullable=False,
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="held")

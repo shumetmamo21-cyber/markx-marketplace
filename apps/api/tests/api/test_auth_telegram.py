@@ -25,12 +25,16 @@ def _linked_account(telegram_id: int) -> ApiClient:
 
 def test_a_linked_telegram_identity_signs_in(db: DbSession) -> None:
     _linked_account(777001)
-    response = ApiClient().post("/auth/telegram", json={"init_data": telegram_init_data(777001)}, headers=TMA)
+    response = ApiClient().post(
+        "/auth/telegram", json={"init_data": telegram_init_data(777001)}, headers=TMA
+    )
     assert response.status_code == 200
     token = response.json()["session_token"]
-    assert token and "set-cookie" not in response.headers
+    assert token
+    assert "set-cookie" not in response.headers
     me = ApiClient().get("/me", headers={"Authorization": f"Bearer {token}"})
-    assert me.status_code == 200 and me.json()["phone"] == "+251911234567"
+    assert me.status_code == 200
+    assert me.json()["phone"] == "+251911234567"
     assert db.scalars(select(User)).one().telegram_id == 777001
 
 
@@ -40,14 +44,16 @@ def test_tampered_start_up_data_is_rejected() -> None:
     # Claim to be another Telegram user while keeping the old signature.
     tampered = good.replace("777001", "777002")
     response = ApiClient().post("/auth/telegram", json={"init_data": tampered}, headers=TMA)
-    assert response.status_code == 403 and error_code(response) == "telegram_signature_invalid"
+    assert response.status_code == 403
+    assert error_code(response) == "telegram_signature_invalid"
 
 
 def test_data_signed_with_another_bot_token_is_rejected() -> None:
     _linked_account(777001)
     forged = telegram_init_data(777001, bot_token="999999:attacker-controlled-token")
     response = ApiClient().post("/auth/telegram", json={"init_data": forged}, headers=TMA)
-    assert response.status_code == 403 and error_code(response) == "telegram_signature_invalid"
+    assert response.status_code == 403
+    assert error_code(response) == "telegram_signature_invalid"
 
 
 def test_missing_hash_or_garbage_is_rejected() -> None:
@@ -61,26 +67,36 @@ def test_old_start_up_data_is_rejected() -> None:
     _linked_account(777001)
     stale = telegram_init_data(777001, auth_date=int(time.time()) - 2 * 3600)
     response = ApiClient().post("/auth/telegram", json={"init_data": stale}, headers=TMA)
-    assert response.status_code == 403 and error_code(response) == "telegram_data_expired"
+    assert response.status_code == 403
+    assert error_code(response) == "telegram_data_expired"
     future = telegram_init_data(777001, auth_date=int(time.time()) + 3600)
     response = ApiClient().post("/auth/telegram", json={"init_data": future}, headers=TMA)
-    assert response.status_code == 403 and error_code(response) == "telegram_data_expired"
+    assert response.status_code == 403
+    assert error_code(response) == "telegram_data_expired"
 
 
 def test_an_unlinked_identity_must_confirm_a_phone_first() -> None:
-    response = ApiClient().post("/auth/telegram", json={"init_data": telegram_init_data(555)}, headers=TMA)
-    assert response.status_code == 409 and error_code(response) == "telegram_not_linked"
+    response = ApiClient().post(
+        "/auth/telegram", json={"init_data": telegram_init_data(555)}, headers=TMA
+    )
+    assert response.status_code == 409
+    assert error_code(response) == "telegram_not_linked"
 
 
 def test_one_telegram_identity_per_account_and_one_account_per_identity() -> None:
     first = _linked_account(777001)
     # The same account cannot take a second Telegram identity.
     response = first.post("/me/telegram", json={"init_data": telegram_init_data(777002)})
-    assert response.status_code == 409 and error_code(response) == "telegram_already_linked"
+    assert response.status_code == 409
+    assert error_code(response) == "telegram_already_linked"
     # Another account cannot take an identity that is already linked.
     second = ApiClient()
     second.sign_in("0922334455")
     response = second.post("/me/telegram", json={"init_data": telegram_init_data(777001)})
-    assert response.status_code == 409 and error_code(response) == "telegram_already_linked"
+    assert response.status_code == 409
+    assert error_code(response) == "telegram_already_linked"
     # Linking the same identity again is harmless.
-    assert first.post("/me/telegram", json={"init_data": telegram_init_data(777001)}).status_code == 200
+    assert (
+        first.post("/me/telegram", json={"init_data": telegram_init_data(777001)}).status_code
+        == 200
+    )
