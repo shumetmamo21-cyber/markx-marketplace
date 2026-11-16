@@ -586,3 +586,63 @@ def test_sellers_and_visitors_cannot_moderate(market: Market) -> None:
     assert response.status_code == 403
     assert error_code(response) == "staff_only"
     assert market.public()["offer_count"] == 1
+
+
+def test_a_seller_cannot_relist_an_offer_that_staff_took_down(
+    market: Market, db: DbSession
+) -> None:
+    """Moderation must hold. A takedown that the seller can undo with one
+    request protects nobody: the offer stays down until staff lift the hold."""
+    offer = make_offer(market.a, market.a_id, market.v128)
+    removed = market.staff.post(
+        f"/admin/offers/{offer['id']}/remove", json={"reason": "Counterfeit item reported"}
+    )
+    assert removed.status_code == 200, removed.text
+
+    relist = market.a.post(f"/seller/{market.a_id}/offers", json=offer_body(market.v128))
+    assert relist.status_code == 403, relist.text
+    assert error_code(relist) == "offer_removed_by_staff"
+    assert market.public()["offers"] == []
+    assert db.scalar(select(Offer.status).where(Offer.id == offer["id"])) == "removed"
+    # Its own removal is still relistable: only the staff hold blocks.
+    other = make_offer(market.a, market.a_id, market.v256)
+    assert market.a.delete(f"/seller/{market.a_id}/offers/{other['id']}").status_code == 200
+    assert make_offer(market.a, market.a_id, market.v256)["status"] == "active"
+    # Removing it first is no way round a takedown either.
+    assert market.a.delete(f"/seller/{market.a_id}/offers/{other['id']}").status_code == 200
+    held = market.staff.post(f"/admin/offers/{other['id']}/remove", json={"reason": "Stolen goods"})
+    assert held.status_code == 200, held.text
+    relist = market.a.post(f"/seller/{market.a_id}/offers", json=offer_body(market.v256))
+    assert error_code(relist) == "offer_removed_by_staff"
+    again = market.staff.post(f"/admin/offers/{other['id']}/remove", json={"reason": "Twice"})
+    assert error_code(again) == "offer_removed"
+
+
+def test_staff_lift_the_hold_and_the_seller_may_list_again(market: Market, db: DbSession) -> None:
+    offer = make_offer(market.a, market.a_id, market.v128)
+    path = f"/admin/offers/{offer['id']}"
+    assert error_code(market.staff.post(f"{path}/restore", json={"reason": "x y z"})) == (
+        "offer_not_held"
+    )
+    market.staff.post(f"{path}/remove", json={"reason": "Counterfeit item reported"})
+
+    # Lifting the hold is a staff decision; the seller cannot make it.
+    assert market.a.post(f"{path}/restore", json={"reason": "It is genuine"}).status_code == 403
+    lifted = market.staff.post(f"{path}/restore", json={"reason": "Invoice checked, genuine"})
+    assert lifted.status_code == 200, lifted.text
+    # Lifting does not publish anything by itself: the seller lists again.
+    assert lifted.json()["status"] == "removed"
+    assert market.public()["offers"] == []
+    entry = db.scalar(select(AuditLog).where(AuditLog.action == "offer.staff_restore"))
+    assert entry is not None
+    assert entry.after["reason"] == "Invoice checked, genuine"
+    assert make_offer(market.a, market.a_id, market.v128)["id"] == offer["id"]
+    assert market.public()["offer_count"] == 1
+
+
+def test_the_database_keeps_a_held_offer_down(market: Market, db: DbSession) -> None:
+    offer = make_offer(market.a, market.a_id, market.v128)
+    market.staff.post(f"/admin/offers/{offer['id']}/remove", json={"reason": "Counterfeit item"})
+    with pytest.raises(IntegrityError, match="ck_offers_staff_hold_means_removed"):
+        db.execute(text("update offers set status = 'active'"))
+    db.rollback()

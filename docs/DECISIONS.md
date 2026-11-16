@@ -12,7 +12,7 @@ Status words: **Accepted** (decided and in the code; another engineer may rely
 on it) and **Open** (not decided; the code either avoids the question or holds
 a placeholder that is marked as such). Nothing in this file is a business
 policy the founder approved unless the founder's approval is named in the
-entry. Entries D-001 to D-031 are engineering decisions; the founder's own
+entry. Entries numbered `D-` are engineering decisions; the founder's own
 decisions are at the end of this file under "Decisions that need the founder".
 
 ---
@@ -432,6 +432,36 @@ The working branch is `claude/project-scaffold`. The second session's hosting
 tool also required its own branch, `claude/markx-seller-management-oag1a4`.
 Every commit was pushed to both and they are identical. Continue on
 `claude/project-scaffold`.
+
+## D-032 A staff takedown holds until staff lift it
+
+**Fills a gap** in blueprint AD-03. **Accepted.** Found in the session-three
+review, with a test that failed first.
+
+`create_offer` brings a removed offer back when the seller lists the same
+variant and condition again. It did so for an offer that *staff* had taken
+down, so a seller could undo a takedown for a counterfeit or stolen item with
+one request. `offers.removed_by_staff_at` (migration `0005`) now records the
+takedown. While it is set the seller's relist is refused with
+`offer_removed_by_staff`, and a CHECK keeps a held offer `removed` whatever
+the code does. Staff can also hold an offer the seller already removed, so
+removing it first is no way round. `POST /admin/offers/{id}/restore` lifts the
+hold; it publishes nothing, the seller lists again.
+
+The founder may want a different rule for *who* lifts a hold or whether it
+ever expires. Today: the same staff roles that may take a listing down.
+
+## D-033 Statements that change many offers lock them in id order
+
+**Fills a gap.** **Accepted.** Hardening; the deadlock was not reproduced.
+
+The check-in (`confirm_offers`) and the stale-offer job (`mark_stale_offers`)
+each updated many offer rows in one statement, in whatever order the query
+plan produced. Two such statements over the same rows can deadlock, and once
+a worker runs the job on a schedule the loser would be a seller's check-in.
+Both now select the ids `ORDER BY id FOR NO KEY UPDATE` first and then update
+by id. The job also skips rows that are locked: a seller editing an offer at
+that instant is confirming it. `tests/db/test_inventory.py` races the two.
 
 ---
 

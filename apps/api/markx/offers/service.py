@@ -349,6 +349,13 @@ def create_offer(db: Session, actor: Actor, seller: Seller, data: OfferInput) ->
                 "You already have an offer for this version and condition.",
                 details={"offer_id": str(existing.id)},
             )
+        if existing.removed_by_staff_at is not None:
+            # Moderation holds: only staff can let this listing return.
+            raise PermissionDenied(
+                "offer_removed_by_staff",
+                "MarkX staff took this listing down. Contact support to list it again.",
+                details={"offer_id": str(existing.id)},
+            )
         offer, old_price = existing, existing.price_santim
         offer.status = OfferStatus.ACTIVE
         offer.price_santim = data.price_santim
@@ -537,26 +544,35 @@ def confirm_offers(
     """
     _require_trading(seller)
     now = _now()
-    statement = (
-        update(Offer)
+    # Lock the rows in id order before changing them. Two statements that each
+    # update many offers (this one and the stale-offer job) could otherwise
+    # lock the same rows in different orders and deadlock.
+    query = (
+        select(Offer.id)
         .where(
             Offer.seller_id == seller.id,
             Offer.status.in_((OfferStatus.ACTIVE, OfferStatus.STALE)),
         )
+        .order_by(Offer.id)
+        .with_for_update(key_share=True)
+    )
+    if offer_ids is not None:
+        query = query.where(Offer.id.in_(offer_ids))
+    locked = list(db.scalars(query))
+    if not locked:
+        return 0
+    db.execute(
+        update(Offer)
+        .where(Offer.id.in_(locked))
         .values(
             status=OfferStatus.ACTIVE,
             price_confirmed_at=now,
             stock_confirmed_at=now,
             updated_at=now,
         )
-        .returning(Offer.id)
     )
-    if offer_ids is not None:
-        statement = statement.where(Offer.id.in_(offer_ids))
-    confirmed = list(db.scalars(statement))
-    if confirmed:
-        record_by(db, actor, "offer.confirm", "seller", seller.id, after={"offers": len(confirmed)})
-    return len(confirmed)
+    record_by(db, actor, "offer.confirm", "seller", seller.id, after={"offers": len(locked)})
+    return len(locked)
 
 
 # -- staff moderation --------------------------------------------------------------
@@ -567,9 +583,35 @@ def staff_remove_offer(db: Session, actor: Actor, offer_id: uuid.UUID, *, reason
     offer = db.scalar(select(Offer).where(Offer.id == offer_id).with_for_update(key_share=True))
     if offer is None:
         raise NotFound("offer_not_found", "That offer was not found.")
-    if offer.status == OfferStatus.REMOVED:
+    if offer.removed_by_staff_at is not None:
         raise Conflict("offer_removed", "That offer was already removed.")
+    # An offer the seller removed first is held too: removing it yourself
+    # must not be a way to dodge a takedown and list it again tomorrow.
+    offer.removed_by_staff_at = _now()
     _change_status(db, actor, offer, OfferStatus.REMOVED, "offer.staff_remove", reason=reason)
+    _notify_owner(db, offer, "offer.removed_by_staff")
+    return offer
+
+
+def staff_restore_offer(db: Session, actor: Actor, offer_id: uuid.UUID, *, reason: str) -> Offer:
+    """Staff lift a takedown. Nothing is published by this: the offer stays
+    removed, and the seller may list it again with today's price and stock."""
+    offer = db.scalar(select(Offer).where(Offer.id == offer_id).with_for_update(key_share=True))
+    if offer is None:
+        raise NotFound("offer_not_found", "That offer was not found.")
+    if offer.removed_by_staff_at is None:
+        raise Conflict("offer_not_held", "That offer was not taken down by staff.")
+    offer.removed_by_staff_at = None
+    db.flush()
+    record_by(
+        db, actor, "offer.staff_restore", "offer", offer.id,
+        before={"held": True}, after={"held": False, "reason": reason},
+    )  # fmt: skip
+    _notify_owner(db, offer, "offer.restored_by_staff")
+    return offer
+
+
+def _notify_owner(db: Session, offer: Offer, template: str) -> None:
     owner = db.scalar(
         select(SellerMember.user_id).where(
             SellerMember.seller_id == offer.seller_id,
@@ -579,10 +621,8 @@ def staff_remove_offer(db: Session, actor: Actor, offer_id: uuid.UUID, *, reason
     )
     if owner is not None:
         notifications.notify(
-            db, owner, "offer.removed_by_staff",
-            {"seller_id": str(offer.seller_id), "offer_id": str(offer.id)},
-        )  # fmt: skip
-    return offer
+            db, owner, template, {"seller_id": str(offer.seller_id), "offer_id": str(offer.id)}
+        )
 
 
 # -- scheduled ---------------------------------------------------------------------
@@ -594,14 +634,23 @@ def mark_stale_offers(db: Session, *, now: datetime | None = None) -> int:
     in (blueprint D.7). Returns how many offers went stale."""
     now = now or _now()
     cutoff = now - timedelta(days=settings_store.get_int(db, "offers.stale_after_days"))
+    # Rows are locked in id order (see `confirm_offers`). An offer its seller
+    # is editing this instant is skipped: the edit confirms it, and if not,
+    # the next run picks it up. The job never waits on a seller.
     stale = list(
         db.scalars(
-            update(Offer)
+            select(Offer.id)
             .where(Offer.status == OfferStatus.ACTIVE, Offer.price_confirmed_at < cutoff)
-            .values(status=OfferStatus.STALE, updated_at=now)
-            .returning(Offer.id)
+            .order_by(Offer.id)
+            .with_for_update(key_share=True, skip_locked=True)
         )
     )
+    if stale:
+        db.execute(
+            update(Offer)
+            .where(Offer.id.in_(stale))
+            .values(status=OfferStatus.STALE, updated_at=now)
+        )
     if stale:
         record_by(
             db, Actor.system(), "offer.mark_stale", "offers", "batch",

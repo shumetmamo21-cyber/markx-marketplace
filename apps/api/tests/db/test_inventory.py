@@ -11,10 +11,11 @@ import threading
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -204,6 +205,35 @@ def test_concurrent_identical_offers_create_exactly_one(shop: Shop, db: Session)
     db.rollback()
     assert db.scalar(select(func.count()).select_from(Offer)) == 1
     assert _stock(db, created[0]) == (3, 0)
+
+
+def test_check_ins_race_the_stale_offer_job_without_deadlock(shop: Shop, db: Session) -> None:
+    """The seller's one-tap check-in and the worker's stale-offer job each
+    change many offers in one statement. Both lock the rows in id order, so
+    neither can hold a row the other needs while waiting for one it holds."""
+    conditions = ("new", "open_box", "refurbished", "used")
+    offers = [shop.offer(1, condition=c) for c in conditions] + [
+        uuid.UUID(make_offer(shop.client, shop.seller_id, shop.other_variant_id, condition=c)["id"])
+        for c in conditions
+    ]
+    long_ago = datetime.now(UTC) - timedelta(days=60)
+
+    def task(index: int) -> Any:
+        with session_scope() as session:
+            if index % 2:
+                return service.mark_stale_offers(session)
+            seller = session.get(Seller, shop.seller_id)
+            assert seller is not None
+            return service.confirm_offers(session, Actor(type="user", user_id=None), seller)
+
+    for _ in range(5):
+        db.execute(update(Offer).values(status="active", price_confirmed_at=long_ago))
+        db.commit()
+        results = _race(40, task)
+        assert all(isinstance(r, int) for r in results), results
+    db.rollback()
+    statuses = set(db.scalars(select(Offer.status).where(Offer.id.in_(offers))))
+    assert statuses <= {"active", "stale"}
 
 
 # -- the life of a reservation -------------------------------------------------------

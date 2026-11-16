@@ -67,6 +67,11 @@ class Offer(UUIDPrimaryKey, Timestamps, Base):
             "delivers_by_seller_rider or delivers_by_partner_courier or offers_shop_collection",
             name="at_least_one_delivery_option",
         ),
+        # An offer staff took down stays down until staff lift the hold: no code
+        # path can put it back in front of buyers.
+        CheckConstraint(
+            "removed_by_staff_at is null or status = 'removed'", name="staff_hold_means_removed"
+        ),
         # One offer per seller, variant and condition (blueprint D.7, G.8 rule 2).
         UniqueConstraint("seller_id", "variant_id", "condition"),
         Index("ix_offers_variant_live", "variant_id", postgresql_where=text("status = 'active'")),
@@ -105,6 +110,9 @@ class Offer(UUIDPrimaryKey, Timestamps, Base):
     stock_confirmed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Set when staff take the listing down (AD-03). While it is set the seller
+    # cannot list this variant and condition again.
+    removed_by_staff_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Earned from proven stock accuracy; skips seller confirmation. Later stage.
     instant_buy: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 

@@ -241,3 +241,12 @@ def staff_remove_offer(
 ) -> OfferStatusOut:
     offer = service.staff_remove_offer(db, staff.actor(request), offer_id, reason=body.reason)
     return OfferStatusOut.model_validate(offer)
+
+
+@admin_router.post("/{offer_id}/restore", response_model=OfferStatusOut)
+def staff_restore_offer(
+    offer_id: uuid.UUID, body: ModerationIn, staff: ListingModerator, request: Request, db: Db
+) -> OfferStatusOut:
+    """Lift a takedown, so the seller may list the item again."""
+    offer = service.staff_restore_offer(db, staff.actor(request), offer_id, reason=body.reason)
+    return OfferStatusOut.model_validate(offer)
