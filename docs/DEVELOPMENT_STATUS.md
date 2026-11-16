@@ -158,8 +158,6 @@ Be careful with these. They were written and never exercised.
 - Docker Compose files and Dockerfiles; the reverse proxy.
 - The CI pipeline (`.github/workflows`).
 - Real adapters: SMS provider, bot check, object storage, Telegram bot.
-- `docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `docs/SETUP.md` in their full
-  form (see "Next task").
 - Anything on AWS. Nothing has been deployed and no cloud resource was created.
 
 ## Lessons
@@ -173,7 +171,6 @@ Be careful with these. They were written and never exercised.
 
 - None found in the tested code. The untested items above are unknowns, not
   known-good.
-- The README at the repository root is still the two-line placeholder.
 - All Amharic text was drafted by an AI agent. A native speaker must review it
   before launch (blueprint I.3).
 
