@@ -8,8 +8,10 @@ initial commit only and nothing has been merged into it.
 **Last code commit:** `0d50751` (offers and inventory). Commits after it
 change documentation only, so the test results below describe the code as it
 stands; `git log -1` shows the current head.
-**Read this after** `AGENTS.md` and `MARKX_MASTER_BLUEPRINT.md`. The
-ready-to-use brief for the next engineer is `docs/NEXT_SESSION_PROMPT.md`.
+**Read this after** `AGENTS.md` and `MARKX_MASTER_BLUEPRINT.md`.
+`docs/HANDOFF.md` holds the last session's report in plain words, the six
+decisions waiting on the founder, and a ready-to-paste brief for the next
+engineer.
 
 This file states what exists, what is tested and what is not. Nothing here is
 aspirational. If a line says "tested", the test is in the repository and passed
@@ -421,9 +423,9 @@ Work in this order. Finish and push each step before starting the next.
 
 Keep `ruff`, `mypy`, `alembic check` and `pytest` green at every commit.
 
-`docs/NEXT_SESSION_PROMPT.md` holds the same assignment written as a brief
-that can be handed straight to the next engineer, with the commands, the
-files to read and the traps found so far.
+`docs/HANDOFF.md`, Part B, holds the same assignment written as a brief that
+can be handed straight to the next engineer, with the commands, the files to
+read and the traps found so far.
 
 Three rules the second session asks the next one to keep, because each was
 paid for with a failure:

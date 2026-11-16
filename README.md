@@ -20,7 +20,7 @@ last confirmed.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organised |
 | [docs/SETUP.md](docs/SETUP.md) | How to run and test it |
 | [AGENTS.md](AGENTS.md) | Rules for AI coding agents working here |
-| [docs/NEXT_SESSION_PROMPT.md](docs/NEXT_SESSION_PROMPT.md) | The brief for the next engineering session |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | The last session's report, the decisions waiting on the founder, and the brief for the next engineering session |
 
 ## Stack
 

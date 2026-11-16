@@ -16,8 +16,9 @@ completely before you change anything.
    implementation departs from the blueprint and why.
 4. **`docs/ARCHITECTURE.md`** — how the code is organised.
 5. **`docs/SETUP.md`** — how to run and test the project.
-6. **`docs/NEXT_SESSION_PROMPT.md`** — the brief the previous session left for
-   you: the next milestone, the commands, and the traps already paid for.
+6. **`docs/HANDOFF.md`** — the previous session's report and the brief it left
+   for you: the next milestone, the commands, the traps already paid for, and
+   the decisions that are the founder's to make, not yours.
 
 Then inspect the existing code and the Git history before writing anything.
 Do not assume a document is current if the code says otherwise; if they
