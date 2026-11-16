@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from markx.core.db import session_scope
 from markx.offers import service as offers
+from markx.orders import service as orders
 from markx.sellers import service as sellers
 from markx.worker.models import ScheduledJob
 
@@ -50,6 +51,12 @@ class JobOutcome:
 
 
 JOBS: tuple[Job, ...] = (
+    # First, and often: an unanswered order holds stock other buyers want.
+    Job(
+        "orders.expire_unanswered",
+        timedelta(minutes=1),
+        lambda db, now: orders.expire_unanswered_orders(db, now=now),
+    ),
     Job(
         "offers.mark_stale",
         timedelta(hours=1),

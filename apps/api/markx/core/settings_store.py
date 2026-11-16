@@ -130,6 +130,14 @@ _SPECS: tuple[SettingSpec, ...] = (
         24,
     ),
     SettingSpec(
+        "orders.fulfilment_hold_days",
+        14,
+        "int",
+        "Days a confirmed order keeps its stock held while it is packed and delivered.",
+        1,
+        90,
+    ),
+    SettingSpec(
         "orders.problem_window_hours",
         72,
         "int",
