@@ -1,6 +1,6 @@
 # The master blueprint is committed byte-for-byte. Never normalise its line
 # endings or let a formatter rewrite it.
-"All In One MarkX master Blue Print.md" -text
+MARKX_MASTER_BLUEPRINT.md -text
 * text=auto eol=lf
 *.png binary
 *.webp binary
