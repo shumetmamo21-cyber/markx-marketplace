@@ -12,8 +12,8 @@ domain.
 
 | Part | State |
 | --- | --- |
-| API (`apps/api`) | Foundation built: schema, sign-in, permissions |
-| PostgreSQL | Schema for all of Release 1, three roles |
+| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory. Not built: search, cart, orders, payments |
+| PostgreSQL | Schema for all of Release 1 (64 tables), three roles |
 | Web app (`apps/web`) | **Does not exist** |
 | Worker | **Does not exist** |
 | Reverse proxy, containers, CI | **Do not exist** |
@@ -28,13 +28,19 @@ apps/
     markx/
       core/                 config, database, errors, HTTP plumbing, Money,
                             phone, Ethiopic text, codes, security, rate limits,
-                            settings store
+                            settings store, private file storage, image checks
       accounts/             users, login codes, sessions, staff, addresses,
                             permissions (the blueprint's C.3 and C.4 tables)
       audit/                the append-only audit log
       notifications/        outbox, in-app notifications, SMS adapter
-      sellers/ catalog/ offers/ orders/ payments/ delivery/ trust/
-      search/ analytics/    MODELS ONLY: tables, no behaviour yet
+      delivery/             zones, areas, flat fees
+      catalog/              categories, attributes, brands, products, variants
+      sellers/              invitations, applications, documents, staff review,
+                            verification levels, members, store, payout account
+      offers/               offers, price history, inventory, stock holds,
+                            ranking, check-in, product proposals
+      orders/ payments/ trust/ search/ analytics/
+                            MODELS ONLY: tables, no behaviour yet
       main.py               the application factory
       registry.py           imports every model for Alembic and tests
     migrations/versions/    forward-only Alembic migrations
@@ -81,6 +87,56 @@ The web app will hold no business rules and will never talk to the database.
 A service that must remember something even though the request fails (a wrong
 login code, a failed staff sign-in) commits explicitly and then raises.
 
+## Seller scoping
+
+Blueprint C.5: a seller member can never read or change another seller's
+data. The rule has one home.
+
+- Every seller route lives under `/seller/{seller_id}/...` and declares
+  `require_seller(capability)` from `markx/accounts/deps.py`. It loads the
+  seller **through the caller's own active membership**, so a seller the
+  caller does not belong to cannot be loaded at all. Another seller's id and
+  an id that does not exist give the same "not found".
+- A service function that takes a `Seller` trusts that the route loaded it
+  this way. Anything addressed by its own id (a document, a member, an
+  offer) is always queried **together with** `seller_id`.
+- Membership is read on every request, so a removed member is out at once.
+- Staff sessions are refused on seller routes. Staff use `/admin/...`
+  routes, each behind `require_staff(capability)`.
+- `tests/api/test_seller_isolation.py` reads the route list from the API
+  description and attacks every `/seller/{seller_id}` route. **A new seller
+  route is covered automatically, provided it uses `require_seller`.** A
+  seller-owned resource reached by any other path needs its own test.
+
+## Stock
+
+Blueprint G.9. All of it is in `markx/offers/service.py`.
+
+- Stock changes only there, and every change inserts an
+  `inventory_movements` row in the same transaction.
+- `hold_stock` is one `UPDATE ... WHERE on_hand - reserved >= :qty`. Two
+  buyers cannot both take the last unit: the second UPDATE waits for the
+  first, then finds nothing left. It returns `False`; the caller rolls back.
+- `release_stock` and `commit_stock` end a hold. `set_stock` is the seller's
+  count and cannot go below what is held.
+- Offer and seller rows are locked with `with_for_update(key_share=True)`,
+  never plain `FOR UPDATE` (see D-027: a deadlock found by a test).
+- CHECK constraints on `inventory` refuse negative stock and
+  `reserved > on_hand` whatever the code does.
+
+## Private files
+
+Identity and licence photos go through `PrivateStorage`
+(`markx/core/storage.py`). They are never served by path. A person opens one
+through `/documents/{id}/content` with a five-minute link signed for that
+person, while signed in. Only the local-disk adapter exists.
+
+## Scheduled work
+
+There is no worker yet. Two functions are written and tested and wait for
+one: `offers.service.mark_stale_offers` and
+`sellers.service.activate_due_payout_accounts`. The outbox also waits.
+
 ## Database
 
 - **Three roles** (blueprint F.3). `markx_migrator` owns the schema and runs
@@ -106,7 +162,8 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | SMS | `markx/notifications/sms.py` | Fake only; no provider chosen |
 | Bot check | `markx/core/botcheck.py` | Fake only |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
-| Object storage, payments, couriers, AI | | Not started |
+| Private file storage | `markx/core/storage.py` | Local disk only; refused on real servers |
+| Public images, payments, couriers, AI | | Not started |
 
 ## Configuration
 

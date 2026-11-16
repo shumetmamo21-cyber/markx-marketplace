@@ -4,8 +4,9 @@ A multi-vendor marketplace that starts in Ethiopia: one page per product, many
 verified sellers' offers under it, each with a price that shows when it was
 last confirmed.
 
-> **Status: early foundation.** The back-end foundation is built and tested.
-> No marketplace feature works yet and there is no web app. Nothing is deployed.
+> **Status: back end in progress.** Sign-in, the catalogue, seller onboarding
+> and seller offers with stock are built and tested as an API. Nothing can be
+> bought yet, there is no web app, and nothing is deployed.
 > See [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) for exactly what
 > exists.
 

@@ -237,6 +237,198 @@ without an `https://` origin.
 
 Blocked on the founder: a local SMS provider (blueprint question O.23).
 
+## D-017 An application is a draft until it is submitted
+
+**Fills a gap** in blueprint D.3 and G.2. **Accepted.**
+
+The blueprint lists the seller statuses `applied`, `active`, `suspended` and
+`closed`, and says the application takes about 15 minutes over several steps.
+It does not say what staff see while the applicant is still uploading.
+`sellers.review_state` gains the value `draft`: the seller, its owner and its
+store are created at the first step, staff see nothing until the applicant
+submits, and submitting is refused until the required documents and a payout
+account are present. A rejected application sets `status` to `closed`, which
+frees the TIN for a corrected application.
+
+The allowed moves are written at the top of `markx/sellers/service.py`.
+
+## D-018 Staff approval is a fact in the database
+
+**Follows** blueprint C.5 ("levels are set by staff") with a stronger method.
+**Accepted.**
+
+Two CHECK constraints (migration `0004`): a seller is `active` or `suspended`
+only if its application is `approved`, and holds a verification level above 0
+only if it is `approved`. A bug in a future route cannot activate or verify a
+seller that staff did not approve. A level is also granted only when the
+accepted, unexpired documents behind it exist; the service checks that, and
+returns the list of missing checks.
+
+## D-019 Invitations are rows keyed on a phone number
+
+**Fills a gap** in blueprint D.3 ("invite-only at launch"). **Accepted.**
+
+Staff invite a phone number. The account that owns the number may then open
+one application; the invitation is marked used and cannot be used again. It
+expires after `sellers.invitation_valid_days` (14). Turning the setting
+`sellers.invite_only` off opens applications to everyone signed in.
+
+## D-020 Private documents: photos only, re-encoded, opened by personal links
+
+**Follows** blueprint D.3 and F.6, with two choices of method. **Accepted**,
+with one part **Open**.
+
+- **Photos only** (JPEG, PNG, WebP), as F.6 says. The uploaded file's name
+  and declared type are ignored. The picture is decoded and written out
+  again at upload, which removes location data and anything hidden in the
+  file. The blueprint gives this job to the worker; there is no worker yet
+  and a document must not sit unchecked in storage, so it happens in the
+  upload request.
+- **Links** carry an expiry time and a signature over the document, the
+  viewer and the expiry. A link works for five minutes. It is not enough to
+  hold the link: the same person must be signed in, and must still be
+  allowed to see the document when it is opened. A leaked link is useless to
+  anyone else. Issuing a link and every view are audit-logged.
+- **Storage** sits behind `PrivateStorage` in `markx/core/storage.py`.
+  **Open:** only the local-disk adapter exists, and it refuses to run on a
+  staging or production configuration. An S3-compatible adapter is needed
+  before real sellers apply; it needs the founder's decision on where
+  personal data may live (blueprint O, question 1).
+
+## D-021 Staff powers and seller powers never mix
+
+**Follows** blueprint C.1 and C.5. **Accepted.**
+
+A staff session (password and authenticator) is refused on every `/seller`
+route; a staff member who also sells signs in to the store with a phone code,
+like anyone. A staff member who belongs to a seller cannot take any staff
+decision about that seller ("nobody can assign a level to themselves").
+
+## D-022 What staff verified is frozen; ownership transfer is not built
+
+**Fills a gap.** **Accepted**, with one part **Open**.
+
+After an application is submitted, the owner can no longer change the legal
+name, trade name, TIN, licence number or shop address: staff verified those
+exact values. Only the contact phone can change. While staff ask for more
+documents, the details can be corrected again. The store's link cannot change
+once the store is approved, because buyers and search engines keep it.
+
+**Open:** blueprint C.3 lets the owner transfer ownership. It is not built.
+Level 1 verifies the *owner's* identity, so a transfer must decide what
+happens to the level. See the open questions.
+
+## D-023 Payout account: active at once the first time, 72 hours after that
+
+**Follows** blueprint S-13 ("a cooling-off period on any change").
+**Accepted.**
+
+The first account is active immediately, and an applicant may correct it
+freely until approval, because nothing can be paid out before then. After
+approval a new account waits `sellers.payout_cooling_off_hours` (72) and the
+owner is notified at once. The number is encrypted with the key held outside
+the database; only the last four digits are ever returned.
+
+Staff confirm at approval that the account is in the seller's own name
+(blueprint D.3); the approval request must say so.
+
+## D-024 A team member is added by phone number, with no acceptance step
+
+**Fills a gap** in blueprint S-09. **Accepted.**
+
+The owner or a manager types a phone number. If no account exists for it,
+one is created; the person proves the number is theirs at their first
+sign-in, as every user does. Membership gives powers and takes nothing from
+the person, and they can leave at any time, so there is no accept screen.
+Release 1 gives only the manager role, and two seats in total
+(`sellers.starter_seats`), as blueprint D.4 says.
+
+## D-025 Who may list and what buyers see
+
+**Follows** blueprint D.1 and D.3, with one widening. **Accepted.**
+
+- Only an `active` seller creates or edits offers. A suspended seller can
+  still see its listings and take one down.
+- A Level 1 seller can prepare offers, but buyers see only offers of sellers
+  at `sellers.min_level_to_publish` (2), as the launch policy says.
+- **Widening:** the blueprint says used *phones* need Level 2. The rule is
+  applied to every `used` offer, in every category. It is simpler to explain
+  and stricter, never looser. Say so if used goods in some category should
+  be open to Level 1.
+
+## D-026 A product that has offers still cannot be merged
+
+**Departs** temporarily from blueprint D.5. **Open.**
+
+Merging a duplicate product must move its offers to the survivor. That means
+matching each variant of the duplicate to a variant of the survivor, and a
+seller who listed both would then hold two offers for one variant, which the
+database forbids. The rule for that collision is a product decision. Until it
+is made, the merge is refused with a clear message. Merging a product with no
+offers works.
+
+## D-027 Lock offer and seller rows with FOR NO KEY UPDATE
+
+**Fills a gap.** **Accepted.** Found by a test.
+
+A row inserted with a foreign key takes a key-share lock on the row it points
+to. A plain `SELECT ... FOR UPDATE` blocks that. A seller editing an offer
+(offer row, then stock row) and a buyer holding stock (stock row, then the
+movement's foreign key to the offer row) took the two locks in opposite order
+and deadlocked. `with_for_update(key_share=True)` produces `FOR NO KEY
+UPDATE`, which still makes two editors wait for each other and does not block
+foreign keys. Use it for every lock on `offers` and `sellers`.
+`tests/db/test_inventory.py` reproduces the race with 60 threads.
+
+Checkout must also take its stock holds in ascending offer id order, so two
+orders can never wait on each other.
+
+## D-028 Stock movements carry the wall-clock time they were written
+
+**Fills a gap.** **Accepted.** Found by a test.
+
+`now()` in PostgreSQL is the time the transaction began, so several movements
+written by one transaction would share a timestamp and have no order.
+Movements are stamped with `clock_timestamp()` and flushed one at a time.
+Each is written while its stock row is locked, so the timestamps order an
+offer's movements exactly.
+
+## D-029 How offers are ranked, and what the public sees of stock
+
+**Follows** blueprint D.7 and G.4, with two choices. **Accepted.**
+
+The order, computed on every read: in stock first; a price confirmed within
+`offers.sink_after_days` (3) before one that has sunk; when the buyer's zone
+is known, offers that deliver there before collection-only ones; lowest price
+plus the cheapest delivery fee to the zone; higher seller level; most
+recently confirmed price.
+
+- **Seller performance** is part of the blueprint's order. No order has ever
+  been placed, so there is nothing to measure. The seller's verification
+  level stands in for it until `seller_metrics_daily` is filled (P10).
+- **Stock shown to buyers is capped at 5.** The blueprint's offer row shows
+  "stock". An exact count lets a competitor read a rival's inventory by
+  refreshing the page. Buyers see "in stock" and a number up to five.
+
+## D-030 Stock holds are built; reservation rows wait for checkout
+
+**Follows** blueprint G.9. **Accepted.**
+
+`hold_stock`, `release_stock` and `commit_stock` in
+`markx/offers/service.py` are the only code that moves reserved stock, and
+each writes its movement. The hold is the blueprint's conditional update. The
+`inventory_reservations` table needs an order item for every row, so
+checkout writes those rows, one beside each hold.
+
+## D-031 Branches
+
+**Fills a gap.** **Accepted.**
+
+The working branch is `claude/project-scaffold`. The second session's hosting
+tool also required its own branch, `claude/markx-seller-management-oag1a4`.
+Every commit was pushed to both and they are identical. Continue on
+`claude/project-scaffold`.
+
 ---
 
 ## Open questions for the founder
@@ -252,3 +444,15 @@ These need an answer before the work they gate. None blocks the next task.
    personal data may live, AWS credits and region, acceptance of the Proposed
    decisions, and the founder's time.
 3. **A licence for the code**, if any. None is granted today.
+4. **Where may sellers' identity documents be stored?** A storage service must
+   be chosen before any real seller applies (D-020). It is the same question
+   as blueprint O, question 1.
+5. **Ownership transfer.** When a store's owner hands it to someone else,
+   should the store drop to Level 0 until the new owner's identity is
+   checked, or keep its level while staff re-check? (D-022)
+6. **Is an Ethiopian TIN always ten digits?** The application form refuses
+   anything else.
+7. **Used goods.** Level 2 is required for every used item, not only phones
+   (D-025). Confirm or narrow it.
+8. **Merging a product that has offers** (D-026): when one seller listed both
+   duplicates, which of its two offers survives?

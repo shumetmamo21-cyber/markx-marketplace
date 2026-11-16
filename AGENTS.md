@@ -71,6 +71,16 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
 - Explain decisions to the founder in plain words. The founder owns the
   product and is not a professional programmer; you own engineering quality.
 
+- **Seller routes go under `/seller/{seller_id}/...` with `require_seller`.**
+  That dependency is the one place seller isolation is enforced, and a test
+  attacks every route under that prefix automatically. Look up every
+  seller-owned row together with its `seller_id`. Read "Seller scoping" in
+  `docs/ARCHITECTURE.md` before adding a seller feature.
+- **Lock `offers` and `sellers` rows with `with_for_update(key_share=True)`.**
+  A plain `FOR UPDATE` deadlocked against stock holds (`docs/DECISIONS.md`,
+  D-027). Write a contention test for any operation that takes two locks.
+- **Stock moves only through `markx/offers/service.py`.**
+
 ## 4. The working branch
 
 Work on **`claude/project-scaffold`**. Do not push to `main` without the
@@ -84,6 +94,7 @@ See `docs/SETUP.md` for full instructions. In short, from `apps/api`:
 uv sync                 # install the locked dependencies
 uv run pytest           # the whole suite, against a real PostgreSQL
 uv run ruff check .     # lint
+uv run mypy markx       # strict type checks
 uv run alembic check    # models and migrations must not differ
 ```
 

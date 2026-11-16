@@ -1,7 +1,7 @@
 # Setup
 
 How to run and test MarkX on a laptop. Every command here was run on
-16 November 2026. Only the API exists so far; there is no web app to start.
+16 November 2026, again by the second engineering session. Only the API exists so far; there is no web app to start.
 
 Nothing here touches AWS or any paid service.
 
@@ -60,6 +60,13 @@ uv run mypy markx            # type checks, strict
 uv run alembic check         # models and migrations must not differ
 ```
 
+`alembic check` and `alembic upgrade head` use the `markx` database from
+steps 2 and 3. They do not use the test database.
+
+The whole suite takes about four minutes. The tests in
+`tests/db/test_inventory.py` start up to 100 threads against the database on
+purpose.
+
 The tests use their own database, `markx_test`. Each run drops it, bootstraps
 it and applies every migration from empty, so the tests need the same
 PostgreSQL superuser as step 2. If yours differs, set `MARKX_TEST_PGHOST`,
@@ -101,6 +108,35 @@ curl -s -b cookies.txt http://127.0.0.1:8000/api/v1/me
 
 The `/dev/` endpoint exists only when `MARKX_ENV` is `local` or `test`.
 
+### Become a seller by hand
+
+Sellers apply by invitation, and invitations come from staff, so the first
+staff account is made from a Python prompt. It prints the authenticator
+secret once; add it to an authenticator app.
+
+```bash
+uv run python - <<'PY'
+from markx import registry
+from markx.accounts import service
+from markx.accounts.models import StaffRole
+from markx.core.db import session_scope
+
+with session_scope() as db:
+    staff = service.create_staff(
+        db, raw_phone="0911000200", name="Founder", role=StaffRole.SUPER_ADMIN,
+        password="choose-a-long-password", actor_user_id=None,
+    )
+    print("authenticator secret:", staff.totp_secret)
+PY
+```
+
+Then, in the interactive API description at `/api/v1/docs`: sign in at
+`/auth/staff/sign-in`, invite a phone number at `/admin/sellers/invitations`,
+sign in as that number, and follow `/seller/applications`,
+`/seller/{seller_id}/documents`, `/seller/{seller_id}/payout-account` and
+`/seller/{seller_id}/submit`. Uploaded photos are kept under
+`MARKX_STORAGE_DIR/private`.
+
 ## Configuration
 
 Settings come from environment variables prefixed `MARKX_`, or from a file
@@ -127,3 +163,5 @@ Migrations are forward-only. A mistake is fixed by a new migration.
 | `the database system is starting up` | Wait a few seconds and retry |
 | `role "markx_migrator" does not exist` | Step 2 was skipped |
 | Every test errors with `CalledProcessError` | The tests could not reach PostgreSQL as a superuser |
+| `docker: Cannot connect to the Docker daemon` | Docker is installed but not running. Start Docker Desktop, or on a bare Linux machine run `dockerd` as root |
+| `alembic check` fails with `database "markx" does not exist` | Steps 2 and 3 were skipped; the tests alone do not create `markx` |
