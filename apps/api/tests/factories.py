@@ -90,3 +90,105 @@ def make_zone(
             assert put.status_code == 200, put.text
     zones = staff.get("/admin/delivery/zones").json()
     return next(z for z in zones if z["id"] == zone_id)
+
+
+def make_catalog(staff: ApiClient) -> dict[str, Any]:
+    """The launch wedge in miniature: Electronics > Phones, with typed attributes.
+
+    storage and colour define variants; screen size is a required specification.
+    Returns the ids tests need.
+    """
+
+    def post(path: str, body: dict[str, Any]) -> dict[str, Any]:
+        response = staff.post(path, json=body)
+        assert response.status_code == 201, response.text
+        return dict(response.json())
+
+    electronics = post(
+        "/admin/catalog/categories",
+        {"slug": "electronics", "name_am": "ኤሌክትሮኒክስ", "name_en": "Electronics"},
+    )
+    phones = post(
+        "/admin/catalog/categories",
+        {"slug": "phones", "name_am": "ስልኮች", "name_en": "Phones", "parent_id": electronics["id"]},
+    )
+    storage = post(
+        "/admin/catalog/attributes",
+        {
+            "code": "storage", "data_type": "option", "name_am": "ማከማቻ", "name_en": "Storage",
+            "options": [
+                {"code": "128gb", "label_am": "128 ጊባ", "label_en": "128 GB"},
+                {"code": "256gb", "label_am": "256 ጊባ", "label_en": "256 GB"},
+            ],
+        },
+    )  # fmt: skip
+    colour = post(
+        "/admin/catalog/attributes",
+        {
+            "code": "colour", "data_type": "option", "name_am": "ቀለም", "name_en": "Colour",
+            "options": [
+                {"code": "black", "label_am": "ጥቁር", "label_en": "Black"},
+                {"code": "blue", "label_am": "ሰማያዊ", "label_en": "Blue"},
+            ],
+        },
+    )  # fmt: skip
+    screen = post(
+        "/admin/catalog/attributes",
+        {
+            "code": "screen_inches",
+            "data_type": "number",
+            "unit": "in",
+            "name_am": "ስክሪን",
+            "name_en": "Screen",
+        },
+    )
+    os_attr = post(
+        "/admin/catalog/attributes",
+        {"code": "os", "data_type": "text", "name_am": "ሲስተም", "name_en": "Operating system"},
+    )
+
+    def attach(category: str, attribute: str, **flags: bool) -> None:
+        response = staff.put(
+            f"/admin/catalog/categories/{category}/attributes/{attribute}", json=flags
+        )
+        assert response.status_code == 200, response.text
+
+    # Colour is set on Electronics and inherited by Phones.
+    attach(electronics["id"], colour["id"], is_variant_defining=True, is_filterable=True)
+    attach(
+        phones["id"], storage["id"], is_variant_defining=True, is_filterable=True, is_required=True
+    )
+    attach(phones["id"], screen["id"], is_required=True)
+    attach(phones["id"], os_attr["id"])
+    samsung = post("/admin/catalog/brands", {"name": "Samsung"})
+    return {
+        "electronics": electronics["id"], "phones": phones["id"], "storage": storage["id"],
+        "colour": colour["id"], "screen": screen["id"], "os": os_attr["id"], "samsung": samsung["id"],
+    }  # fmt: skip
+
+
+def phone_body(catalog: dict[str, Any], **overrides: Any) -> dict[str, Any]:
+    return {
+        "category_id": catalog["phones"],
+        "brand_id": catalog["samsung"],
+        "model": "SM-A165F",
+        "name_am": "ሳምሰንግ ጋላክሲ A16",
+        "name_en": "Samsung Galaxy A16",
+        "description_en": "A 6.7 inch phone.",
+        "specs": {"screen_inches": 6.7, "os": "Android 14"},
+        "variants": [
+            {
+                "attribute_values": {"storage": "128gb", "colour": "black"},
+                "model_code": "A16-128-BK",
+            },
+            {"attribute_values": {"storage": "256gb", "colour": "black"}},
+        ],
+        "status": "approved",
+        **overrides,
+    }
+
+
+def make_product(staff: ApiClient, catalog: dict[str, Any], **overrides: Any) -> dict[str, Any]:
+    response = staff.post("/admin/catalog/products", json=phone_body(catalog, **overrides))
+    assert response.status_code == 201, response.text
+    return dict(response.json())

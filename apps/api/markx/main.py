@@ -12,6 +12,8 @@ from sqlalchemy import text
 
 from markx.accounts.router import router as accounts_router
 from markx.accounts.schemas import DevSmsOut
+from markx.catalog.router import admin_router as catalog_admin_router
+from markx.catalog.router import router as catalog_router
 from markx.core.config import get_config
 from markx.core.db import get_engine
 from markx.core.http import enforce_request_origin, install_error_handlers, install_middleware
@@ -72,6 +74,8 @@ def create_app() -> FastAPI:
     api.include_router(accounts_router)
     api.include_router(delivery_router)
     api.include_router(delivery_admin_router)
+    api.include_router(catalog_router)
+    api.include_router(catalog_admin_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
     app.include_router(api)

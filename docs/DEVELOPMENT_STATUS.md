@@ -12,9 +12,10 @@ on the date above.
 
 The master blueprint is in the repository. The back-end foundation is built
 and tested: the complete Release 1 database schema with its integrity rules,
-sign-in for customers, sellers and staff, the permission model, delivery zones
-and buyer addresses. **No marketplace feature works yet**: there is no
-catalogue, seller, offer, search, cart or order *behaviour*, only their tables. **There is no web app yet.**
+sign-in for customers, sellers and staff, the permission model, delivery zones,
+buyer addresses and the staff-curated product catalogue. **Nothing can be
+bought or sold yet**: there is no seller, offer, search, cart or order
+*behaviour*, only their tables. **There is no web app yet.**
 Nothing is deployed anywhere.
 
 ## Blueprint phase tracking
@@ -26,7 +27,9 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P1 | Project foundation | **Partly done.** API skeleton, database pipeline and core helpers are done and tested. Web shell, CI pipeline, container setup, typed link between API and web, page-weight check and the three technical reports are **not done** |
 | P2 | Database and backend foundation | **Partly done.** Schema, three database roles, error format, request IDs, structured logs are done. Worker process, outbox dispatcher, backups, alerting are **not done** |
 | P3 | Authentication and roles | **Mostly done on the API side.** Phone-code sign-in, sessions, staff sign-in, Telegram signature check and the permission tables are done and tested. The real SMS and bot-check adapters, the account page and admin pages are **not done** |
-| P4–P16 | Everything else | **Not started** (tables exist; no behaviour) |
+| P4 | Customer storefront | **Not started** |
+| P5 | Product catalogue | **Mostly done on the API side.** Categories, typed attributes, brands, products, variants, translations, staff create/approve/merge/archive, aliases and the restricted-goods list are done and tested. The image pipeline, seed data and the web pages are **not done**; merging a product that has offers is refused until offers exist |
+| P6–P16 | Everything else | **Not started** (tables exist; no behaviour) |
 
 ## What is built and tested
 
@@ -110,14 +113,38 @@ All of it is in `apps/api`. Test command and result are at the end.
   and gets the same "not found" as for an address that does not exist.
 - Requests to see, correct or delete personal data.
 
+### Product catalogue (blueprint D.5, D.6, P5)
+
+- A category tree up to three levels, with names in Amharic and English.
+- Typed attributes (text, number, list of options), attached to a category as
+  required, filterable or variant-defining. A category inherits the attributes
+  of the categories above it.
+- Products with names and descriptions in both languages, specifications
+  checked against the category's rules, and variants. A product with nothing
+  to choose gets one default variant, so offers always attach to a variant.
+- **The database rejects a duplicate variant** (blueprint P5 criterion): a test
+  inserts one with plain SQL and the unique constraint refuses it.
+- Staff create, approve, archive and merge products. Only approved products
+  have a public page. A merged product keeps its link, which forwards to the
+  survivor, and its names become search aliases of the survivor. Merges chain.
+- The restricted-goods list blocks a listing whose name or description
+  contains a listed word. It matches whole words after the same normalisation
+  search uses, so letter case and same-sound Amharic letters cannot slip past.
+- Public, briefly cacheable routes for the category tree, a category with its
+  filters, brands and a product page, each in the asked language with a
+  fallback to the other.
+- Permissions follow blueprint C.4 and are tested for all five staff roles.
+
 ## What exists but is NOT tested
 
 Be careful with these. They were written and never exercised.
 
-- Models for sellers, catalogue, offers, inventory, shipments, orders,
-  payments, the ledger's application code, reviews, cases, search and
-  analytics: the tables exist and are constrained; **no service, route or
-  test uses them**.
+- Models for sellers, offers, inventory, shipments, orders, payments, the
+  ledger's application code, reviews, cases, search and analytics: the tables
+  exist and are constrained; **no service, route or test uses them**.
+- `catalog.service.create_product(..., proposed_by_seller_id=...)` accepts a
+  seller's proposal, but no route calls it yet, because sellers do not exist.
+- Product images: the `product_images` table exists; there is no upload.
 - `markx/notifications/service.py` queues outbox rows, and **nothing drains
   the outbox**: there is no worker.
 
@@ -154,9 +181,9 @@ Be careful with these. They were written and never exercised.
 
 ```text
 $ cd apps/api
-$ uv run pytest           ->  418 passed
+$ uv run pytest           ->  454 passed
 $ uv run ruff check .     ->  All checks passed!
-$ uv run mypy markx       ->  Success: no issues found in 57 source files
+$ uv run mypy markx       ->  Success: no issues found in 62 source files
 $ uv run alembic check    ->  No new upgrade operations detected.
 ```
 
@@ -180,6 +207,7 @@ code contains no `type: ignore`. The suite treats warnings as errors.
 | `tests/api/test_csrf.py` | 8 |
 | `tests/api/test_delivery.py` | 24 |
 | `tests/api/test_addresses.py` | 17 |
+| `tests/api/test_catalog.py` | 36 |
 
 No end-to-end test exists, because no web app exists.
 
@@ -187,14 +215,11 @@ No end-to-end test exists, because no web app exists.
 
 Work in this order. Finish and push each step before starting the next.
 
-1. **Catalogue** (blueprint P5): categories, attributes, brands, products,
-   variants, translations; staff create, approve, merge and archive; the
-   duplicate-variant rule tested at the database.
-2. **Sellers** (P6): application, staff review, verification levels, members,
+1. **Sellers** (P6): application, staff review, verification levels, members,
    store page; a test that one seller cannot read another's data.
-3. **Offers and inventory** (P7), then **search** (P8), **cart and checkout**
+2. **Offers and inventory** (P7), then **search** (P8), **cart and checkout**
    (P9) and **multi-seller orders** (P10). The concurrency tests in blueprint
    P9 (100 buyers, one unit, exactly one order) are mandatory.
-4. **The web app** (P4), starting with the shell at `/am` and `/en`.
+3. **The web app** (P4), starting with the shell at `/am` and `/en`.
 
 Keep `ruff`, `mypy`, `alembic check` and `pytest` green at every commit.
