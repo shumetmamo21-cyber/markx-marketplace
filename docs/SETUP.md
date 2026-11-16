@@ -1,0 +1,129 @@
+# Setup
+
+How to run and test MarkX on a laptop. Every command here was run on
+16 November 2026. Only the API exists so far; there is no web app to start.
+
+Nothing here touches AWS or any paid service.
+
+## What you need
+
+- **Python 3.13** and **[uv](https://docs.astral.sh/uv/)** (the Python package manager)
+- **Docker**, to run PostgreSQL 17
+- **psql**, the PostgreSQL command-line client
+
+## 1. Start PostgreSQL 17
+
+```bash
+docker run -d --name markx-pg \
+  -e POSTGRES_PASSWORD=postgres_dev_only \
+  -e POSTGRES_INITDB_ARGS="--locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8" \
+  -p 127.0.0.1:5432:5432 \
+  postgres:17
+```
+
+The password above is for a laptop only. The database listens on your own
+machine and nowhere else.
+
+Later, `docker start markx-pg` starts it again. After an unclean shutdown
+PostgreSQL may take a few seconds before it accepts connections.
+
+## 2. Create the roles and the database
+
+From the repository root:
+
+```bash
+export PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=postgres_dev_only
+infra/postgres/bootstrap.sh markx
+```
+
+This creates the three roles (`markx_migrator`, `markx_app`,
+`markx_readonly`) and an empty database called `markx`. It is safe to run
+again. The role passwords default to development values; set
+`MARKX_DB_MIGRATOR_PASSWORD`, `MARKX_DB_APP_PASSWORD` and
+`MARKX_DB_READONLY_PASSWORD` to choose your own.
+
+## 3. Install and migrate
+
+```bash
+cd apps/api
+uv sync                      # installs the locked dependencies into .venv
+uv run alembic upgrade head  # creates the tables
+```
+
+## 4. Run the checks
+
+```bash
+uv run pytest                # every test, against the real database
+uv run ruff check .          # lint
+uv run ruff format --check . # formatting
+uv run mypy markx            # type checks, strict
+uv run alembic check         # models and migrations must not differ
+```
+
+The tests use their own database, `markx_test`. Each run drops it, bootstraps
+it and applies every migration from empty, so the tests need the same
+PostgreSQL superuser as step 2. If yours differs, set `MARKX_TEST_PGHOST`,
+`MARKX_TEST_PGPORT`, `MARKX_TEST_PGUSER` and `MARKX_TEST_PGPASSWORD`.
+
+Expected: all tests pass and the suite prints no warnings (a warning is
+treated as a failure).
+
+## 5. Run the API
+
+```bash
+uv run uvicorn markx.main:app --host 127.0.0.1 --port 8000
+```
+
+- Health: <http://127.0.0.1:8000/api/v1/healthz>
+- Interactive API description: <http://127.0.0.1:8000/api/v1/docs>
+
+### Sign in by hand
+
+No SMS is ever sent on a laptop. The fake SMS adapter writes the message to a
+file, and a development-only endpoint reads it back.
+
+```bash
+# Ask for a code. Requests that change data must carry this header.
+curl -s -X POST http://127.0.0.1:8000/api/v1/auth/otp/request \
+  -H 'Content-Type: application/json' -H 'X-MarkX-Client: web' \
+  -d '{"phone":"0911234567","language":"en"}'
+
+# Read the message that would have been sent.
+curl -s 'http://127.0.0.1:8000/api/v1/dev/sms-inbox?phone=0911234567'
+
+# Verify the code and keep the session cookie.
+curl -s -c cookies.txt -X POST http://127.0.0.1:8000/api/v1/auth/otp/verify \
+  -H 'Content-Type: application/json' -H 'X-MarkX-Client: web' \
+  -d '{"phone":"0911234567","code":"THE-SIX-DIGITS"}'
+
+curl -s -b cookies.txt http://127.0.0.1:8000/api/v1/me
+```
+
+The `/dev/` endpoint exists only when `MARKX_ENV` is `local` or `test`.
+
+## Configuration
+
+Settings come from environment variables prefixed `MARKX_`, or from a file
+named `.env` in `apps/api`. Copy `apps/api/.env.example` to start. **Never
+commit `.env`.** The defaults work on a laptop with the steps above.
+
+With `MARKX_ENV=staging` or `production`, the application refuses to start
+unless real secrets, `Secure` cookies and an `https://` origin are set.
+
+## Making a schema change
+
+1. Edit the models.
+2. `uv run alembic revision --autogenerate -m "what changed"`
+3. **Read and edit the generated file.** Add anything a model cannot express.
+4. `uv run alembic upgrade head`, then `uv run pytest`.
+
+Migrations are forward-only. A mistake is fixed by a new migration.
+
+## Troubleshooting
+
+| Symptom | Cause |
+| --- | --- |
+| `connection refused` on port 5432 | PostgreSQL is not running: `docker start markx-pg` |
+| `the database system is starting up` | Wait a few seconds and retry |
+| `role "markx_migrator" does not exist` | Step 2 was skipped |
+| Every test errors with `CalledProcessError` | The tests could not reach PostgreSQL as a superuser |

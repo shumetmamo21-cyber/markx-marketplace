@@ -1,65 +1,34 @@
 # MarkX Marketplace
 
-A multi-vendor e-commerce marketplace.
+A multi-vendor marketplace that starts in Ethiopia: one page per product, many
+verified sellers' offers under it, each with a price that shows when it was
+last confirmed.
 
-> **Status: scaffold.** The structure, tooling and data model are in place.
-> There is no business logic, authentication or payment integration yet.
+> **Status: early foundation.** The back-end foundation is built and tested.
+> No marketplace feature works yet and there is no web app. Nothing is deployed.
+> See [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) for exactly what
+> exists.
+
+## Start here
+
+| Read | For |
+| --- | --- |
+| [MARKX_MASTER_BLUEPRINT.md](MARKX_MASTER_BLUEPRINT.md) | The product: strategy, requirements, architecture, roadmap. The single source of truth |
+| [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) | What is built, what is tested, what is not, and the next task |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Engineering decisions and every departure from the blueprint |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organised |
+| [docs/SETUP.md](docs/SETUP.md) | How to run and test it |
+| [AGENTS.md](AGENTS.md) | Rules for AI coding agents working here |
 
 ## Stack
 
-| Layer      | Choice                                  |
-| ---------- | --------------------------------------- |
-| Language   | TypeScript (strict)                     |
-| Storefront | Next.js (App Router) + React + Tailwind |
-| Database   | PostgreSQL via Prisma                   |
-| Monorepo   | pnpm workspaces                         |
-| CI         | GitHub Actions                          |
+Python with FastAPI, SQLAlchemy and Alembic on PostgreSQL. The web app will be
+Next.js with TypeScript and Tailwind CSS. The founder confirmed this stack in
+the blueprint (section N).
 
-## Layout
+## Rules that never bend
 
-```
-apps/
-  web/              Next.js storefront
-packages/
-  db/               Prisma schema + client singleton
-  shared/           Money helpers, Zod schemas, shared types
-docs/
-  DEVELOPMENT.md    Local setup
-  ARCHITECTURE.md   Data model and conventions
-```
-
-## Quick start
-
-Requires Node 22+, pnpm 10+, and Docker (for local Postgres).
-
-```bash
-pnpm install
-cp .env.example .env
-docker compose up -d          # start Postgres
-pnpm db:generate              # generate the Prisma client
-pnpm db:migrate               # create the schema
-pnpm dev                      # http://localhost:3000
-```
-
-## Commands
-
-| Command           | Does                           |
-| ----------------- | ------------------------------ |
-| `pnpm dev`        | Run the storefront in dev mode |
-| `pnpm build`      | Build every workspace package  |
-| `pnpm lint`       | ESLint across the repo         |
-| `pnpm typecheck`  | TypeScript, no emit            |
-| `pnpm format`     | Prettier, write                |
-| `pnpm db:migrate` | Create/apply a dev migration   |
-| `pnpm db:studio`  | Browse the database            |
-
-## Conventions
-
-**Money is never a float.** Amounts are integers in minor units (cents,
-santim) paired with an ISO-4217 currency code. Use the helpers in
-`@markx/shared` rather than doing arithmetic inline. See
-`packages/shared/src/money.ts`.
-
-## License
-
-MIT — see [LICENSE](./LICENSE).
+- MarkX never holds customers' money.
+- No secrets in the repository.
+- The founder's existing AWS servers and payment bot are never touched.
+- Nothing is claimed to work unless it was run.
