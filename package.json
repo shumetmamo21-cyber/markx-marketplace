@@ -1,0 +1,42 @@
+{
+  "name": "markx-marketplace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MarkX \u2014 multi-vendor e-commerce marketplace",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @markx/web dev",
+    "build": "pnpm -r build",
+    "lint": "eslint . && pnpm -r --if-present lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @markx/db generate",
+    "db:migrate": "pnpm --filter @markx/db migrate",
+    "db:studio": "pnpm --filter @markx/db studio"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "eslint": "10.15.0",
+    "prettier": "3.10.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "prisma",
+      "@prisma/engines"
+    ],
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "eslint-plugin-import>eslint": "10",
+        "eslint-plugin-jsx-a11y>eslint": "10",
+        "eslint-plugin-react>eslint": "10"
+      }
+    }
+  }
+}
