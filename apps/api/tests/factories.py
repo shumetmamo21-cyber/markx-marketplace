@@ -192,3 +192,108 @@ def make_product(staff: ApiClient, catalog: dict[str, Any], **overrides: Any) ->
     response = staff.post("/admin/catalog/products", json=phone_body(catalog, **overrides))
     assert response.status_code == 201, response.text
     return dict(response.json())
+
+
+# -- sellers -------------------------------------------------------------------
+
+REQUIRED_BUSINESS_DOCUMENTS = ("owner_id", "business_licence", "tin_certificate", "shop_photo")
+
+
+def image_bytes(fmt: str = "PNG", size: tuple[int, int] = (64, 48)) -> bytes:
+    """A real, decodable picture."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", size, (200, 30, 30)).save(buffer, fmt)
+    return buffer.getvalue()
+
+
+def application_body(**overrides: Any) -> dict[str, Any]:
+    return {
+        "kind": "business",
+        "legal_name": "Abebe Electronics PLC",
+        "trade_name": "Abebe Phones",
+        "tin": "0012345678",
+        "licence_number": "AA/14/2/000123/2018",
+        "contact_phone": "0911000001",
+        "shop_address": "Bole Medhanialem, Alem Building, shop 12",
+        **overrides,
+    }
+
+
+def invite_seller(staff: ApiClient, phone: str) -> dict[str, Any]:
+    response = staff.post("/admin/sellers/invitations", json={"phone": phone})
+    assert response.status_code == 201, response.text
+    return dict(response.json())
+
+
+def upload_document(
+    client: ApiClient, seller_id: str, doc_type: str, *, data: bytes | None = None, **form: Any
+) -> Any:
+    return client.post(
+        f"/seller/{seller_id}/documents",
+        data={"doc_type": doc_type, **form},
+        files={"file": ("photo.png", data if data is not None else image_bytes(), "image/png")},
+    )
+
+
+def payout_body(**overrides: Any) -> dict[str, Any]:
+    return {
+        "kind": "bank",
+        "provider_name": "Commercial Bank of Ethiopia",
+        "account_name": "Abebe Electronics PLC",
+        "account_number": "1000123456789",
+        **overrides,
+    }
+
+
+def start_application(staff: ApiClient, phone: str, **overrides: Any) -> tuple[ApiClient, str]:
+    """Invite a phone number, sign it in and open a draft application."""
+    invite_seller(staff, phone)
+    client = ApiClient()
+    client.sign_in(phone)
+    response = client.post("/seller/applications", json=application_body(**overrides))
+    assert response.status_code == 201, response.text
+    return client, str(response.json()["id"])
+
+
+def submit_application(client: ApiClient, seller_id: str) -> None:
+    """Upload the four business documents, add a payout account and submit."""
+    for doc_type in REQUIRED_BUSINESS_DOCUMENTS:
+        assert upload_document(client, seller_id, doc_type).status_code == 201
+    assert client.put(f"/seller/{seller_id}/payout-account", json=payout_body()).status_code == 200
+    response = client.post(f"/seller/{seller_id}/submit")
+    assert response.status_code == 200, response.text
+
+
+def approve_seller(staff: ApiClient, seller_id: str, level: int = 2) -> dict[str, Any]:
+    """Accept every document and approve, the way operations staff do."""
+    detail = staff.get(f"/admin/sellers/{seller_id}").json()
+    for document in detail["documents"]:
+        reviewed = staff.post(
+            f"/admin/sellers/{seller_id}/documents/{document['id']}/review",
+            json={"decision": "accepted"},
+        )
+        assert reviewed.status_code == 200, reviewed.text
+    response = staff.post(
+        f"/admin/sellers/{seller_id}/approve",
+        json={
+            "verification_level": level,
+            "shop_visited": level >= 2,
+            "payout_account_name_matches": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return dict(response.json())
+
+
+def make_seller(
+    staff: ApiClient, phone: str, *, tin: str = "0012345678", level: int = 2, **overrides: Any
+) -> tuple[ApiClient, str]:
+    """A verified, trading seller. Returns its owner's browser and the seller id."""
+    client, seller_id = start_application(staff, phone, tin=tin, **overrides)
+    submit_application(client, seller_id)
+    approve_seller(staff, seller_id, level)
+    return client, seller_id

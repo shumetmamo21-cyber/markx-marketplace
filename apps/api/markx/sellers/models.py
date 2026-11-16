@@ -38,6 +38,8 @@ class SellerStatus(StrEnum):
 
 
 class ReviewState(StrEnum):
+    # Being filled in by the applicant; staff do not see it yet.
+    DRAFT = "draft"
     PENDING = "pending"
     NEEDS_DOCUMENTS = "needs_documents"
     APPROVED = "approved"
@@ -85,6 +87,15 @@ class Seller(UUIDPrimaryKey, Timestamps, Base):
         CheckConstraint(
             "(shop_latitude is null) = (shop_longitude is null)", name="shop_pin_complete"
         ),
+        # Only an approved application trades or carries a verification level,
+        # so no code path can activate a seller that staff did not approve.
+        CheckConstraint(
+            "status not in ('active', 'suspended') or review_state = 'approved'",
+            name="trading_needs_approval",
+        ),
+        CheckConstraint(
+            "verification_level = 0 or review_state = 'approved'", name="level_needs_approval"
+        ),
         # One live seller per TIN. A closed or rejected seller frees the number.
         Index(
             "uq_sellers_tin_live",
@@ -114,6 +125,10 @@ class Seller(UUIDPrimaryKey, Timestamps, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the applicant last sent the application to the staff queue.
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Level 2 needs a visited shop (blueprint C.6); staff record the visit.
+    shop_visited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Verification is re-checked every year (blueprint D.3).
     recheck_due_on: Mapped[date | None] = mapped_column(Date)
@@ -171,6 +186,7 @@ class SellerDocument(UUIDPrimaryKey, CreatedAt, Base):
     content_type: Mapped[str] = mapped_column(Text, nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     review_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    review_note: Mapped[str | None] = mapped_column(Text)
     reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
@@ -179,6 +195,41 @@ class SellerDocument(UUIDPrimaryKey, CreatedAt, Base):
     uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
+
+
+class SellerInvitation(UUIDPrimaryKey, CreatedAt, Base):
+    """Staff invite a phone number to apply (blueprint D.3: invite-only at launch).
+
+    An invitation is used once, by the account that owns the phone number.
+    """
+
+    __tablename__ = "seller_invitations"
+    __table_args__ = (
+        CheckConstraint(f"phone ~ '{PHONE_PATTERN}'", name="phone_format"),
+        CheckConstraint(
+            "(used_at is null) = (used_by_seller_id is null)", name="used_fields_together"
+        ),
+        CheckConstraint("used_at is null or revoked_at is null", name="used_or_revoked_not_both"),
+        # One open invitation per phone number.
+        Index(
+            "uq_seller_invitations_open_phone",
+            "phone",
+            unique=True,
+            postgresql_where=text("used_at is null and revoked_at is null"),
+        ),
+    )
+
+    phone: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    invited_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_by_seller_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sellers.id", ondelete="RESTRICT")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SellerPayoutAccount(UUIDPrimaryKey, CreatedAt, Base):

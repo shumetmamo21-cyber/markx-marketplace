@@ -138,6 +138,12 @@ AnyStaff = Annotated[Principal, Depends(require_any_staff)]
 def load_seller_context(
     db: Db, principal: Principal, seller_id: uuid.UUID, capability: SellerCapability | None
 ) -> SellerContext:
+    # Staff powers and seller powers never mix in one session (blueprint C.1):
+    # a staff member who also sells signs in to the store by phone code.
+    if principal.session.kind == SessionKind.STAFF:
+        raise PermissionDenied(
+            "seller_session_required", "Sign in with your phone code to manage a store."
+        )
     row = db.execute(
         select(SellerMember, Seller)
         .join(Seller, Seller.id == SellerMember.seller_id)

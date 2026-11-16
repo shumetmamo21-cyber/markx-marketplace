@@ -44,6 +44,10 @@ class Config(BaseSettings):
 
     storage_dir: Path = Path("./var/storage")
 
+    # Where identity and licence documents are kept. Only the local-disk
+    # adapter exists; it is refused on real servers (see markx/core/storage.py).
+    file_storage_provider: Literal["local"] = "local"
+
     sms_provider: Literal["fake"] = "fake"
     bot_check_provider: Literal["fake"] = "fake"
     telegram_bot_token: str | None = None

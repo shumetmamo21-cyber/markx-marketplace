@@ -81,6 +81,13 @@ MAX_ACTIVE_ADDRESSES = 10
 _DUMMY_PASSWORD_HASH = hash_password("timing-equaliser-not-a-real-password")
 
 
+def get_or_create_user_by_phone(db: DbSession, phone: str, language: str = "am") -> User:
+    """The account for a normalised phone number, created if the person has
+    never signed in. They prove the number is theirs at their first sign-in."""
+    user, _ = _get_or_create_user(db, phone, language)
+    return user
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 

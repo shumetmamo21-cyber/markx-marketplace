@@ -22,6 +22,9 @@ from markx.core.phone import normalize_phone
 from markx.delivery.router import admin_router as delivery_admin_router
 from markx.delivery.router import router as delivery_router
 from markx.notifications.sms import read_dev_sms_inbox
+from markx.sellers.router import admin_router as sellers_admin_router
+from markx.sellers.router import public_router as sellers_public_router
+from markx.sellers.router import router as sellers_router
 
 API_PREFIX = "/api/v1"
 
@@ -76,6 +79,9 @@ def create_app() -> FastAPI:
     api.include_router(delivery_admin_router)
     api.include_router(catalog_router)
     api.include_router(catalog_admin_router)
+    api.include_router(sellers_public_router)
+    api.include_router(sellers_router)
+    api.include_router(sellers_admin_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
     app.include_router(api)

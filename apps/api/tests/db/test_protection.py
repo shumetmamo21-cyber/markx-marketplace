@@ -347,3 +347,59 @@ def test_status_columns_accept_only_their_allowed_values(db: Session) -> None:
             {"id": uuid7()},
         )
     assert "ck_users_status_allowed" in str(excinfo.value)
+
+
+# -- sellers (migration 0004) ------------------------------------------------------
+
+_SELLER_INSERT = """
+    insert into sellers (id, kind, legal_name, trade_name, tin, contact_phone, shop_address,
+                         status, review_state, verification_level)
+    values (gen_random_uuid(), 'business', 'L', 'T', :tin, '+251911000001', 'Bole',
+            :status, :review_state, :level)
+"""
+
+
+@pytest.mark.parametrize(
+    ("status", "review_state", "level", "constraint"),
+    [
+        ("active", "pending", 0, "ck_sellers_trading_needs_approval"),
+        ("active", "draft", 0, "ck_sellers_trading_needs_approval"),
+        ("suspended", "rejected", 0, "ck_sellers_trading_needs_approval"),
+        ("applied", "pending", 2, "ck_sellers_level_needs_approval"),
+        ("applied", "draft", 1, "ck_sellers_level_needs_approval"),
+        ("applied", "half_done", 0, "ck_sellers_review_state_allowed"),
+    ],
+)
+def test_the_database_refuses_a_seller_that_trades_without_approval(
+    db: Session, status: str, review_state: str, level: int, constraint: str
+) -> None:
+    with pytest.raises(IntegrityError, match=constraint):
+        db.execute(
+            text(_SELLER_INSERT),
+            {"tin": "0000000009", "status": status, "review_state": review_state, "level": level},
+        )
+    db.rollback()
+
+
+def test_the_database_accepts_an_approved_trading_seller(db: Session) -> None:
+    db.execute(
+        text(_SELLER_INSERT),
+        {"tin": "0000000009", "status": "active", "review_state": "approved", "level": 2},
+    )
+    db.rollback()
+
+
+def test_the_database_allows_one_open_invitation_per_phone(db: Session) -> None:
+    db.execute(
+        text(
+            "insert into users (id, phone) values ('00000000-0000-7000-8000-000000000001', '+251911000200')"
+        )
+    )
+    insert = text(
+        "insert into seller_invitations (id, phone, invited_by_user_id, expires_at) values "
+        "(gen_random_uuid(), '+251911000001', '00000000-0000-7000-8000-000000000001', now())"
+    )
+    db.execute(insert)
+    with pytest.raises(IntegrityError, match="uq_seller_invitations_open_phone"):
+        db.execute(insert)
+    db.rollback()
