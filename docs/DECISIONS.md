@@ -463,6 +463,59 @@ Both now select the ids `ORDER BY id FOR NO KEY UPDATE` first and then update
 by id. The job also skips rows that are locked: a seller editing an offer at
 that instant is confirming it. `tests/db/test_inventory.py` races the two.
 
+## D-034 The worker: one row, one transaction, at-least-once to the outside
+
+**Follows** blueprint F.8 and D.16, and states one limit. **Accepted.**
+
+The worker (`python -m markx.worker`) handles each outbox row in a single
+transaction: lock one due row with `FOR UPDATE SKIP LOCKED`, run its handler
+inside a savepoint, mark the row done, commit.
+
+- Two workers never take the same row: the second skips a locked row.
+- A worker that dies mid-row commits nothing. PostgreSQL drops its lock with
+  its connection, and the row is pending again, untouched. No lease or
+  time-out has to be tuned.
+- A handler that raises loses its own database work, and the row waits 30
+  seconds, then 1, 2, 4 ... minutes, up to an hour. After 8 attempts it is
+  marked `failed` and logged at CRITICAL. Other rows are not held up.
+- Everything a handler writes **to the database** happens exactly once,
+  because it commits together with the row's `done`.
+
+**The limit.** A message that leaves the server cannot join a database
+transaction. If the worker dies in the instant after Telegram accepted a
+message and before the commit, the row is retried and the person could see
+the message twice. The choice is between that and losing a message; an order
+alert seen twice is harmless and one never sent is not. Every outgoing message
+carries the outbox row's id as an idempotency key, so an adapter can refuse a
+repeat. **The real Telegram adapter must remember the keys it has sent**,
+because Telegram's API has no such key of its own.
+
+A handler that kills the whole process every time is never counted as an
+attempt, so it would be retried forever. None exists; note it if one appears.
+
+Only one topic exists, `notify.push`: an in-app notification is passed on to
+the person's Telegram when they have linked it, and a `notifications` row
+with channel `telegram` records the delivery. The only push adapter is a
+fake; on a real server the factory refuses it (as D-016 does for SMS), so
+messages are retried and then marked failed rather than pretended sent.
+
+## D-035 Scheduled jobs are rows the worker locks
+
+**Follows** blueprint F.8. **Accepted.**
+
+`scheduled_jobs` (migration `0006`) has one row per job with the time it runs
+next. A worker runs a job only while holding that row's lock, in one
+transaction with the job's work, so two workers never run one job at once, a
+dead worker leaves the job due, and a job that raises is retried after 1, 2,
+4 ... 60 minutes without touching any other job. Three failures in a row are
+logged at CRITICAL: that is the blueprint's "alert" until alerting to the
+founder's Telegram exists. Jobs are listed in `markx/worker/jobs.py`.
+
+Found by a test: the row must be created in a short transaction of its own,
+and only when missing. `INSERT ... ON CONFLICT DO NOTHING` waits for a row
+another transaction is updating, so creating it inside the run made the
+second worker wait for the whole job instead of skipping it.
+
 ---
 
 ## Decisions that need the founder

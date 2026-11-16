@@ -16,6 +16,7 @@ from markx.payments import models as payments_models
 from markx.search import models as search_models
 from markx.sellers import models as sellers_models
 from markx.trust import models as trust_models
+from markx.worker import models as worker_models
 
 __all__ = [
     "accounts_models",
@@ -31,4 +32,5 @@ __all__ = [
     "search_models",
     "sellers_models",
     "trust_models",
+    "worker_models",
 ]

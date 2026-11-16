@@ -15,7 +15,7 @@ domain.
 | API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory. Not built: search, cart, orders, payments |
 | PostgreSQL | Schema for all of Release 1 (64 tables), three roles |
 | Web app (`apps/web`) | **Does not exist** |
-| Worker | **Does not exist** |
+| Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
 | Reverse proxy, containers, CI | **Do not exist** |
 
 ## Repository layout
@@ -39,6 +39,7 @@ apps/
                             verification levels, members, store, payout account
       offers/               offers, price history, inventory, stock holds,
                             ranking, check-in, product proposals
+      worker/               the background worker: scheduled jobs, outbox
       orders/ payments/ trust/ search/ analytics/
                             MODELS ONLY: tables, no behaviour yet
       main.py               the application factory
@@ -131,11 +132,24 @@ Identity and licence photos go through `PrivateStorage`
 through `/documents/{id}/content` with a five-minute link signed for that
 person, while signed in. Only the local-disk adapter exists.
 
-## Scheduled work
+## The worker
 
-There is no worker yet. Two functions are written and tested and wait for
-one: `offers.service.mark_stale_offers` and
-`sellers.service.activate_due_payout_accounts`. The outbox also waits.
+Blueprint F.8. `markx/worker/`, started with `uv run python -m markx.worker`.
+It shares the API's configuration, database role and logging. Any number may
+run side by side; PostgreSQL decides who does what. One pass of its loop
+(`runner.run_once`) does two things:
+
+- **Scheduled jobs** (`jobs.py`). One row per job in `scheduled_jobs` says
+  when it runs next. A worker runs a job only while holding that row's lock.
+  A job that raises loses its own work, waits a growing delay and stops
+  nothing else. To add a job, add a `Job` to `JOBS`; it must be safe to run
+  twice.
+- **The outbox** (`outbox.py`). One row per transaction: lock a due row with
+  `FOR UPDATE SKIP LOCKED`, run the handler for its topic, mark it done,
+  commit. To add a topic, add a handler to `HANDLERS`.
+
+Tests drive the worker by calling `run_once(now)` with a clock they control.
+D-034 and D-035 record the guarantees and the one limit.
 
 ## Database
 
@@ -160,6 +174,7 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | Service | Adapter | State |
 | --- | --- | --- |
 | SMS | `markx/notifications/sms.py` | Fake only; no provider chosen |
+| Telegram push | `markx/notifications/push.py` | Fake only; no bot |
 | Bot check | `markx/core/botcheck.py` | Fake only |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
 | Private file storage | `markx/core/storage.py` | Local disk only; refused on real servers |

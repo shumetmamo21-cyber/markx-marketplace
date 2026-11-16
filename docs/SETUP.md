@@ -84,6 +84,21 @@ uv run uvicorn markx.main:app --host 127.0.0.1 --port 8000
 - Health: <http://127.0.0.1:8000/api/v1/healthz>
 - Interactive API description: <http://127.0.0.1:8000/api/v1/docs>
 
+### Run the worker
+
+In a second terminal:
+
+```bash
+uv run python -m markx.worker          # runs until Ctrl-C
+uv run python -m markx.worker --once   # one pass, then exit
+```
+
+It runs the scheduled jobs (hiding stale offers, applying payout-account
+changes) and sends what is waiting in the outbox. On a laptop nothing leaves
+the machine: a "sent" Telegram message is a line in
+`MARKX_STORAGE_DIR/dev/push-outbox.jsonl`. `scheduled_jobs` in the database
+shows when each job last ran and whether it failed.
+
 ### Sign in by hand
 
 No SMS is ever sent on a laptop. The fake SMS adapter writes the message to a

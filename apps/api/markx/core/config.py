@@ -60,6 +60,9 @@ class Config(BaseSettings):
     staff_session_idle_minutes: int = 30
     staff_session_max_minutes: int = 60 * 12
 
+    # How long the worker rests between passes when nothing is waiting.
+    worker_poll_seconds: float = 5.0
+
     log_level: str = "INFO"
 
     @property
