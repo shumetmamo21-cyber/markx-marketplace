@@ -23,8 +23,9 @@ from markx.accounts.permissions import (
     seller_can,
     staff_can,
 )
+from markx.audit.service import Actor
 from markx.core.errors import NotAuthenticated, NotFound, PermissionDenied
-from markx.core.http import CSRF_EXEMPT_PREFIXES, SAFE_METHODS, Db
+from markx.core.http import CSRF_EXEMPT_PREFIXES, SAFE_METHODS, Db, client_ip
 from markx.core.security import constant_time_equal
 from markx.sellers.models import Seller, SellerMember, SellerStatus
 
@@ -43,6 +44,14 @@ class Principal:
     @property
     def is_staff_session(self) -> bool:
         return self.session.kind == SessionKind.STAFF and self.staff is not None
+
+    def actor(self, request: Request) -> Actor:
+        """This person as the actor of an audited action."""
+        return Actor(
+            type="staff" if self.is_staff_session else "user",
+            user_id=self.user.id,
+            ip=client_ip(request),
+        )
 
 
 @dataclass(frozen=True, slots=True)

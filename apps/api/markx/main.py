@@ -17,6 +17,8 @@ from markx.core.db import get_engine
 from markx.core.http import enforce_request_origin, install_error_handlers, install_middleware
 from markx.core.logging import configure_logging
 from markx.core.phone import normalize_phone
+from markx.delivery.router import admin_router as delivery_admin_router
+from markx.delivery.router import router as delivery_router
 from markx.notifications.sms import read_dev_sms_inbox
 
 API_PREFIX = "/api/v1"
@@ -68,6 +70,8 @@ def create_app() -> FastAPI:
     api = APIRouter(prefix=API_PREFIX)
     api.include_router(_health_router())
     api.include_router(accounts_router)
+    api.include_router(delivery_router)
+    api.include_router(delivery_admin_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
     app.include_router(api)

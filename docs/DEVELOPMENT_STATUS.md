@@ -1,6 +1,6 @@
 # Development status
 
-**Last updated:** 16 November 2026, end of the first build session.
+**Last updated:** 16 November 2026.
 **Branch:** `claude/project-scaffold`
 **Read this after** `AGENTS.md` and `MARKX_MASTER_BLUEPRINT.md`.
 
@@ -12,9 +12,9 @@ on the date above.
 
 The master blueprint is in the repository. The back-end foundation is built
 and tested: the complete Release 1 database schema with its integrity rules,
-sign-in for customers, sellers and staff, and the permission model. **No
-marketplace feature works yet**: there is no catalogue, seller, offer, search,
-cart or order *behaviour*, only their tables. **There is no web app yet.**
+sign-in for customers, sellers and staff, the permission model, delivery zones
+and buyer addresses. **No marketplace feature works yet**: there is no
+catalogue, seller, offer, search, cart or order *behaviour*, only their tables. **There is no web app yet.**
 Nothing is deployed anywhere.
 
 ## Blueprint phase tracking
@@ -98,16 +98,28 @@ All of it is in `apps/api`. Test command and result are at the end.
 - **Permission tables** of blueprint C.3 and C.4, in code, with a test for
   every one of the 140 cells.
 
+### Delivery zones and buyer addresses (blueprint D.13, AD-05, C-08, C-28)
+
+- Staff create zones, neighbourhoods and one flat fee per delivery method per
+  zone. Only the super administrator and operations may (blueprint C.4); a
+  test covers all five staff roles, a customer, a visitor, and a staff member
+  signed in by phone code. Every change is audit-logged with before and after.
+- A public, cacheable route lists active zones, areas and fees.
+- Buyers save landmark addresses with an optional map pin and second phone.
+  Removing one archives it. One buyer cannot see or remove another's address,
+  and gets the same "not found" as for an address that does not exist.
+- Requests to see, correct or delete personal data.
+
 ## What exists but is NOT tested
 
 Be careful with these. They were written and never exercised.
 
-- **Address endpoints** (`/me/addresses`). They need delivery areas, and
-  nothing creates delivery areas yet.
-- **Data-request endpoints** (`/me/data-requests`).
-- Models for sellers, catalogue, offers, inventory, delivery, orders, payments,
-  ledger, reviews, cases, search and analytics: the tables exist and are
-  constrained; **no service, route or test uses them**.
+- Models for sellers, catalogue, offers, inventory, shipments, orders,
+  payments, the ledger's application code, reviews, cases, search and
+  analytics: the tables exist and are constrained; **no service, route or
+  test uses them**.
+- `markx/notifications/service.py` queues outbox rows, and **nothing drains
+  the outbox**: there is no worker.
 
 ## What does not exist
 
@@ -142,9 +154,9 @@ Be careful with these. They were written and never exercised.
 
 ```text
 $ cd apps/api
-$ uv run pytest           ->  377 passed in 44.42s
+$ uv run pytest           ->  418 passed
 $ uv run ruff check .     ->  All checks passed!
-$ uv run mypy markx       ->  Success: no issues found in 53 source files
+$ uv run mypy markx       ->  Success: no issues found in 57 source files
 $ uv run alembic check    ->  No new upgrade operations detected.
 ```
 
@@ -166,6 +178,8 @@ code contains no `type: ignore`. The suite treats warnings as errors.
 | `tests/api/test_auth_staff.py` | 14 |
 | `tests/api/test_auth_telegram.py` | 7 |
 | `tests/api/test_csrf.py` | 8 |
+| `tests/api/test_delivery.py` | 24 |
+| `tests/api/test_addresses.py` | 17 |
 
 No end-to-end test exists, because no web app exists.
 
@@ -173,17 +187,14 @@ No end-to-end test exists, because no web app exists.
 
 Work in this order. Finish and push each step before starting the next.
 
-1. **Delivery zones** (`markx/delivery`): service and admin routes to create
-   zones, areas and rates; a public route listing areas. Then test the address
-   endpoints that depend on them.
-2. **Catalogue** (blueprint P5): categories, attributes, brands, products,
+1. **Catalogue** (blueprint P5): categories, attributes, brands, products,
    variants, translations; staff create, approve, merge and archive; the
    duplicate-variant rule tested at the database.
-3. **Sellers** (P6): application, staff review, verification levels, members,
+2. **Sellers** (P6): application, staff review, verification levels, members,
    store page; a test that one seller cannot read another's data.
-4. **Offers and inventory** (P7), then **search** (P8), **cart and checkout**
+3. **Offers and inventory** (P7), then **search** (P8), **cart and checkout**
    (P9) and **multi-seller orders** (P10). The concurrency tests in blueprint
    P9 (100 buyers, one unit, exactly one order) are mandatory.
-5. **The web app** (P4), starting with the shell at `/am` and `/en`.
+4. **The web app** (P4), starting with the shell at `/am` and `/en`.
 
 Keep `ruff`, `mypy`, `alembic check` and `pytest` green at every commit.

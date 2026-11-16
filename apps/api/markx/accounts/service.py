@@ -652,6 +652,8 @@ def create_address(
     area = db.get(DeliveryArea, delivery_area_id)
     if area is None or not area.is_active:
         raise ValidationFailed("area_unknown", "Choose an area from the list.")
+    if (latitude is None) != (longitude is None):
+        raise ValidationFailed("map_pin_incomplete", "A map pin needs both latitude and longitude.")
     active = db.scalars(
         select(Address.id).where(Address.user_id == user.id, Address.archived_at.is_(None))
     ).all()

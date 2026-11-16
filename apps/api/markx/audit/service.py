@@ -3,12 +3,49 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from markx.audit.models import AuditLog
 from markx.core.logging import request_id_var
+
+
+@dataclass(frozen=True, slots=True)
+class Actor:
+    """Who is performing an action, for the audit log and status events."""
+
+    type: str  # "staff", "user" or "system"
+    user_id: uuid.UUID | None
+    ip: str | None = None
+
+    @classmethod
+    def system(cls) -> Actor:
+        return cls(type="system", user_id=None)
+
+
+def record_by(
+    db: Session,
+    actor: Actor,
+    action: str,
+    target_type: str,
+    target_id: uuid.UUID | str,
+    *,
+    before: Any | None = None,
+    after: Any | None = None,
+) -> AuditLog:
+    return record(
+        db,
+        actor_type=actor.type,
+        actor_user_id=actor.user_id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        before=before,
+        after=after,
+        ip=actor.ip,
+    )
 
 
 def record(

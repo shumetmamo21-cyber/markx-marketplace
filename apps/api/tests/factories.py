@@ -58,3 +58,35 @@ def telegram_init_data(
     secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
     fields["hash"] = hmac.new(secret, data_check_string.encode(), hashlib.sha256).hexdigest()
     return urlencode(fields)
+
+
+def make_zone(
+    staff: ApiClient,
+    code: str = "bole",
+    *,
+    areas: tuple[str, ...] = ("Bole Medhanialem",),
+    rider_fee: int | None = 15_000,
+    courier_fee: int | None = 20_000,
+) -> dict[str, Any]:
+    """Create a delivery zone with areas and rates through the admin API."""
+    response = staff.post(
+        "/admin/delivery/zones",
+        json={"code": code, "name_am": f"{code} (አማ)", "name_en": code.title()},
+    )
+    assert response.status_code == 201, response.text
+    zone_id = response.json()["id"]
+    for name in areas:
+        created = staff.post(
+            f"/admin/delivery/zones/{zone_id}/areas",
+            json={"name_am": f"{name} (አማ)", "name_en": name},
+        )
+        assert created.status_code == 201, created.text
+    for method, fee in (("seller_rider", rider_fee), ("partner_courier", courier_fee)):
+        if fee is not None:
+            put = staff.put(
+                f"/admin/delivery/zones/{zone_id}/rates",
+                json={"method": method, "fee_santim": fee, "promised_hours": 24},
+            )
+            assert put.status_code == 200, put.text
+    zones = staff.get("/admin/delivery/zones").json()
+    return next(z for z in zones if z["id"] == zone_id)
