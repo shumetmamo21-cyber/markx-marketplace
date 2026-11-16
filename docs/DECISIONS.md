@@ -8,8 +8,12 @@ The blueprint asks for one file per decision under `docs/decisions/` (section
 F.16). The founder's brief of 16 November 2026 asks for this single file, so
 decisions live here. Split it if it grows past comfortable reading.
 
-Status words: **Accepted** (in the code), **Open** (needs the founder or more
-evidence).
+Status words: **Accepted** (decided and in the code; another engineer may rely
+on it) and **Open** (not decided; the code either avoids the question or holds
+a placeholder that is marked as such). Nothing in this file is a business
+policy the founder approved unless the founder's approval is named in the
+entry. Entries D-001 to D-031 are engineering decisions; the founder's own
+decisions are at the end of this file under "Decisions that need the founder".
 
 ---
 
@@ -431,9 +435,132 @@ Every commit was pushed to both and they are identical. Continue on
 
 ---
 
-## Open questions for the founder
+## Decisions that need the founder
 
-These need an answer before the work they gate. None blocks the next task.
+**Nothing below is implemented as policy.** Each item says what the code does
+today, what the engineer recommends and why, what it blocks, and whether the
+founder's approval is required. An engineer may implement a recommendation only
+after the founder says so in writing; the answer then becomes a `D-` entry
+above and this item is removed.
+
+### F-01 Where sellers' identity documents are stored
+
+- **Today:** `markx/core/storage.py` has one adapter, local disk, and it
+  raises on a `staging` or `production` configuration (D-020). No document has
+  ever left a laptop.
+- **Recommendation:** a private, S3-compatible bucket at Cloudflare R2:
+  server-side encryption on, no public access, reached only through the
+  existing five-minute signed links. The adapter interface does not change, so
+  it is one new class. The blueprint already records R2 as an alternative with
+  10 GB free and no download fees (F.6, marked [V]). If the founder would
+  rather keep one provider, a private S3 bucket in the isolated MarkX AWS
+  account (blueprint M.3) is equally correct and costs a little more.
+- **Reason:** documents are the most sensitive data MarkX holds (G.11,
+  "Sensitive"). They need a store that is private by default, encrypted, and
+  separate from the public image bucket. Either option satisfies that; R2
+  keeps the bill near zero while the pilot is small.
+- **Blocks:** not development. **It blocks any real seller applying**, and so
+  the controlled launch.
+- **Founder's approval required: yes.** It is a paid account, a choice about
+  where Ethiopian personal data lives, and the same question as blueprint O,
+  question 1.
+
+### F-02 Whether a transfer of ownership drops the seller to Level 0
+
+- **Today:** transfer is not built (D-022). Nothing depends on the answer.
+- **Recommendation:** yes, drop to Level 0 on transfer, and keep the business
+  documents (licence, TIN certificate, shop photo) accepted, because they
+  belong to the business and not to the person. The new owner then supplies
+  one identity document and staff restore Level 2. Offers vanish from buyers'
+  pages automatically while the level is below `sellers.min_level_to_publish`,
+  so no extra mechanism is needed.
+- **Reason:** Level 1 means "the owner's identity was checked" and Level 2
+  builds on it (C.6). After a transfer that sentence is no longer true, and
+  the badge would be claiming something nobody verified. Trust is the product
+  (D.3).
+- **Cost the founder should weigh:** the store goes dark to buyers until staff
+  finish the re-check. If that is unacceptable, the alternative is to keep the
+  level for a fixed grace period (seven days is a reasonable figure) with the
+  re-check due inside it, and drop to Level 0 if it passes unanswered.
+- **Blocks:** neither development nor launch, as long as transfer stays
+  unbuilt. It blocks building transfer.
+- **Founder's approval required: yes**, but not urgently.
+
+### F-03 Whether an Ethiopian TIN always has exactly ten digits
+
+- **Today:** the application form accepts exactly ten digits and rejects
+  everything else (`_TIN` in `markx/sellers/service.py`). That came from the
+  engineer, not from the blueprint, and it is recorded as a known limitation
+  in `docs/DEVELOPMENT_STATUS.md`.
+- **Recommendation:** the founder checks one or two real licences and confirms
+  the length. If it turns out to vary, relax the rule to 9 to 13 digits and
+  let staff reject a wrong number at review, where the licence document is in
+  front of them anyway.
+- **Reason:** a format rule that is stricter than reality turns a legitimate
+  seller into "you cannot apply", and the founder would only learn of it as a
+  seller who gave up. The real control is the staff check against the
+  document, which happens either way.
+- **Blocks:** not development. **It can block real pilot sellers** if ten is
+  wrong.
+- **Founder's approval required: yes**, and it is the cheapest of these to
+  answer: one glance at a real TIN.
+
+### F-04 Whether every used item needs Level 2, or only used phones
+
+- **Today:** every offer with condition `used` needs Level 2, in every
+  category (D-025). The blueprint says it of used phones.
+- **Recommendation:** keep it as it is for the pilot. The launch wedge is
+  phones, so the wider rule costs nothing today, and it is stricter rather
+  than looser. Narrow it later, if a category needs it, by making the minimum
+  level a setting per category.
+- **Reason:** counterfeits and stolen goods are the risk the rule exists for
+  (D.22, H.4), and nothing about a used laptop makes it safer than a used
+  phone. Widening a restriction is safe; relaxing one needs evidence.
+- **Blocks:** neither.
+- **Founder's approval required: not to continue.** A decision is wanted
+  before MarkX opens categories beyond phones and accessories.
+
+### F-05 Whether a rejected applicant needs a fresh invitation
+
+- **Today:** yes. An invitation is used once (D-019), so a rejected applicant
+  cannot reopen an application without staff issuing another one.
+- **Recommendation:** keep it. Staff can issue a new invitation in one
+  request, so an applicant who was rejected for a fixable reason (a blurred
+  photo, a name mismatch) is let back in deliberately rather than
+  automatically.
+- **Reason:** onboarding is invite-only precisely so that staff decide who is
+  in the queue (D.3). An invitation that survives rejection lets an applicant
+  loop through the queue unchecked, which is the cheap abuse path here.
+- **Note:** staff ask for better documents with "request documents" instead of
+  rejecting, which keeps the application open. Rejection should be used when
+  the answer is no, not when a document is poor.
+- **Blocks:** neither.
+- **Founder's approval required: no.** It follows from the blueprint's
+  invite-only rule. It is written here so the founder can overrule it.
+
+### F-06 What happens to a seller's two offers when products are merged
+
+- **Today:** merging a product that has any offers is refused with a clear
+  message (D-026). Merging a product with no offers works and is tested.
+- **Recommendation:** when the merge path is built, map each variant of the
+  duplicate onto a variant of the survivor, move the offers, and where one
+  seller ends up with two offers for the same variant and condition, **keep
+  the offer that was already on the surviving product** and remove the other.
+  Write an audit entry holding both prices and notify that seller so they can
+  re-list if they preferred the other terms.
+- **Reason:** the survivor's page is the one buyers are already looking at, so
+  keeping its offer changes nothing a buyer has seen. Keeping the cheaper of
+  the two instead would silently move a price the seller set, and MarkX never
+  changes a seller's price without being told to. Removing rather than
+  deleting keeps the price history and any order that points at the offer.
+- **Blocks:** not development now. It blocks tidying duplicates once sellers
+  are live, so it is wanted before the pilot catalogue collects them.
+- **Founder's approval required: yes**, because the rule decides which of a
+  seller's listings survives.
+
+---
+
+## Open questions carried over from session 1
 
 1. **The blueprint's file name.** It is committed as
    `MARKX_MASTER_BLUEPRINT.md`, as instructed. Its own first lines still say
@@ -442,17 +569,6 @@ These need an answer before the work they gate. None blocks the next task.
    should be updated.
 2. **Blueprint section O, questions 1 to 6** are still open: where production
    personal data may live, AWS credits and region, acceptance of the Proposed
-   decisions, and the founder's time.
+   decisions, and the founder's time. F-01 above is the same question as O.1
+   and is the one that now has a deadline.
 3. **A licence for the code**, if any. None is granted today.
-4. **Where may sellers' identity documents be stored?** A storage service must
-   be chosen before any real seller applies (D-020). It is the same question
-   as blueprint O, question 1.
-5. **Ownership transfer.** When a store's owner hands it to someone else,
-   should the store drop to Level 0 until the new owner's identity is
-   checked, or keep its level while staff re-check? (D-022)
-6. **Is an Ethiopian TIN always ten digits?** The application form refuses
-   anything else.
-7. **Used goods.** Level 2 is required for every used item, not only phones
-   (D-025). Confirm or narrow it.
-8. **Merging a product that has offers** (D-026): when one seller listed both
-   duplicates, which of its two offers survives?
