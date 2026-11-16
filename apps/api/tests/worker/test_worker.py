@@ -77,9 +77,10 @@ class Recorder:
 # -- scheduled jobs ------------------------------------------------------------------
 
 
-def test_the_worker_runs_the_two_jobs_that_were_waiting_for_it(db: Session) -> None:
+def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
     """`mark_stale_offers` and `activate_due_payout_accounts` were written and
-    tested in session two and called by nothing. The worker calls them."""
+    tested in session two and called by nothing. The worker calls them, and
+    the order expiry job beside them."""
     staff = staff_client(db, "0911000200", StaffRole.SUPER_ADMIN)
     product = make_product(staff, make_catalog(staff))
     seller, seller_id = make_seller(staff, "0911000001")
@@ -92,6 +93,7 @@ def test_the_worker_runs_the_two_jobs_that_were_waiting_for_it(db: Session) -> N
     now = datetime.now(UTC)
     report = run_once(now)
     assert {o.name: o.result for o in report.jobs} == {
+        "orders.expire_unanswered": 0,
         "offers.mark_stale": 0,
         "sellers.activate_due_payout_accounts": 0,
     }
@@ -100,6 +102,7 @@ def test_the_worker_runs_the_two_jobs_that_were_waiting_for_it(db: Session) -> N
     later = now + timedelta(days=15)
     report = run_once(later)
     assert {o.name: (o.ok, o.result) for o in report.jobs} == {
+        "orders.expire_unanswered": (True, 0),
         "offers.mark_stale": (True, 1),
         "sellers.activate_due_payout_accounts": (True, 1),
     }

@@ -1,13 +1,14 @@
 # MarkX — handoff
 
-**Written:** 16 November 2026, at the end of the second AI engineering session.
+**Written:** 16 November 2026, at the end of the third AI engineering session.
 **Who this is for:** the founder, and the next AI engineer.
 
-This one file holds everything the second session has to say. It is in three
+This one file holds everything the third session has to say. It is in three
 parts:
 
-- **Part A — the report for the founder.** What was done, what was tested,
-  what is not built, and the six decisions waiting for you. Plain words.
+- **Part A — the report for the founder.** What was verified, what was found
+  and fixed, what was built, what was tested, what is not built, and the
+  decisions waiting for you. Plain words.
 - **Part B — the brief for the next AI engineer.** A block you can copy and
   paste straight into a new session. It needs nothing else.
 - **Part C — the state of the project on one page**, for either of you.
@@ -25,118 +26,117 @@ what the tests actually printed.
 | --- | --- |
 | Repository | `shumetmamo21-cyber/markx-marketplace` |
 | Working branch | `claude/project-scaffold` |
-| Commit this report describes | `5b41677` (this file's own commit is the one after it; `git log -1` shows the latest) |
-| Second branch | `claude/markx-seller-management-oag1a4` — an identical copy, same commits |
+| Latest code commit | `7079cb5` (cart, checkout and multi-seller orders); this file's own commit is the one after it and holds the documents plus a one-line test expectation. `git log -1` shows the latest |
+| Second branch | `claude/markx-third-session-cq58yj` — an identical copy, same commits |
 | `main` | `617a276`, the initial commit. **Untouched. Nothing was merged into it.** |
 
 The second branch exists only because the tool hosting this session demanded a
-branch of its own. Every commit went to both, and they hold byte-for-byte the
-same files. Carry on with `claude/project-scaffold`; the other can be ignored
-or deleted whenever you like.
+branch of its own, as it did in session two. Every commit went to both. Carry
+on with `claude/project-scaffold`; the other can be ignored or deleted.
 
-Everything is committed and pushed. Nothing is left in a temporary workspace.
-The five commits of this session, newest first:
+Everything is committed and pushed. The commits of this session, newest first:
 
 ```
-<this file>  Finalise the handoff into one document
-5b41677      Finalise the session-two handoff
-582cb12      Document the second session: sellers, offers and inventory
-0d50751      Add seller offers and inventory (blueprint P7)
-3239e25      Add seller onboarding and management (blueprint P6)
-8a6e583      Correct two outdated statements in the development status
+<this file>  Document the third session
+7079cb5      Add cart, checkout and multi-seller orders (blueprint P9, P10)
+bd835ef      Add the background worker: scheduled jobs and the outbox dispatcher
+399507e      Hold a staff takedown, and lock offers in id order for bulk changes
 ```
 
-The previous session ended at `6f36391`, which is the commit the independent
-audit inspected. Nothing of it was deleted or rewritten: its 454 tests were
-re-run unchanged before any new code was written, and they still pass.
+The second session ended at `8df958b`. Nothing of it was deleted or
+rewritten.
 
 ## A.2 What the session did, in order
 
-**First, it checked that what already existed was healthy.** Before writing
-anything, it installed the dependencies and ran every check the previous
-session reported. All of them passed exactly as that session claimed: 454
-tests, a clean lint, clean strict type checks, and no difference between the
-code's tables and the migrations. The first engineer's report was accurate.
+**First, independent verification.** Before writing anything, the session
+checked the remote branch (`8df958b`, exactly as the handoff said), confirmed
+the uploaded handoff was identical to the one in the repository, read the
+rules and the blueprint, installed the dependencies, started PostgreSQL 17.12
+and ran every check the second session reported. All passed exactly as
+claimed: 647 tests, a clean lint, 101 formatted files, clean strict type
+checks over 71 files, and no difference between the code's tables and the
+migrations. The second engineer's report was accurate.
 
-**Second, it corrected the two false statements in the status document** that
-the audit found. The documents it said were missing were in fact complete, and
-the README was no longer a placeholder. Both lines were checked against the
-files and removed.
+**Second, a security and engineering review of P6 and P7.** The session read
+the seller and offer code, the locking, the isolation tests and the database
+constraints, looking for the things you asked about. The verdict: the
+isolation, the document links, the staff permissions, the payout encryption
+and the stock primitives are sound. Two things were not:
 
-**Third, it built seller management (the blueprint's phase P6).** A seller can
-now go the whole way from an invitation to a verified, trading store:
+1. **A seller could undo a staff takedown.** If staff took a listing down
+   (say, a counterfeit phone), the seller could create the same offer again
+   and it came straight back, because "relist an offer I removed" and "staff
+   removed this offer" shared one code path. This was a real hole in
+   moderation. It is fixed: a takedown now *holds*. The seller's relist is
+   refused, removing the offer first is no way round it, the database itself
+   refuses to put a held offer back, and staff lift a hold deliberately with
+   a reason (`restore`), after which the seller lists again. Three tests
+   failed before the fix and pass after it.
+2. **Two bulk operations could deadlock.** The seller's one-tap check-in and
+   the job that hides stale offers each changed many rows at once in whatever
+   order the database chose. Once the worker runs that job on a schedule, the
+   two could collide and the seller's check-in would be the one killed. Both
+   now lock the rows in a fixed order, and a test races them 200 times.
 
-- Staff invite a phone number. Onboarding is invitation-only, as the blueprint
-  requires, and an invitation is used once, by the person who owns that number.
-- The applicant fills in the business details, uploads photographs of the
-  owner's identity document, the business licence, the TIN certificate and the
-  shop, adds the account they want to be paid into, and submits. Staff see
-  nothing until it is submitted.
-- Staff then work a queue: look at each document, accept or reject it, ask for
-  better ones, approve at verification Level 1 or Level 2, reject with a
-  reason, suspend, reinstate, raise or lower the level, and sign off the yearly
-  re-check. A level is granted only when the accepted documents behind it
-  actually exist, so the badge never claims something nobody checked.
-- Identity documents are held privately. They are never served by a web
-  address anybody can guess. A member of staff opens one through a link that
-  works for five minutes, only for the person it was issued to, and only while
-  that person is still allowed to see it. Issuing a link and every single view
-  are written to the audit log, which cannot be edited or deleted by anyone.
-- Every photograph is decoded and written out again when it arrives, which
-  removes the location data a phone camera adds and refuses a file that only
-  pretends to be a picture.
-- The store page, the owner and manager roles with two seats, and the payout
-  account are all built. The account number is encrypted; only its last four
-  digits are ever shown again, and a change to it waits 72 hours while the
-  owner is told, so a stolen session cannot quietly redirect money.
+Nothing else was changed. The previous session's deadlock fix (D-027) was
+read, understood and kept.
 
-**Fourth, it built seller offers and stock (phase P7).** This is the heart of
-MarkX — many sellers competing on one product page:
+**Third, the background worker.** This is the process the blueprint calls
+"System". It runs the scheduled jobs that two sessions had written and nothing
+had ever called (hiding stale offers; applying a payout-account change after
+its 72 hours) and a new one (expiring unanswered orders), and it sends what
+sits in the outbox. It is built so that two workers can run side by side
+without doing the same thing twice, a worker that dies mid-message loses
+nothing, a message that fails is retried with growing delays and finally set
+aside with an alert in the log, and one failing job never stops the others. A
+committed message is delivered exactly once and a message from a change that
+was rolled back is never delivered: that is the blueprint's own test for P2,
+and it passes. On a laptop "sending to Telegram" writes a line to a file; the
+real Telegram bot is not built, and the worker refuses to pretend on a real
+server.
 
-- A seller attaches an offer to one version of an approved product, with its
-  own price, condition, warranty, delivery options and stock. One offer per
-  seller, per version, per condition; the database itself refuses a second.
-- Every price change is recorded, so the price history chart has its data.
-- Stock can only move through one piece of code, and every movement leaves a
-  row explaining it. Nothing can change stock behind its back.
-- The product page lists every seller's live offer, ranked afresh each time it
-  is read: in stock first, then a recently confirmed price, then offers that
-  deliver to the buyer's own area, then the lowest price plus delivery, then
-  the better-verified seller. The "best offer" is never stored as a fact, which
-  is what the blueprint asks for.
-- The one-tap check-in, the job that hides an offer whose price has not been
-  confirmed for a fortnight, the shareable store price list, a seller's request
-  for a missing product to be added, and staff taking a listing down are all
-  built.
+**Fourth, the cart, checkout and multi-seller orders.** This was the main
+milestone. A buyer can now:
 
-## A.3 The security requirement you set
+- Build a cart, with or without an account. A visitor's cart follows them
+  when they sign in with a phone code. Opening the cart re-checks every price
+  and every item against live data and says what changed.
+- See a review step where every price, delivery fee and total is computed by
+  the server, with the seller's legal name, address and return policy.
+- Place the order. One checkout from two stores becomes one order for the
+  buyer and one order for each seller. **Nothing the browser sends is used as
+  a number.** The browser says what, how many, where and how; the server
+  decides what it costs. A browser that sends a lower total is refused. The
+  same submission sent twice creates one order.
+- Each seller sees only its own part, never the other seller's items or the
+  buyer's grand total, and confirms or declines within the response window
+  (30 minutes of business time; an order placed at night is due half an hour
+  after the shops open). A decline gives the stock back. A seller that stays
+  silent has its part expired by the worker and the stock returns; the other
+  seller's part carries on.
+- Cancel a part before it is packed.
+- Phone numbers are shown to each side only after the seller confirms, and
+  hidden again if the part ends undelivered, exactly as the blueprint's C.5
+  says.
 
-> One seller must never access another seller's private information or
-> operations without explicit authorization.
+The order life cycle is enforced twice: the code allows only the moves in the
+blueprint's diagram, and the database refuses any other move and refuses to
+save a status change that has no entry in the log. A test checks the two agree
+on all 196 combinations.
 
-This is enforced in the backend and proved by 45 tests in one file. They are
-written as attacks, with seller A always the attacker:
+## A.3 The concurrency guarantee
 
-- A cannot read or change anything of B's, through any route.
-- B's document, team member or offer identifier placed under A's *own* seller
-  identifier comes back as "not found".
-- A link signed for B does not open for A, even if A has the link.
-- Another seller's identifier gives a reply that is identical, character for
-  character, to the reply for an identifier that does not exist, so A cannot
-  even learn that B exists.
-- A team member who is removed loses access on their very next request.
-- A person who belongs to two sellers gets only the powers of their role in
-  each one.
-
-One of those tests reads the list of every route in the running application and
-attacks each one under `/seller/...` automatically. That means a route added in
-a future session is checked even if nobody remembers to write a test for it.
-
-Staff permissions are tested too, across all five staff roles, a visitor, a
-customer, a seller, and a member of staff who signed in with a phone code
-instead of a password: only the super administrator and operations can review
-sellers or open documents, exactly as the blueprint's table says. A member of
-staff who happens to own a shop cannot take any staff decision about that shop.
+The blueprint's own test is: *100 simultaneous purchases of the last unit
+create exactly one order.* The previous session proved it for the stock hold
+alone. This session proves it for the whole checkout: 100 buyers with 100
+carts submit at the same instant for one unit, and exactly one order exists
+afterwards; the other 99 are told the item sold out and nothing of theirs is
+written. Also tested: fifty buyers competing for ten units get exactly ten;
+buyers wanting one, two or three units never oversell seven; checkouts raced
+against the seller changing the price and retyping the stock count; and the
+seller's confirm, the seller's decline, the buyer's cancel and the clock's
+expiry all racing for one order, where exactly one wins and the stock is given
+back at most once. None of them deadlocked.
 
 ## A.4 The tests that were actually run
 
@@ -144,184 +144,88 @@ From the `apps/api` folder, against a real PostgreSQL 17.12, with the test
 database rebuilt from empty:
 
 ```
-uv run pytest                  ->  647 passed in 217 seconds
+uv run pytest                  ->  779 passed in 346.54s
 uv run ruff check .            ->  All checks passed!
-uv run ruff format --check .   ->  101 files already formatted
-uv run mypy markx              ->  Success: no issues found in 71 source files
+uv run ruff format --check .   ->  121 files already formatted
+uv run mypy markx              ->  Success: no issues found in 84 source files
 uv run alembic check           ->  No new upgrade operations detected.
 ```
 
-That is 647 tests, up from the 454 this session inherited: 193 new ones. The
-commits after the last code commit changed only documents, so these numbers
-describe the code exactly as it stands now.
+That is 779 tests, up from the 647 this session inherited. The one commit
+after `7079cb5` changes documents and one line of a worker test (it now expects
+the order-expiry job among the jobs that ran), so these numbers describe the
+code exactly as it stands now; they were produced after that change.
 
 | Where | Tests |
 | --- | --- |
-| Pure logic: money, phone numbers, Amharic text, codes, permissions | 297 |
-| What the database enforces by itself, including stock under contention | 70 |
+| Pure logic: money, phone numbers, Amharic text, codes, permissions, order rules | 311 |
+| What the database enforces by itself, including stock and checkout under contention | 76 |
 | Sign-in, anti-forgery, health | 71 |
 | Delivery zones and buyer addresses | 41 |
 | Product catalogue | 36 |
-| Sellers: onboarding, documents, team, staff permissions, isolation | 133 |
-| Offers and inventory | 39 |
+| Sellers: onboarding, documents, team, staff permissions, isolation | 137 |
+| Offers and inventory | 42 |
+| Cart and checkout | 43 |
+| The worker | 22 |
 
-Two failures were found during the session, both in the new code, both found by
-tests, both fixed before anything was pushed:
+Three failures were found during the session, all by tests, all fixed before
+anything was pushed, and all written up in `docs/DECISIONS.md`:
 
-1. **A deadlock.** When a seller edited an offer while buyers were holding its
-   stock, the database killed one of them. Two pieces of code were taking the
-   same two locks in opposite orders. A test with sixty simultaneous threads
-   reproduced it; the locks were changed to a gentler kind that cannot collide
-   this way, and the test was run three times over to be sure.
-2. **Stock movements with no order.** Several movements written in one go all
-   carried the same timestamp, so their order was a coin toss. They now carry
-   the real clock time of the moment each was written.
-
-Both are written up in `docs/DECISIONS.md` so the next engineer does not
-rediscover them the hard way.
+1. The moderation bypass (D-032), described above.
+2. In the worker, registering a job for the first time inside the job's own
+   transaction made a second worker wait for the whole run instead of
+   skipping it. A test with two workers found it (D-035).
+3. A test of the expiry job was wrong about its own clock, not the code.
 
 ## A.5 What is NOT built
 
 Nothing here is hidden or half-claimed.
 
-- **A buyer still cannot buy anything.** There is no search, no cart, no
-  checkout and no order behaviour — only the tables waiting for them. This is
-  the next session's main job.
-- **There is no web app.** Everything built so far is the backend, which a
-  website or app talks to. A seller cannot yet apply from a phone screen,
-  because there is no screen; the steps work and are tested through the API.
-- **There is no background worker.** Three things are written, tested and
-  called by nothing: the job that hides stale offers, the job that applies a
-  payout-account change after its 72 hours, and the outbox that holds messages
-  waiting to be sent. Until the worker exists, no message leaves the server.
-  This is why the next session builds it first.
-- **Document storage is local only.** The code refuses to run with it on a real
-  server, deliberately. See decision F-01 below: this is the one thing that
-  must be settled before a real seller can apply.
-- **No pipeline for product photographs, no seed data, no containers, no CI,
-  no deployment.** Nothing is deployed anywhere.
-- Ownership transfer between seller members, the seller Telegram bot, share
-  cards and the QR code are not built.
-- Merging two duplicate products is still refused when either has offers; see
-  decision F-06.
-- All the Amharic text in the system was drafted by an AI. A native speaker
-  must read it before launch.
-- The rule that an Ethiopian TIN has exactly ten digits is the engineer's
-  assumption, not something the blueprint states. See decision F-03.
+- **An order stops at "confirmed".** Packing, dispatch, the handover code,
+  "delivered", "completed", the fee charge, failed deliveries, returns,
+  disputes and refunds are not built. A confirmed order therefore holds its
+  stock until it is cancelled. This is the next session's first job, and
+  the blueprint's P10 criterion "a two-seller order completes end to end"
+  cannot be met until it is done.
+- **There is still no web app.** Everything works and is tested through the
+  API; nobody can tap a button yet.
+- **No search, no reviews, no problem reports, no staff orders desk, no
+  dispatch board, no tracking page by link.**
+- **No real outside adapter**: Telegram pushes, SMS, the bot check and the
+  private document store all have fakes only (F-01 still blocks onboarding a
+  real seller).
+- **Commission rules can be read but not managed**: no route creates them,
+  so every order line carries a zero rate, which is the blueprint's rule for
+  direct orders in year one anyway.
+- No seed data, containers, CI, backups, alerting or deployment. Nothing is
+  deployed anywhere.
+- The parent order's status words (`awaiting_seller`, `in_progress`,
+  `partly_delivered`, and so on) are the engineer's choice; the blueprint
+  gives only "partly delivered" as an example.
+- All Amharic text was drafted by an AI; a native speaker must review it.
 
-## A.6 The six decisions that need you
+## A.6 The decisions that need you
 
-Each one below says what the code does today, what the engineer recommends,
-why, what it blocks, and whether your approval is required. **None of them has
-been implemented as policy.** They are written the same way in
-`docs/DECISIONS.md` as entries F-01 to F-06, so the next AI will find them and
-will not quietly decide them for you.
+The six from the second session, F-01 to F-06, are unchanged and still
+waiting; `docs/DECISIONS.md` holds them in full. Nothing this session did
+depended on them, and none was implemented as policy. One was added:
 
-### F-01 Where sellers' identity documents are stored
+### F-07 Who may lift a staff takedown of a listing
 
-- **Today:** there is one way to store files — the hard disk of whichever
-  machine is running — and the code deliberately refuses to start with it on a
-  real server. No document has ever left a laptop.
-- **Recommendation:** a private Cloudflare R2 bucket, encrypted, with no public
-  access, reached only through the five-minute links that already exist. The
-  blueprint already notes R2 as an option with 10 GB free and no download
-  charges. If you would rather keep everything with one provider, a private S3
-  bucket inside the isolated MarkX AWS account is equally correct and costs a
-  little more.
-- **Why:** identity documents are the most sensitive thing MarkX will ever
-  hold. They need a store that is private by default and separate from public
-  product images. Either option does that; R2 keeps the bill near zero while
-  the pilot is small.
-- **Blocks:** not the next session's work. **It blocks onboarding a real
-  seller, and therefore the controlled launch.**
-- **Your approval: required.** It is a paid account, and a decision about where
-  Ethiopian personal data physically lives. It is the same question as the
-  blueprint's own unresolved question 1.
+- **Today:** the staff roles that may take a listing down (super
+  administrator, operations, catalogue) may also lift the hold, with a
+  reason that is audit-logged. Lifting publishes nothing; the seller lists
+  the item again.
+- **Recommendation:** keep it for the pilot; narrow it later if a catalogue
+  curator ever lifts a takedown that operations made.
+- **Blocks:** nothing. **Your approval: not needed to carry on.**
 
-### F-02 Whether handing a store to a new owner drops it to Level 0
-
-- **Today:** transfer of ownership is not built, so nothing depends on this.
-- **Recommendation:** yes — drop to Level 0, but keep the business documents
-  (licence, TIN, shop photo) accepted, since they belong to the business and
-  not to the person. The new owner then supplies one identity document and
-  staff restore Level 2.
-- **Why:** Level 1 means "the owner's identity was checked", and Level 2 is
-  built on top of it. After a transfer that sentence is no longer true, and the
-  badge would be claiming something nobody verified. Trust is the product.
-- **The cost you should weigh:** while the level is below the publishing
-  threshold the store's offers disappear from buyers' pages. If that is too
-  harsh, the alternative is to keep the level for a short grace period, say
-  seven days, with the re-check due inside it.
-- **Blocks:** nothing, as long as transfer stays unbuilt. It blocks building it.
-- **Your approval: required**, but not urgent.
-
-### F-03 Whether an Ethiopian TIN always has exactly ten digits
-
-- **Today:** the application form accepts exactly ten digits and rejects
-  anything else. That rule came from the engineer, not from the blueprint, and
-  it is flagged as an assumption in the status document.
-- **Recommendation:** look at one or two real licences and confirm the length.
-  If it varies, loosen the rule to between nine and thirteen digits and let
-  staff reject a wrong number at review, where the licence is in front of them
-  anyway.
-- **Why:** a rule stricter than reality turns a legitimate seller into "you
-  cannot apply", and you would only ever learn of it as a seller who gave up.
-  The real check is the human one against the document, which happens either
-  way.
-- **Blocks:** not development. **It can turn away a real pilot seller.**
-- **Your approval: required**, and it is the cheapest of the six to answer: one
-  glance at a real TIN.
-
-### F-04 Whether every used item needs Level 2, or only used phones
-
-- **Today:** every item sold as used needs Level 2, in every category. The
-  blueprint says this of used phones.
-- **Recommendation:** leave it as it is for the pilot. Phones are the launch
-  wedge, so the wider rule costs nothing today, and it is stricter rather than
-  looser. It can be narrowed later, per category, if a category needs it.
-- **Why:** the rule exists because of counterfeit and stolen goods, and nothing
-  about a used laptop makes it safer than a used phone. Widening a restriction
-  is safe; relaxing one needs evidence.
-- **Blocks:** nothing.
-- **Your approval: not needed to carry on.** Worth deciding before MarkX opens
-  categories beyond phones and accessories.
-
-### F-05 Whether a rejected applicant needs a fresh invitation
-
-- **Today:** yes. An invitation is used once, so a rejected applicant cannot
-  reopen an application unless staff issue another invitation.
-- **Recommendation:** keep it. Staff can issue a new invitation in a single
-  step, so an applicant rejected for something fixable is let back in on
-  purpose rather than automatically.
-- **Why:** onboarding is invitation-only precisely so that staff decide who is
-  in the queue. An invitation that survives rejection lets someone loop through
-  the queue unchecked, which is the cheap way to abuse this.
-- **Note for staff:** when a photograph is merely poor, "request documents"
-  keeps the application open. Rejection is for when the answer is no.
-- **Blocks:** nothing.
-- **Your approval: not required.** It follows from the blueprint's own rule. It
-  is written down so you can overrule it.
-
-### F-06 What happens to a seller's two offers when two products are merged
-
-- **Today:** merging a duplicate product is refused if either product has any
-  offers, with a clear message. Merging a product with no offers works and is
-  tested.
-- **Recommendation:** when the merge is built, match each version of the
-  duplicate to a version of the survivor, move the offers across, and where one
-  seller ends up holding two offers for the same version and condition, **keep
-  the one that was already on the surviving product** and remove the other.
-  Record both prices in the audit log and tell that seller, so they can re-list
-  if they preferred the other terms.
-- **Why:** the survivor's page is the one buyers are already looking at, so
-  keeping its offer changes nothing a buyer has seen. Keeping whichever was
-  cheaper would silently move a price the seller set, and MarkX should never
-  change a seller's price without being told to. Removing rather than deleting
-  keeps the price history and any order pointing at the offer.
-- **Blocks:** nothing now. It blocks tidying up duplicate products once sellers
-  are live, so it is wanted before the pilot catalogue collects them.
-- **Your approval: required**, because the rule decides which of a seller's
-  listings survives.
+And one thing you should know rather than decide: the fourteen-day hold on a
+confirmed order's stock (D-037) is a placeholder whose expiry nothing acts on,
+because the steps after confirmation do not exist yet. The next engineer will
+decide, and record, what the worker does with it. If you have a view —
+release the stock and cancel the order, or only warn staff — say so in the
+brief.
 
 ## A.7 The boundaries you set, and what was done about them
 
@@ -331,44 +235,44 @@ will not quietly decide them for you.
 - **No paid resource was created and no charge was incurred.** Everything ran
   on this session's own temporary machine with PostgreSQL in a local container.
 - **No secret was committed.** The example environment file holds placeholders
-  only, and the code refuses to start on a real server with development
-  secrets.
+  only.
 - **Nothing was merged into `main`** and no pull request was opened.
-- **No data was deleted and no history rewritten.** Migrations only go
-  forwards; the fourth migration adds to the third.
-- **No market, competitor, legal or regulatory research was done.** That stays
-  yours.
+- **No data was deleted and no history rewritten.** Three new migrations add
+  to the schema; none removes anything.
+- **MarkX holds no money.** A payment intent records how the buyer said they
+  would pay the seller directly. Nothing marks a payment as paid, from a
+  browser redirect or otherwise.
+- **No market, competitor, legal or regulatory research was done.**
 
 ---
 
 # Part B — The brief for the next AI engineer
 
-Copy everything between the two lines below, from `MARKX — THIRD ENGINEERING
-SESSION` down to `END OF BRIEF`, and paste it as the first message of a new
-session. It is self-contained: it names the repository, the branch, the files
-to read and the commands to run, so the next engineer needs nothing from this
-conversation.
+Copy everything between the two lines below, from `MARKX — FOURTH
+ENGINEERING SESSION` down to `END OF BRIEF`, and paste it as the first message
+of a new session. It is self-contained.
 
-If you have answered any of the six decisions above, add your answers at the
-end of the paste, under a heading such as "Founder's decisions for this
-session". Do not expect the AI to guess them.
+If you have answered any of the decisions F-01 to F-07, or have a view on the
+fulfilment hold (A.6), add your answers at the end of the paste under a
+heading such as "Founder's decisions for this session". Do not expect the AI
+to guess them.
 
 ---
 
-**MARKX — THIRD ENGINEERING SESSION**
+**MARKX — FOURTH ENGINEERING SESSION**
 
-You are the third founding engineering AI on MarkX. Two sessions came before
-you. Continue the project from its existing state; do not rebuild it.
+You are the fourth founding engineering AI on MarkX. Three sessions came
+before you. Continue the project from its existing state; do not rebuild it.
 
 **1. Repository and branch**
 
 - Repository: `shumetmamo21-cyber/markx-marketplace`
 - Working branch: **`claude/project-scaffold`**. Never start from `main`, and
   never merge anything into `main`.
-- The second session ended at commit `5b41677` plus one documentation commit.
-  Verify the real remote head yourself before you begin.
-- The branch `claude/markx-seller-management-oag1a4` is an identical copy that
-  the second session's hosting tool required. Ignore it unless your own tool
+- The third session's last code commit is `7079cb5`, followed by one
+  documentation commit. Verify the real remote head yourself before you begin.
+- The branch `claude/markx-third-session-cq58yj` is an identical copy that
+  the third session's hosting tool required. Ignore it unless your own tool
   forces a branch of its own; if it does, push every commit to both and say so.
 
 **2. Read these first, in this order**
@@ -376,18 +280,19 @@ you. Continue the project from its existing state; do not rebuild it.
 1. `AGENTS.md` — the rules for every AI agent here. They are not negotiable.
 2. `MARKX_MASTER_BLUEPRINT.md` — the product's single source of truth, already
    in the repository root. **Do not ask the founder to upload it again, and do
-   not create a second copy, summary or competing blueprint.** For this session
-   the parts that matter most are G.5 to G.9 (orders, critical operations, data
-   integrity, stock), F.8 (background jobs), and the P9 and P10 entries in L.4.
-3. `docs/HANDOFF.md` — the second session's report and this brief.
+   not create a second copy, summary or competing blueprint.** For this
+   session the parts that matter most are G.6, G.7, G.9 (the life cycle,
+   the critical operations, stock), J.9 and J.10 (delivery and tracking),
+   D.12 to D.14, and the P10 and P11 entries in L.4.
+3. `docs/HANDOFF.md` — the third session's report and this brief.
 4. `docs/DEVELOPMENT_STATUS.md` — what exists, what is tested, what is not.
-   Start work from it.
-5. `docs/DECISIONS.md` — entries D-001 to D-031 are settled engineering
-   decisions you may rely on. Entries F-01 to F-06 are questions the founder
-   has not answered. **Do not implement an F-recommendation unless the founder
-   tells you to in this session.**
-6. `docs/ARCHITECTURE.md`, especially "Seller scoping" and "Stock", then
-   `docs/SETUP.md`.
+   Start work from "The exact next task" at its end.
+5. `docs/DECISIONS.md` — entries D-001 to D-042 are settled engineering
+   decisions you may rely on. Entries F-01 to F-07 are questions the founder
+   has not answered. **Do not implement an F-recommendation unless the
+   founder tells you to in this session.**
+6. `docs/ARCHITECTURE.md`, especially "Seller scoping", "Stock", "Orders" and
+   "The worker", then `docs/SETUP.md`.
 
 Then read the code and the Git history. Where a document and the code
 disagree, the code is the fact and the document needs fixing.
@@ -397,135 +302,130 @@ disagree, the code is the fact and the document needs fixing.
 Follow `docs/SETUP.md`. You need PostgreSQL 17 (that file has the Docker
 command; on a bare Linux machine you may have to start the daemon with
 `dockerd` yourself) and the three MarkX database roles, which
-`infra/postgres/bootstrap.sh` creates. The `alembic` commands use the `markx`
-database; the tests build their own `markx_test` from empty on every run.
+`infra/postgres/bootstrap.sh` creates.
 
 From `apps/api`:
 
 ```bash
 uv sync
-uv run pytest                  # expect 647 passed, about 4 minutes
+uv run pytest                  # expect 779 passed, about five minutes
 uv run ruff check .            # expect: All checks passed!
-uv run ruff format --check .   # expect: 101 files already formatted
-uv run mypy markx              # expect: no issues in 71 source files
+uv run ruff format --check .   # expect: 121 files already formatted
+uv run mypy markx              # expect: no issues in 84 source files
 uv run alembic upgrade head
 uv run alembic check           # expect: No new upgrade operations detected.
 ```
 
 Report the real numbers, whatever they are. If a command fails for an
 environment reason, diagnose it and say exactly why. Do not hide a failure, do
-not weaken a test to make it pass, and do not claim the 647 figure until you
-have seen it yourself. Fix any genuine regression before starting new work.
+not weaken a test to make it pass, and do not claim the 779 figure until
+you have seen it yourself. Fix any genuine regression before starting new work.
 
-**4. Task two — review what the second session built**
+**4. Task two — review what the third session built**
 
-Before adding features, review **P6 sellers** (`markx/sellers/`,
-`markx/core/storage.py`, `markx/core/images.py`) and **P7 offers and
-inventory** (`markx/offers/`), together with their tests. Look for:
+Before adding features, review **the worker** (`markx/worker/`,
+`markx/notifications/push.py`) and **orders** (`markx/orders/`), with their
+tests. Look for:
 
-- **Security.** Can one seller reach another's data by any path the isolation
-  sweep does not cover? Can a document link be reused, extended or replayed?
-  Does any route trust an identifier from the body or the query string instead
-  of the path? Can a seller raise its own verification level or status?
-- **Correctness.** Do the status rules hold in both the service layer and the
-  database? Does a refused request leave nothing behind?
-- **Concurrency.** Which operations take two locks, and can any pair be taken
-  in opposite orders? Decision D-027 records one deadlock that a sixty-thread
-  test found; assume there are others.
-- **Database integrity.** Is every rule in blueprint G.8 backed by a
-  constraint, and not only by code?
-- **API quality.** Error codes, cursor paging, cacheability, and whether
-  anything personal leaks into a public response.
+- **Security.** Can one buyer reach another buyer's order, or one seller
+  another seller's part, by any path? Does any seller view leak the buyer's
+  phone before confirmation, another seller's lines, the grand total, or a
+  person's identity in the event log? Does any route trust an identifier from
+  the body or the query string instead of the path? Can a browser influence a
+  price, a fee or a total by any field?
+- **Correctness.** Can a seller order reach a status without its event? Can
+  stock be released twice, or held without a reservation row? Is every
+  refusal in `place_order` made before any row is written?
+- **Concurrency.** The written lock order is cart, sellers, offers, seller
+  orders, stock. Find any operation that departs from it. Decision D-027
+  records the deadlock that forced `FOR NO KEY UPDATE`; D-033 the one that
+  forced id-ordered bulk updates. Assume there are others.
+- **The worker.** Is there any way a handler's database work can commit
+  without the row being marked done, or the reverse? D-034 records the one
+  known limit (a message to the outside world can, in theory, be seen twice).
 
 Fix what is genuinely wrong, with a test that fails before the fix and passes
 after it. Record anything you decide in `docs/DECISIONS.md`. If the review
 finds nothing, say so plainly and move on; that is a valid result.
 
-**5. Task three — the background worker**
+**5. Task three — the second half of the order life cycle (P10)**
 
-Build this before checkout, because three things already wait for it and
-checkout will add a fourth. Blueprint F.8 and P2.
+This is the session's main milestone. An order today stops at `confirmed`.
+Build the rest, in `markx/orders/service.py`, with every status change going
+through `_move` (the database refuses anything else; see D-038):
 
-- One worker process in `apps/api`, started by its own command, sharing the
-  application's configuration, database session and logging.
-- It must run **scheduled jobs**, two of which already exist, are tested, and
-  are called by nothing:
-  - `markx.offers.service.mark_stale_offers`
-  - `markx.sellers.service.activate_due_payout_accounts`
-- It must **drain the `outbox` table**. Rows are written inside the transaction
-  that caused them (see `markx/notifications/service.py`), carry a topic, a
-  payload, an attempt count and a run-after time, and nothing has ever read
-  them. Deliver each through the existing adapters, mark it done, and leave a
-  failed row to be retried after a growing delay.
-- Requirements: one job that raises an error must not stop the others; a
-  message must not be delivered twice; two workers running at once must not
-  take the same row (`FOR UPDATE SKIP LOCKED` is already used in
-  `activate_due_payout_accounts`); a crash in the middle of a row must not
-  lose it.
-- Tests for each of those, driven by calling the worker's own loop once, never
-  by sleeping on a clock.
+- `confirmed -> ready` by the seller; the shipment becomes `ready`, with a
+  `tracking_events` row (J.10). The staff dispatch board for partner
+  couriers belongs to P11: for now the seller marks ready and dispatches.
+- `ready -> out_for_delivery` by the seller or staff; `ready -> delivered`
+  directly for shop collection, with the code.
+- **The handover code** (C-15, D-011): derived from the server secret, the
+  shipment id and `shipments.code_version` with `derive_numeric_code` in
+  `markx/core/security.py`, so nothing in the database reveals it. The buyer
+  sees it on their order page; the seller or rider enters it.
+  `confirm_delivery` compares it in constant time, counts attempts up to
+  `MAX_HANDOVER_ATTEMPTS` and then refuses further tries until staff reissue
+  (raise `code_version`), marks `delivered` and starts the problem window
+  (`orders.problem_window_hours`).
+- `out_for_delivery -> delivery_failed` with a reason; retry; `returned`,
+  which releases the reservation.
+- `complete_seller_order`: after the problem window by the worker, or at
+  once when the buyer confirms. **This is where
+  `markx.offers.service.commit_stock` is finally called**: the reservation
+  becomes `committed`, `on_hand` falls, and a `fee_charges` row is written
+  from the lines' `commission_bps` (zero today). Do not write new stock SQL.
+- The seller records a direct payment: the `payment_intents` row to
+  `succeeded` with the method and time (D.12). In Release 1 this is the
+  seller's word, recorded as such; never from a browser redirect.
+- Decide, and record in `docs/DECISIONS.md`, what the worker does when a
+  confirmed order's 14-day fulfilment hold on its stock expires (D-037
+  leaves this open on purpose). Ask the founder if their brief says nothing.
+- Every new seller route goes under `/seller/{seller_id}/...` with
+  `require_seller(SellerCapability.HANDLE_ORDERS)`; the isolation sweep in
+  `tests/api/test_seller_isolation.py` then covers it automatically. Every
+  new buyer route is found together with the buyer's id.
+- Tests: a two-seller order end to end, placed to completed (P10 criterion
+  1); a wrong handover code `MAX_HANDOVER_ATTEMPTS` times locks the shipment
+  and a right one after that is refused; `commit_stock` reduces on-hand and
+  the movement trail replays to the exact stock
+  (`tests/bazaar.py::assert_stock_is_consistent` does that check); a
+  contention test for every new operation that takes two locks (delivery
+  against cancellation, completion against a dispute, the worker's completion
+  against the buyer's).
 
 Then commit, push, and update the documents.
 
-**6. Task four — cart, checkout and multi-seller orders (P9 and P10)**
+**6. Task four — the tracking page, then the next-best offer**
 
-This is the session's main milestone. Blueprint G.5, G.6, G.7, G.9, D.10, D.11
-and the P9 and P10 completion criteria. The tables already exist with their
-constraints: `carts`, `cart_items`, `orders`, `seller_orders`, `order_items`,
-`order_status_events`, `inventory_reservations`, `shipments`.
+- The buyer's order page by a secure link that needs no sign-in (D.14): a
+  signed link over the order id and an expiry, as the document links do
+  (`markx/sellers/service.py`, `issue_document_link`), showing only what the
+  buyer needs and **never the handover code without sign-in**.
+- When a seller declines or expires, suggest the next-best offer for the same
+  variant from the ranked list (C-26): a selector, then a notification
+  template carrying the offer id.
 
-- **Cart** held on the server, for a signed-in buyer or an anonymous token,
-  recording the offer, the quantity and the price the buyer saw.
-- **`place_order`, in one transaction**, exactly as G.5 lists it: re-read every
-  offer with its seller, refuse anything not active, recompute every price,
-  delivery fee and total on the server, hold the stock for each line, write the
-  parent order with its address snapshot, one `seller_orders` row per seller,
-  the `order_items` each with their own copy of the name, price and commission
-  rate, a shipment per seller order, a status event per seller order, and the
-  outbox messages. Nothing the browser sends is trusted.
-- **Use the stock functions that already exist** —
-  `markx.offers.service.hold_stock`, `release_stock` and `commit_stock`. Do not
-  write new stock SQL. Take the holds **in ascending offer id order**, so two
-  orders can never wait on each other, and write one `inventory_reservations`
-  row beside each hold. That table was deliberately left empty for you, because
-  a reservation needs an order item (decision D-030).
-- If any line cannot be held, roll the whole order back and tell the buyer
-  which item ran out.
-- The idempotency key is unique **per buyer**, not globally (decision D-010):
-  the same key sent twice returns the same order.
-- **`seller_respond`:** only a member with the right role, only from the
-  `placed` state; a decline or an expiry releases the stock.
-- The seller order life cycle in G.6 is the only set of moves allowed, and
-  every move writes a status event in the same transaction.
-- The seller's response deadline and the reservation expiry are jobs for the
-  worker you have just built.
+**7. If time remains: search (P8) and CI**
 
-**The concurrency guarantee must survive.** `tests/db/test_inventory.py`
-already proves that 100 simultaneous buyers of the last unit produce exactly
-one hold. Keep that test passing, and add the blueprint's own version of it:
-**100 simultaneous checkouts of the last unit create exactly one order.** Lock
-`offers` and `sellers` rows with `with_for_update(key_share=True)` only
-(decision D-027), and add a contention test for every operation that takes two
-locks.
+- `search_documents` rebuilt by a worker job when an offer's price, stock or
+  status changes, queued through the outbox (a new topic and handler in
+  `markx/worker/outbox.py`). Read blueprint F.7 and D-015 first.
+- `.github/workflows`: the five commands on every push with a PostgreSQL 17
+  service container. Nothing paid.
 
-Every new seller route goes under `/seller/{seller_id}/...` with the existing
-`require_seller` dependency; the isolation sweep in
-`tests/api/test_seller_isolation.py` then covers it automatically. A buyer's
-order must be unreachable by another buyer, and a seller must see only its own
-part of an order, with the buyer's phone number visible only after that seller
-confirms (blueprint C.5).
-
-**7. How to work**
+**8. How to work**
 
 - **Small, verifiable milestones.** Build one thing, test it, commit it, push
   it, and verify the push. Work left only in your own workspace is lost when
   your session ends.
-- **Schema first:** the migration with its constraints, then database tests,
-  then services, then routes.
-- A test for every permission boundary and every integrity rule. Money is whole
-  santim through the `Money` type, never floating point.
+- **Schema first:** if a migration is needed, write it with its constraints
+  first, then database tests, then services, then routes. Migrations are
+  forward-only. P10's second half may need none: `shipments`,
+  `tracking_events`, `fee_charges` and `payment_intents` already exist.
+- A test for every permission boundary and every integrity rule. Money is
+  whole santim through the `Money` type, never floating point.
 - Keep `pytest`, `ruff check`, `ruff format`, `mypy` and `alembic check` green
-  at every commit. Migrations are forward-only.
+  at every commit.
 - **Do not delete or rewrite working code in order to give it a different
   shape.** The layering — models, schemas, service, selectors, router, deps —
   is the blueprint's. If you are certain a departure is better, write the
@@ -536,10 +436,10 @@ confirms (blueprint C.5).
 - Do not repeat market, competitor, legal or regulatory research. The founder
   does that personally.
 
-**8. Boundaries that do not bend**
+**9. Boundaries that do not bend**
 
-- Never touch the founder's existing AWS resources: not the "Copy" server, not
-  the "test" server, not the payment bot. Create no cloud resource, deploy
+- Never touch the founder's existing AWS resources: not the "Copy" server,
+  not the "test" server, not the payment bot. Create no cloud resource, deploy
   nothing, buy nothing, change no DNS.
 - Commit no secret. `.env.example` holds placeholders only.
 - Never merge into `main`, and open no pull request unless the founder asks.
@@ -547,9 +447,9 @@ confirms (blueprint C.5).
 - MarkX never holds customers' money, and a payment is never marked as paid
   from a browser redirect.
 
-**9. Finish with a report and living documents**
+**10. Finish with a report and living documents**
 
-Update `docs/DEVELOPMENT_STATUS.md` so that the fourth engineer can continue
+Update `docs/DEVELOPMENT_STATUS.md` so that the fifth engineer can continue
 from GitHub with no conversation history: what you completed, what is
 incomplete, the real test results with their commands, known problems, every
 migration, the branch and latest commit, and the exact next task. Update
@@ -571,29 +471,35 @@ you own engineering quality.
 | Blueprint phase | State |
 | --- | --- |
 | P1 Project foundation | Partly done. API skeleton, database pipeline, core helpers. No web shell, no CI, no containers |
-| P2 Database and backend foundation | Partly done. Schema, three database roles, error format, request IDs, logs. **No worker, no backups, no alerting** |
+| P2 Database and backend foundation | Mostly done. Schema, three database roles, error format, request IDs, logs, **the worker**. No backups, no alerting beyond the log |
 | P3 Authentication and roles | Done on the API side and tested. Real SMS and bot-check providers still missing |
 | P4 Customer storefront | Not started |
 | P5 Product catalogue | Done on the API side and tested. Image pipeline and seed data missing |
-| **P6 Seller onboarding** | **Done on the API side and tested.** Web screens, share cards, QR code and ownership transfer missing |
-| **P7 Seller listings and inventory** | **Done on the API side and tested.** Seller Telegram bot and the worker that runs the stale job missing |
-| P8 Search onwards | Not started. The tables exist |
+| P6 Seller onboarding | Done on the API side and tested. Web screens, share cards, QR code and ownership transfer missing |
+| P7 Seller listings and inventory | Done on the API side and tested. Seller Telegram bot missing. A staff takedown now holds |
+| P8 Search | Not started. The tables exist |
+| **P9 Cart and checkout** | **Done on the API side and tested**, all five criteria. Web screens missing |
+| **P10 Multi-seller orders** | **First half done and tested**: placement, confirm, decline, expiry, cancellation, the state machine in the database. **Not done:** everything after confirmation, the tracking page, the next-best offer, the bot |
+| P11 onwards | Not started |
 
-**Numbers:** 647 tests pass. 64 database tables. Four migrations, `0001` to
-`0004`. 71 application source files, all strictly typed.
+**Numbers:** 779 tests pass. 65 database tables. Seven migrations,
+`0001` to `0007`. 84 application source files, all strictly typed.
 
 **Written, tested, and called by nothing yet** — the next session's raw
-material: `mark_stale_offers`, `activate_due_payout_accounts`, the `outbox`
-table, the `inventory_reservations` table, and `hold_stock` / `release_stock` /
-`commit_stock`.
+material: `commit_stock`, `derive_numeric_code`, `shipments.code_version`,
+`MAX_HANDOVER_ATTEMPTS`, the `tracking_events` and `fee_charges` tables, and
+the reservation's fulfilment expiry.
 
 **Traps already paid for, so nobody pays twice:** a plain `FOR UPDATE` on an
 offer deadlocks against a stock movement's foreign key (D-027); PostgreSQL's
-`now()` is the transaction's start time, so several rows written together share
-it (D-028); a FastAPI database dependency needs `scope="function"` to commit
-before the response is sent (D-001).
+`now()` is the transaction's start time (D-028); a FastAPI database dependency
+needs `scope="function"` (D-001); a bulk `UPDATE` locks rows in plan order
+(D-033); `INSERT ... ON CONFLICT DO NOTHING` waits behind a row another
+transaction holds (D-035); two correct features can compose into one wrong one
+(D-032).
 
-**Waiting on the founder:** six decisions, F-01 to F-06 in
-`docs/DECISIONS.md`, repeated in full in Part A.6 of this file. Only F-01, a
-private store for identity documents, blocks the launch — and it blocks nothing
-in the next session's work.
+**Waiting on the founder:** seven decisions, F-01 to F-07 in
+`docs/DECISIONS.md`, F-01 to F-06 repeated in full in the second session's
+report (in Git history at `8df958b`, `docs/HANDOFF.md`) and F-07 in Part A.6
+of this file. Only F-01, a private store for identity documents, blocks the
+launch — and it blocks nothing in the next session's work.

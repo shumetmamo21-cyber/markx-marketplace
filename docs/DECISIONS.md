@@ -285,9 +285,9 @@ with one part **Open**.
 - **Photos only** (JPEG, PNG, WebP), as F.6 says. The uploaded file's name
   and declared type are ignored. The picture is decoded and written out
   again at upload, which removes location data and anything hidden in the
-  file. The blueprint gives this job to the worker; there is no worker yet
-  and a document must not sit unchecked in storage, so it happens in the
-  upload request.
+  file. The blueprint gives this job to the worker. A document must not sit
+  unchecked in storage even for a minute, so it happens in the upload
+  request; the worker (built in session three) does not touch documents.
 - **Links** carry an expiry time and a signature over the document, the
   viewer and the expiry. A link works for five minutes. It is not enough to
   hold the link: the same person must be signed in, and must still be
@@ -422,7 +422,8 @@ recently confirmed price.
 `markx/offers/service.py` are the only code that moves reserved stock, and
 each writes its movement. The hold is the blueprint's conditional update. The
 `inventory_reservations` table needs an order item for every row, so
-checkout writes those rows, one beside each hold.
+checkout writes those rows, one beside each hold (done in session three,
+D-037). `commit_stock` is still called by nothing: completion is not built.
 
 ## D-031 Branches
 
@@ -515,6 +516,169 @@ Found by a test: the row must be created in a short transaction of its own,
 and only when missing. `INSERT ... ON CONFLICT DO NOTHING` waits for a row
 another transaction is updating, so creating it inside the run made the
 second worker wait for the whole job instead of skipping it.
+
+## D-036 The cart lives on the server; a visitor's cart is a hashed secret
+
+**Follows** blueprint D.10 (C-06, C-07) with one choice of method. **Accepted.**
+
+Blueprint P9 says the cart is "saved on the phone". The `carts` and
+`cart_items` tables already existed (G.2: "server copy of the cart"), and a
+server cart is what survives a dropped connection and lets the review step
+re-check prices against live data. So the cart is on the server:
+
+- A signed-in buyer has one cart, keyed on their user id.
+- A visitor's cart is found by a 256-bit secret in an `HttpOnly`,
+  `SameSite=Lax` cookie; only the secret's hash is stored, as for sessions.
+  A made-up cookie finds nothing.
+- When a visitor signs in, their lines move into their own cart and the
+  anonymous cart is deleted. A line in both keeps the larger quantity.
+- A line records the price the buyer saw. The cart view compares it with the
+  live price and says what changed; checkout refuses a cart whose seen price
+  differs from the live one until the buyer accepts the change.
+- An offer buyers cannot see on the product page (paused, stale, removed, a
+  seller below the publishing level, an unapproved product) cannot be put in
+  a cart and gives the same "not found" as an id that does not exist.
+- Up to 30 lines and 20 units per line (`MAX_QUANTITY_PER_LINE` is a CHECK).
+
+**Guest checkout.** The blueprint asks for "guest checkout with a phone
+number" and "no account wall". MarkX creates an account at the first phone
+code anyway (D.2), so the order is placed by a signed-in account: the visitor
+fills the cart, is asked for a phone code at checkout, and their cart follows
+them. There is no separate guest order path. The web app owns making that
+feel like one step.
+
+## D-037 How `place_order` works, and what it refuses
+
+**Follows** blueprint G.5 and G.7, with the details the blueprint leaves to
+the engineer. **Accepted.**
+
+- **Locks, in this order and never another:** the buyer's cart row (`FOR
+  UPDATE`; one buyer's submissions run one at a time, so a repeat finds the
+  first order), then the sellers in the cart, then the offers, both in
+  ascending id with `FOR NO KEY UPDATE` (D-027), then the stock rows through
+  `hold_stock`, in ascending offer id. The lines are re-read under those
+  locks, so nothing can change between the check and the write.
+- **Nothing from the browser is used as a number.** The request carries the
+  address, a delivery method per store, the payment method, an idempotency
+  key and `expected_total_santim`. That last one is the total the buyer saw
+  on the review step. It is compared with the recomputed total and the order
+  is refused if they differ (`total_changed`); it is never used. A request
+  with a price field in it is a validation error.
+- **Refusals,** all before any row is written: an empty cart; an address that
+  is not the buyer's own, or whose area or zone is inactive; a line whose
+  offer, seller or product is no longer available; a missing or impossible
+  delivery choice; a cart price that differs from the live price; a wrong
+  total; a store the buyer is a member of (`own_store`: a seller must not
+  confirm its own orders or pad its figures); a total above
+  `orders.max_order_value_santim`; more open orders than
+  `orders.max_open_direct_orders`. One line short of stock refuses the whole
+  order and names the offer; the caller's rollback undoes the holds already
+  taken.
+- **What is written,** in G.5's order: the parent order with the address
+  snapshot and totals; a seller order per seller, the groups in ascending
+  seller id, each with its own item total, delivery fee, total and response
+  deadline; an order item per line with its own copy of the title in both
+  languages, the variant label in both languages, condition, warranty, unit
+  price, line total and commission rate; an `inventory_reservations` row per
+  line expiring at the response deadline; a shipment per seller order with the
+  chosen mode and fee; a payment intent per seller order (direct, pending,
+  reference `MX-XXXXXX-n`); a `placed` status event per seller order; an
+  in-app notification plus outbox row for each seller's order handlers (the
+  roles with `handle_orders`, blueprint C.3) and for the buyer. Then the cart
+  is emptied.
+- **The idempotency key** is unique per buyer (D-010). A repeat returns the
+  first order with status 200 instead of 201 and changes nothing.
+- **Payment.** Only direct payment exists (Release 1, J.1). The intent records
+  how the buyer said they would pay; MarkX holds no money.
+- **After confirmation** the reservation's expiry is pushed to
+  `orders.fulfilment_hold_days` (14) ahead, so the stock stays held while the
+  order is packed and delivered. **Nothing acts on that expiry yet**, because
+  nothing after confirmation is built. The next session decides, when it
+  builds completion, whether an expired fulfilment hold is released by the
+  worker (and the order cancelled), or merely flagged to staff. Both are
+  defensible; the blueprint's "the worker releases expired reservations"
+  (G.9) suggests the former, but releasing stock under a confirmed order the
+  seller may be delivering that day is not obviously right.
+
+## D-038 The life cycle is a database fact; the parent's status is derived
+
+**Follows** blueprint G.6, D.11 and G.8 rule 7. **Accepted.**
+
+`markx/orders/status.py` holds the G.6 diagram, arrow for arrow (21 arrows),
+and the service moves a seller order only through `_move`, which refuses any
+other move and writes the status event in the same transaction. Migration
+`0007` makes the same rules a database fact: `markx_seller_order_move_allowed`
+is the diagram as a SQL function; a trigger refuses a seller order not created
+as `placed` and any update that is not an arrow; a deferred constraint trigger
+refuses, at commit, a seller order whose status has no row in
+`order_status_events`. A test checks the function and the table agree on all
+196 pairs. A future route cannot skip a state or lose an event, whatever it
+does.
+
+The parent order has no status column (D.11: "derived from its seller
+orders"). `derive_order_status` gives: the one status all parts share;
+otherwise `awaiting_seller` while any part is `placed`; `partly_delivered`
+when some parts are handed over and others are still moving; `completed` or
+`cancelled` when every part has ended, by whether anything was handed over;
+`in_progress` for the rest. The names are the engineer's.
+
+## D-039 The response deadline counts business hours in Addis Ababa
+
+**Fills a gap** in blueprint D.11 (C-09 "within the response window").
+**Accepted.**
+
+The settings `orders.response_window_minutes` (30), `orders.business_open_hour`
+(8) and `orders.business_close_hour` (20) existed from session one with the
+note "in business hours". `markx/orders/deadlines.py` applies them: the window
+runs only while shops are open, Addis Ababa time (UTC+3 all year), so an
+order placed at 23:00 is due at 08:30 the next morning, not at 23:30. Opening
+hours that make no sense (close not after open) mean "always open".
+
+`expire_unanswered_orders` runs every minute in the worker, expires `placed`
+seller orders past their deadline, releases their stock, cancels their
+shipment and payment intent, and tells the buyer and the seller. It skips a
+seller order someone is acting on at that instant and takes it next time.
+
+## D-040 The buyer may cancel a part while it is placed or confirmed
+
+**Follows** blueprint G.6 (`placed -> cancelled: Buyer cancels`;
+`confirmed -> cancelled: Buyer or staff cancels`). **Accepted.**
+
+`cancel_by_buyer` acts on one seller order of the buyer's own order, from
+`placed` or `confirmed` only; once the seller has marked it `ready` the buyer
+goes through staff (not built). The stock returns, the shipment and intent are
+cancelled, and the seller's order handlers are told. The reason is optional
+and stored as `closed_reason`.
+
+## D-041 Who sees whose phone number, and when
+
+**Follows** blueprint C.5. **Accepted.**
+
+`contact_visible(status, confirmed)`: both sides see each other's phone only
+after the seller confirmed, and not once the part ended without a handover
+(declined, expired, cancelled). The seller then sees the address snapshot's
+recipient name, phones, landmark, pin and driver notes; the buyer sees the
+seller's contact phone and shop address. Before that the seller sees only the
+zone and area, enough to decide whether it can deliver. A seller's view of an
+order never includes another seller's lines, the buyer's grand total, or the
+identity of a staff member or team member in the event log (events carry a
+role, never a person). The `see_buyer_contact` capability (C.3) gates the
+seller's side as well; Release 1's two roles both hold it.
+
+## D-042 The commission rate is looked up at placement and copied to the line
+
+**Follows** blueprint D.19 and J.8. **Accepted.**
+
+`commission_bps` finds the most specific `commission_rules` row in force at
+placement for the payment kind: seller, then plan, then category, then
+default; the latest `valid_from` wins within a scope. The rate is written to
+`order_items.commission_bps` and never recalculated; the seller's order view
+shows the resulting fee in birr. No rule exists today, so every line carries
+0, which is the blueprint's rule for direct orders in year one: the zero is
+true because no rule was created, not because the code assumes it. No route
+writes `commission_rules` yet (P11, finance staff); a rule can only be
+inserted by hand. The fee is charged when the seller order completes, which
+is not built.
 
 ---
 
@@ -640,6 +804,24 @@ above and this item is removed.
   are live, so it is wanted before the pilot catalogue collects them.
 - **Founder's approval required: yes**, because the rule decides which of a
   seller's listings survives.
+
+### F-07 Who may lift a staff takedown of a listing
+
+- **Today:** any staff member who may take a listing down (super
+  administrator, operations, catalogue) may also lift the hold, with a
+  reason, through `POST /admin/offers/{id}/restore` (D-032). The seller
+  then lists the item again with today's price and stock; nothing is
+  published by the restore itself. A hold never expires on its own.
+- **Recommendation:** keep it as it is for the pilot, and read the audit log
+  for `offer.staff_restore` now and then. Narrow it later (to operations and
+  the super administrator only, or to two different staff members) if a
+  catalogue curator ever lifts a takedown operations made.
+- **Reason:** the three roles that moderate listings are the three that know
+  why a listing came down. A second-approver rule is right for money (C.5)
+  and heavy for a relist.
+- **Blocks:** nothing.
+- **Founder's approval required: no.** It is written here so the founder can
+  overrule it.
 
 ---
 

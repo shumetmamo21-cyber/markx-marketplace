@@ -82,7 +82,14 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
 - **Lock `offers` and `sellers` rows with `with_for_update(key_share=True)`.**
   A plain `FOR UPDATE` deadlocked against stock holds (`docs/DECISIONS.md`,
   D-027). Write a contention test for any operation that takes two locks.
-- **Stock moves only through `markx/offers/service.py`.**
+- **Stock moves only through `markx/offers/service.py`.** A seller order
+  changes status only through `_move` in `markx/orders/service.py`; the
+  database refuses every other move and every move without its event.
+- **Locks are taken in one order:** cart, then sellers, then offers, then
+  seller orders, then stock, each kind in ascending id. See "Orders" in
+  `docs/ARCHITECTURE.md`.
+- **The worker must be running** for stale offers to hide, payout changes to
+  apply and unanswered orders to expire: `uv run python -m markx.worker`.
 
 ## 4. The working branch
 
@@ -97,6 +104,7 @@ See `docs/SETUP.md` for full instructions. In short, from `apps/api`:
 uv sync                 # install the locked dependencies
 uv run pytest           # the whole suite, against a real PostgreSQL
 uv run ruff check .     # lint
+uv run ruff format --check .
 uv run mypy markx       # strict type checks
 uv run alembic check    # models and migrations must not differ
 ```

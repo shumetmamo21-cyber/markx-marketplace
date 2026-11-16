@@ -12,8 +12,8 @@ domain.
 
 | Part | State |
 | --- | --- |
-| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory. Not built: search, cart, orders, payments |
-| PostgreSQL | Schema for all of Release 1 (64 tables), three roles |
+| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, seller orders up to confirmation. Not built: search, the rest of the order life cycle, payments beyond the intent |
+| PostgreSQL | Schema for all of Release 1 (65 tables), three roles |
 | Web app (`apps/web`) | **Does not exist** |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
 | Reverse proxy, containers, CI | **Do not exist** |
@@ -39,16 +39,20 @@ apps/
                             verification levels, members, store, payout account
       offers/               offers, price history, inventory, stock holds,
                             ranking, check-in, product proposals
+      orders/               cart, checkout (place_order), seller orders,
+                            the G.6 state machine, response deadlines
       worker/               the background worker: scheduled jobs, outbox
-      orders/ payments/ trust/ search/ analytics/
+      payments/ trust/ search/ analytics/
                             MODELS ONLY: tables, no behaviour yet
       main.py               the application factory
       registry.py           imports every model for Alembic and tests
     migrations/versions/    forward-only Alembic migrations
     tests/
       unit/                 pure logic, no database
-      db/                   rules the database enforces by itself
+      db/                   rules the database enforces by itself, and
+                            contention tests with many threads
       api/                  HTTP tests through the real application
+      worker/               the worker, driven one pass at a time
 infra/
   postgres/                 bootstrap.sql and bootstrap.sh: roles and database
 docs/
@@ -125,6 +129,34 @@ Blueprint G.9. All of it is in `markx/offers/service.py`.
 - CHECK constraints on `inventory` refuse negative stock and
   `reserved > on_hand` whatever the code does.
 
+## Orders
+
+Blueprint G.5 to G.7. All in `markx/orders/`.
+
+- `status.py` is the G.6 state diagram, arrow for arrow, plus the derived
+  status of a parent order and the contact-visibility rule. `deadlines.py`
+  turns a placement time into a response deadline in Addis Ababa business
+  hours. Both are pure and unit-tested.
+- `service.py` holds the critical operations: the cart, `build_quote`,
+  `place_order`, `seller_respond`, `cancel_by_buyer`,
+  `expire_unanswered_orders`. **A seller order changes status only through
+  `_move`**, which refuses any move that is not an arrow and writes the
+  status event in the same transaction. Migration `0007` makes the database
+  refuse the same things, so a route cannot get round it.
+- **Locks are taken in one order, each kind in ascending id:** the buyer's
+  cart, then sellers, then offers, then seller orders, then stock through
+  `hold_stock`. Sellers, offers and seller orders are locked with
+  `with_for_update(key_share=True)` (D-027). Reservations are locked `FOR
+  UPDATE` when released, so stock is given back at most once.
+- Who sees what: a buyer's order is found only together with the buyer's
+  id; a seller order only together with its seller's id, and it shows only
+  that seller's lines (`selectors.py`). Phone numbers appear after the
+  seller confirms and vanish if the part ends undelivered.
+- Tests: `tests/unit/test_order_rules.py`, `tests/api/test_cart.py`,
+  `tests/api/test_checkout.py`, and `tests/db/test_checkout_contention.py`
+  for the races (100 checkouts of the last unit, and every pair of
+  operations that share locks).
+
 ## Private files
 
 Identity and licence photos go through `PrivateStorage`
@@ -159,7 +191,8 @@ D-034 and D-035 record the guarantees and the one limit.
   `markx_readonly` reads business data and cannot read credential tables.
 - **Money** is whole santim in `bigint` columns. **Time** is UTC. **Keys** are
   UUID version 7.
-- **Statuses** are text with CHECK constraints.
+- **Statuses** are text with CHECK constraints. Seller order moves are also
+  checked by a trigger against the G.6 diagram (migration `0007`).
 - **History tables only grow**: `audit_log`, `order_status_events`,
   `offer_price_history`, `inventory_movements`, `tracking_events`,
   `ledger_transactions`, `ledger_entries`.

@@ -1,7 +1,7 @@
 # Setup
 
 How to run and test MarkX on a laptop. Every command here was run on
-16 November 2026, again by the second engineering session. Only the API exists so far; there is no web app to start.
+16 November 2026, again by the third engineering session. Only the API exists so far; there is no web app to start.
 
 Nothing here touches AWS or any paid service.
 
@@ -63,9 +63,9 @@ uv run alembic check         # models and migrations must not differ
 `alembic check` and `alembic upgrade head` use the `markx` database from
 steps 2 and 3. They do not use the test database.
 
-The whole suite takes about four minutes. The tests in
-`tests/db/test_inventory.py` start up to 100 threads against the database on
-purpose.
+The whole suite takes about five minutes. The tests in
+`tests/db/test_inventory.py` and `tests/db/test_checkout_contention.py` start
+up to 100 threads against the database on purpose.
 
 The tests use their own database, `markx_test`. Each run drops it, bootstraps
 it and applies every migration from empty, so the tests need the same
@@ -151,6 +151,17 @@ sign in as that number, and follow `/seller/applications`,
 `/seller/{seller_id}/documents`, `/seller/{seller_id}/payout-account` and
 `/seller/{seller_id}/submit`. Uploaded photos are kept under
 `MARKX_STORAGE_DIR/private`.
+
+### Place an order by hand
+
+With a trading seller and an offer (above): sign in as a buyer by phone code,
+save an address at `/me/addresses` (it needs a delivery area, which staff
+create at `/admin/delivery/zones`), then `PUT /cart/items/{offer_id}`,
+`POST /checkout/quote` and `POST /checkout` with the quoted
+`grand_total_santim` and a fresh `idempotency_key`. The seller answers at
+`/seller/{seller_id}/orders/{seller_order_id}/confirm` or `/decline`. With
+the worker running, an unanswered order expires half an hour of business
+time later.
 
 ## Configuration
 
