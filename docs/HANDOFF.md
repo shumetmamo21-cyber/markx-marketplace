@@ -24,7 +24,7 @@ what the tests actually printed.
 | --- | --- |
 | Repository | `shumetmamo21-cyber/markx-marketplace` |
 | Working branch | `claude/project-scaffold` |
-| Latest commit | `git log -1` shows it; the commit message starts "Finish the order life cycle" |
+| Latest code commit | `6582017` (the tracking page), after `7c492c6` (the order life cycle). This file's own correction commit is the one after it; `git log -1` shows the head |
 | `main` | `617a276`, the initial commit. **Untouched. Nothing was merged into it.** |
 
 Everything is committed and pushed. The third session ended at `eb52d2f`.
@@ -222,9 +222,10 @@ you. Continue the project from its existing state; do not rebuild it.
 - Repository: `shumetmamo21-cyber/markx-marketplace`
 - Working branch: **`claude/project-scaffold`**. Never start from `main`, and
   never merge anything into `main`.
-- Verify the real remote head yourself before you begin (`git log -1
-  origin/claude/project-scaffold`). The fourth session's commit message
-  starts "Finish the order life cycle".
+- The fourth session's code commits are `7c492c6` (the order life cycle)
+  and `6582017` (the tracking page), followed by one documentation commit.
+  Verify the real remote head yourself before you begin (`git log -1
+  origin/claude/project-scaffold`).
 
 **2. Read these first, in this order**
 
