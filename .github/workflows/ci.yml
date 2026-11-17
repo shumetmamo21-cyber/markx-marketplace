@@ -1,0 +1,65 @@
+# The checks every change must pass (blueprint P1; docs/SETUP.md). Runs on
+# GitHub's free hosted runners; nothing here is deployed or paid for.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (lint, types, migrations, tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # A throwaway database inside the runner; the same development-only
+          # password as docs/SETUP.md. Not a secret.
+          POSTGRES_PASSWORD: postgres_dev_only
+          POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: postgres_dev_only
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install the locked dependencies
+        run: uv sync --locked
+      - name: Create the MarkX roles and database
+        run: ../../infra/postgres/bootstrap.sh markx
+      - name: Lint
+        run: uv run ruff check .
+      - name: Formatting
+        run: uv run ruff format --check .
+      - name: Strict type checks
+        run: uv run mypy markx
+      - name: Migrations apply and match the models
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+      - name: Tests (one session; they share one test database)
+        run: uv run pytest -q -p no:cacheprovider
