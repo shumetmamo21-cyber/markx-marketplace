@@ -1679,6 +1679,41 @@ capability the API checks (`menu.ts`, tested per role in `menu.test.ts`):
   (D-070). The seller entry opens the first screen the member's role allows,
   not always Orders.
 
+## D-073 The performance page and the weekly seller message: numbers, once a week, never twice
+
+**Follows** blueprint D.4 ("performance is shown in numbers, not
+adjectives"), S-17, S-26, K.5 ("a weekly performance message showing the
+orders MarkX brought") and P11. **Accepted.** Migration `0012`.
+
+- **The figures** (`markx/performance/service.py`), for one store and one
+  period: orders received (placed in the period) and what became of them
+  (confirmed, declined, left unanswered, cancelled by the buyer), the share
+  confirmed and the median minutes to confirm; what happened in the period
+  from the status events (delivered, failed deliveries and the share
+  delivered, completed and their value, problems reported, refunds); new
+  published reviews and their average; the store's rating totals; and the
+  offers that need attention (active, prices to confirm, low stock). No
+  buyer is named.
+- **The performance page** (S-17): `GET /seller/{seller_id}/performance?days=N`
+  (1 to 90, default 30), for every member of the store (C.3).
+- **The weekly message** (S-26): the hourly `sellers.weekly_report` job
+  finds the last complete week, Monday to Sunday in Addis Ababa time, and
+  for every trading store that existed during it and has no report yet,
+  stores the figures in `seller_weekly_reports` (one row per store and
+  week: a second run sends nothing) and tells the store's members
+  (`seller.weekly_report`, with the week, the orders received, completed
+  and their value). A suspended or closed store gets none. It is switched
+  by `sellers.weekly_report_enabled`. Up to 200 stores per run; the next
+  run continues. Past weeks: `GET /seller/{seller_id}/weekly-reports`.
+- The message reaches a store's members through the notification list now,
+  and through Telegram once the bot exists (D-034); its wording is the web
+  app's and the bot's, in both languages.
+- **Correction:** earlier status notes listed a `seller_metrics_daily`
+  table. No such table exists in the schema; the figures are computed from
+  the orders, events and reviews when asked, which is fast enough at
+  Release 1's volumes. A daily metrics table that drives ranking and trust
+  level (D.21) is for later.
+
 ---
 
 ## Decisions that need the founder

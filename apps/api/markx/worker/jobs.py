@@ -24,6 +24,7 @@ from markx.core.db import session_scope
 from markx.offers import service as offers
 from markx.ops import service as ops
 from markx.orders import service as orders
+from markx.performance import service as performance
 from markx.reviews import service as reviews
 from markx.search import service as search
 from markx.sellers import service as sellers
@@ -82,6 +83,9 @@ JOBS: tuple[Job, ...] = (
     ),
     # The safety net behind the queued rebuilds, and the first fill (D-051).
     Job("search.rebuild_all", timedelta(hours=1), lambda db, now: search.rebuild_all(db)),
+    # The weekly performance message (S-26; D-069): hourly, so it goes out
+    # within the hour after a week ends; one row per store and week.
+    Job("sellers.weekly_report", timedelta(hours=1), performance.send_weekly_reports),
     # The safety net behind the queued rating recounts (D-066).
     Job("reviews.recount_all", timedelta(days=1), lambda db, now: reviews.recount_all(db)),
     # Last, so they see what the jobs above just did (F.12; D-064); the watch
