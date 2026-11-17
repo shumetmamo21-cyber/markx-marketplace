@@ -14,7 +14,7 @@ domain.
 | --- | --- |
 | API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search, pictures, monitoring, the admin back end, reviews, reports, exports. Not built: Release 2 payments |
 | PostgreSQL | Schema for all of Release 1 (68 tables), three roles |
-| Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey, the seller dashboard's orders and offers, and a screen for every admin route (D-070, D-071). Not built: reviews and report links for buyers, pictures on product pages, problem photos, the seller's application and "add an offer" screens |
+| Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the whole seller dashboard from the application to performance (D-075), and a screen for every admin route (D-070, D-071). Not built: product proposals from a seller, closing a shop, a map pin |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
 | Containers, CI | Built: a Compose file for a laptop (D-058) and CI on every push. **The reverse proxy and any deployment do not exist** |
 
@@ -92,6 +92,22 @@ and fails if one lacks words. Every staff form is in
 `apiErrorText`; uploads go through `sendForm` in `src/lib/api/browser.ts`.
 `menu.test.ts` fixes the exact screens of each staff role. The web app
 decides nothing (D-070, D-071).
+
+## The seller dashboard on the web
+
+`apps/web/src/app/[lang]/seller/[sellerId]/`. The layout checks only that
+the person is a member of this shop (to spare a stranger a page of
+refusals); the API's `require_seller` decides every call. `menu.ts` holds
+the screens with the capability that opens each (blueprint C.3), from the
+membership's `capabilities` on `/me`; `primary` screens also sit in the
+phone's bottom bar, and `sellerLanding` picks where `/seller` sends a
+member. `menu.test.ts` fixes the screens of each of the five roles. The
+forms are in `src/components/seller/SellerForms.tsx`; photos and documents
+upload through `sendForm`. Where a page must know whether a person may act
+on something, the API says so in the response (`can_edit`, `can_reply` on
+reviews, D-072; `can_cancel` and the rest on orders) rather than the page
+repeating the rule. A default the form shows is read from the API's own
+description on the server (the low-stock warning, D-075).
 
 ## The layers in every module
 

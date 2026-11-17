@@ -2,8 +2,8 @@
 
 **Written:** 17 November 2026, during the sixth AI engineering session, and
 kept current at each pushed milestone; Parts A.00 and A.0 were added by the
-two back-end-only sessions that followed, and Part A.000 by the ninth
-session (the web app's owner, resuming).
+two back-end-only sessions that followed, Part A.000 by the ninth session
+and Part A.0000 by the tenth (both the web app's owner).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -12,6 +12,63 @@ session (the web app's owner, resuming).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000 — The tenth session: the buyer's and the seller's screens (17 November 2026)
+
+The web app's owner, on the founder's request to continue with the buyer and
+seller screens. Built on `09a55b0` in three pushed stages, each tested
+before it was pushed:
+
+1. **Reviews and report links** (`b2e11ce`, D-072). Product and shop pages
+   show the rating totals and published reviews; the buyer rates an item on
+   the order page and keeps their reviews on `/reviews`; the shop replies
+   on its Reviews screen; a report link sits on every product, listing,
+   shop and review, for anyone. The API now says who may act on a review
+   (`MyReviewOut.can_edit`, `can_reply`, two new API tests), so no rule is
+   copied into the page. The seller menu follows the member's capabilities.
+2. **Pictures** (`1920e55`, D-074; its title says D-073, see below). The
+   product card shows the first ready catalogue thumbnail
+   (`ProductCardOut.thumb_url`, both sides, one new API test); the product
+   page shows the pictures and the shops' own photos; a shop adds and
+   withdraws real photos of what it sells; the buyer, the shop and staff see
+   a problem's evidence photos, the buyer and the shop add theirs and the
+   buyer adds messages while it is open.
+3. **The rest of the seller dashboard** (`ae10c83`, D-075; no API change):
+   the overview (application state, what is missing, send for review), the
+   performance page over the parallel session's new routes, add an offer
+   from the catalogue, store settings, team, documents, legal details,
+   payout account, and the application form on `/seller`.
+
+**A parallel back-end session pushed meanwhile** (`891ac71`, `d60bc25`: the
+seller performance figures and the weekly seller message, migration `0012`,
+D-073). The push was refused, nothing was forced: the branch was merged
+(`d015261`), the decision-log clash resolved by keeping both and
+renumbering this session's pictures decision to **D-074** (the title of the
+already-pushed `1920e55` still says D-073; history was not rewritten).
+
+**What the browser journeys found** (all fixed): "1 reviews" (now "1
+review"); a review form that would have been offered after the shop
+replied (fixed in the API, `can_edit`); the journeys themselves read a
+cached copy of the picture list, mistook Next.js's route announcer for a
+refusal, were not repeatable (an earlier run's review matched), and could
+be blocked by an interrupted run's open problem or by a demo shop's offer
+undercutting the demo prices; all now handled. The staff authenticator code
+is refused when reused within 30 seconds (replay protection, by design);
+the journeys retry once. Session nine's `admin-queues.mjs` could take down
+one listing and relist another (the page's order is not the API's ranking);
+it now takes down exactly the listing it relists.
+
+**Final checks:** see `docs/DEVELOPMENT_STATUS.md`, "Tests executed",
+tenth session.
+
+**Still to build on the web:** product proposals from a seller, closing a
+shop, a map pin; and, once the API carries them, account settings and
+saved addresses, ratings on the product card, Amharic setting descriptions.
+The Amharic text of this session is AI-drafted and needs a native speaker.
+
+**Waiting on the founder:** unchanged — F-01 to F-08 in `docs/DECISIONS.md`.
 
 ---
 
@@ -326,7 +383,7 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-073; D-043, D-050, D-053 and parts of D-062 to D-067 are
+(D-001 to D-075; D-043, D-050, D-053 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
@@ -338,13 +395,13 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 943 passed, ten to twelve minutes
+uv run pytest                  # expect 944 passed, twelve to fourteen minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json
 uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
 cd ../web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
-# expect 21 web unit tests
+# expect 29 web unit tests
 ```
 
 **Never start a second test run while one is going**: both use
@@ -355,26 +412,30 @@ latest GitHub Actions run for the branch passed.
 laptop only), `uv run uvicorn markx.main:app --port 8000`, and in
 `apps/web` `npm run dev`; open `http://localhost:3000`. Sign-in codes are in
 `GET /api/v1/dev/sms-inbox?phone=...`. `node e2e/buyer-journey.mjs` replays
-the buyer's journey; `MARKX_DEMO_TOTP_SECRET=... node e2e/admin-queues.mjs`
-replays every admin screen (the secret is the one `seed_demo` printed; it
-signs each demo phone in once, and the API allows five codes per phone per
-hour).
+the buyer's journey; with `MARKX_DEMO_TOTP_SECRET=...` (the secret
+`seed_demo` printed), `node e2e/admin-queues.mjs` replays every admin
+screen, `node e2e/shop-screens.mjs` the buyer's reviews, reports, pictures
+and problem evidence with the shop's side, and `node e2e/seller-dashboard.mjs`
+a new shop from its application to its first offer. Each signs a demo phone
+in once per run; the API allows five codes per phone per clock hour.
 
 **5. Task (the web app's owner):** first pick up any API additions made
-since the ninth session: `cd apps/api && uv run python -m
+since the tenth session: `cd apps/api && uv run python -m
 scripts.export_openapi ../web/src/lib/api/openapi.json`, then `cd ../web &&
-npm run gen:api` (D-061; it was current at the ninth session's last commit).
-Then the screens, in the order "The exact next task" in
-`docs/DEVELOPMENT_STATUS.md` gives. **Every admin screen the API supports is
-done** (D-070, D-071). Next: reviews and report links for buyers; pictures
-on product pages and in the seller's offers; problem photos on the order
-pages and in the orders desk; the rest of the seller dashboard. Any new
-admin route gets its line in `apps/web/src/app/[lang]/admin/(desk)/menu.ts`
-and `menu.test.ts`, and a step in `e2e/admin-queues.mjs`. The API enforces every role and seller boundary;
-the web app only shows what it returns and sends the member's choices.
-Every text in both message files; client components receive only the
-message sections they use. Test at 360 pixels. Extend
-`e2e/buyer-journey.mjs` with staff steps.
+npm run gen:api` (D-061; it was current at the tenth session's last commit).
+Then the list in "The exact next task" in `docs/DEVELOPMENT_STATUS.md`.
+**Every buyer, seller and admin screen the API supports is built** (D-070 to
+D-075) except product proposals from a seller, closing a shop and a map
+pin. Any new admin route gets its line in
+`apps/web/src/app/[lang]/admin/(desk)/menu.ts` and `menu.test.ts` and a step
+in `e2e/admin-queues.mjs`; a seller screen the same in
+`apps/web/src/app/[lang]/seller/[sellerId]/menu.ts` and
+`e2e/seller-dashboard.mjs`. Where the API does not say what a person may do
+with something, add a `can_*` field on both sides rather than copying the
+rule into the page (D-072). The API enforces every role and seller
+boundary; the web app only shows what it returns and sends the member's
+choices. Every text in both message files; client components receive only
+the message sections they use. Test at 360 pixels.
 
 **5b. Task (a back-end-only session):** the back-end list in "The exact
 next task". Do not modify `apps/web`; add routes and schemas only, never

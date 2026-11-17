@@ -334,9 +334,20 @@ node e2e/buyer-journey.mjs     # the buyer's whole journey and the shop's side
 MARKX_DEMO_TOTP=123456 node e2e/staff-journey.mjs     # a problem decided by staff
 MARKX_DEMO_TOTP_SECRET=SECRET node e2e/admin-queues.mjs  # proposals, invitations,
                                # takedowns, the audit trail, a curator's own menu
+MARKX_DEMO_TOTP_SECRET=SECRET node e2e/shop-screens.mjs  # reviews, reports, pictures,
+                               # problem evidence; staff steps need the secret
+MARKX_DEMO_TOTP_SECRET=SECRET node e2e/seller-dashboard.mjs  # a new shop from its
+                               # application to its first offer
 ```
 
 `staff-journey.mjs` wants the current six-digit code from the demo staff
-authenticator; `admin-queues.mjs` wants the authenticator secret that
-`seed_demo` printed and computes the code itself. Each prints one line per
-step and ends with "console errors: none".
+authenticator; the others want the authenticator secret that `seed_demo`
+printed and compute the code themselves (a code works once: two staff
+sign-ins inside 30 seconds make the second wait for the next code). The
+journeys run `uv run python -m markx.worker --once` from `apps/api` where a
+step needs the worker (pictures, rating totals). Each prints one line per
+step and ends with "console errors: none". They sign demo phones in by code,
+and the API allows five codes per phone per clock hour; a refused code
+(`rate_limited`) means waiting for the next hour. Give a folder as the last
+argument to keep screenshots (`seller-dashboard.mjs` also keeps one of every
+page when a step fails).

@@ -55,14 +55,30 @@ async function signInByCode(page, phone) {
   return call;
 }
 
+// True while staff sign in: a code already used in this 30-second step (by an
+// earlier run) is refused once as a replay, and the next code is tried.
+let signingIn = false;
+
 async function staffSignIn(page, phone, password, secret, landing) {
   await page.goto(`${BASE}/en/admin`);
   await page.waitForURL(/\/en\/admin\/sign-in$/);
   await page.fill('input[name=phone]', phone);
   await page.fill('input[name=password]', password);
-  await page.fill('input[name=totp]', totp(secret));
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL(landing);
+  signingIn = true;
+  for (let attempt = 1; ; attempt++) {
+    await page.fill('input[name=totp]', totp(secret));
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    // The form's own refusal, not Next.js's route announcer (also an alert).
+    const refusal = page.locator('form [role=alert]');
+    const outcome = await Promise.race([
+      page.waitForURL(landing).then(() => 'in'),
+      refusal.waitFor().then(() => 'refused'),
+    ]);
+    if (outcome === 'in') break;
+    expect(attempt < 2, `staff sign-in refused: ${await refusal.innerText()}`);
+    await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 1_000);
+  }
+  signingIn = false;
 }
 
 async function menu(page) {
@@ -95,6 +111,7 @@ function expect(condition, message) {
   const watch = (page, who) => page.on('console', (m) => {
     if (m.type() !== 'error' || /_rsc=/.test(m.text())) return;
     if (refusalExpected && /status of 422/.test(m.text())) return;
+    if (signingIn && /status of 401/.test(m.text())) return;
     errors.push(`${who}: ${m.text().slice(0, 140)}`);
   });
   const run = Date.now() % 1_000_000;
@@ -176,8 +193,9 @@ function expect(condition, message) {
   const target = (await asStaff('GET', '/api/v1/catalog/products/xiaomi-redmi-13c/offers')).body.offers[0];
   expect(target, 'a live demo offer to take down');
   await staff.goto(`${BASE}/en/admin/listings?product=xiaomi-redmi-13c`);
-  const live = staff.locator('main section').first().locator('li').first();
-  const store = (await live.locator('p').first().innerText()).split(' · ')[0];
+  // The very offer the shop relists below: the page's order need not be the API's ranking.
+  const live = staff.locator('main section').first().locator('li', { hasText: target.store_name }).first();
+  const store = target.store_name;
   await live.locator('input[name=reason]').fill('Reported as a counterfeit; checking the invoice.');
   await live.getByRole('button', { name: 'Take down' }).click();
   const heldRow = staff.locator('main section').nth(1).locator('li', { hasText: store });
