@@ -1048,6 +1048,63 @@ repository, and the 85% target has not been measured.** Real queries belong
 in `search_eval/golden_queries.csv` once the founder collects them; they
 carry no personal data by construction.
 
+## D-055 The web app: one Next.js app, server-rendered, holding no business rule
+
+**Follows** blueprint F.1, F.5, F.16, F.17 and I. **Accepted.**
+
+`apps/web` is one Next.js app (16.4.6, React 19.3.1, TypeScript 5.9.3 in
+strict mode, Tailwind CSS 4.3.5, ESLint 10 with Next's configuration,
+Vitest 5.1.0), versions read from the npm registry on 17 November 2026.
+TypeScript 5.9.3 rather than 7.0.2 because `openapi-typescript` declares
+support for TypeScript 5 only.
+
+- **Languages in the address.** Every page is under `/am` or `/en`;
+  `src/proxy.ts` sends any other address to the language chosen last
+  (cookie `markx_lang`) or Amharic. Text lives in `messages/am.json` and
+  `messages/en.json`; a unit test fails if their keys or placeholders differ.
+  The Amharic was drafted by an AI agent and needs a native editor (I.3).
+- **Route groups.** `(shop)` holds the storefront; the seller and admin
+  dashboards get their own groups under the same languages.
+- **Reads on the server, never cached.** Pages are server components that
+  call the API directly (`MARKX_API_ORIGIN`, default `http://127.0.0.1:8000`)
+  with the visitor's cookies and `cache: "no-store"`. Cache Components is
+  off. A price is never served from a cache; edge caching of public pages
+  (F.1, 60 seconds) is a deployment decision for later.
+- **Actions in the browser, same origin.** Changes (cart, sign-in, checkout,
+  seller actions) are sent from the browser to `/api/v1/...` on the page's
+  own origin; `next.config.ts` rewrites `/api/*` to the API in development,
+  and the reverse proxy does it in production (F.5). So the API's own
+  `HttpOnly` session cookie, CSRF token and origin check work unchanged.
+  `src/lib/api/browser.ts` adds `X-MarkX-Client` and `X-CSRF-Token`.
+- **Works before script.** Search, filters, paging, the variant choice and
+  the delivery-area choice are plain links and GET forms. Actions that change
+  data need script today; doing them as server actions so they work without
+  it is a later step.
+- **Types from the API.** `scripts/export_openapi.py` writes the API's
+  OpenAPI description to `apps/web/src/lib/api/openapi.json`;
+  `openapi-typescript` generates `schema.d.ts`; `openapi-fetch` uses it.
+  CI fails if either copy is stale.
+- **Design tokens** from I.3 are the Tailwind theme in `src/app/globals.css`:
+  Ink, Paper, Adey, Highland (verified and protected only), Clay, Slate,
+  Line; system fonts; 12-pixel cards; the tibeb line on the header and footer.
+- **Page weight (F.1).** Measured on the production build on 17 November
+  2026: about 138 to 142 KB of JavaScript transferred, compressed, on the
+  home, search and product pages. That is the baseline the blueprint asks
+  the first milestone to record; the budget is the baseline plus at most
+  30 KB of page-specific script. No automated check yet.
+
+## D-056 Demo data for a laptop, created through the real API
+
+**Accepted.** `apps/api/scripts/seed_demo.py` (`uv run python -m
+scripts.seed_demo`) fills a local database with a demo catalogue (five
+phones), three delivery zones, three approved demo shops with offers, and a
+demo buyer, all through the API in-process, so every rule, audit row and
+search document is produced by production code. It refuses to run unless
+`MARKX_ENV` is `local`, and does nothing if its staff account exists. The
+shops, people, numbers and prices are made up and say so; none of it may be
+loaded into staging or production. It prints the demo staff password and
+authenticator secret for that laptop only.
+
 ---
 
 ## Decisions that need the founder

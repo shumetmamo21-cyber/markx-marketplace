@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "title": "ማርክኤክስ — ዋጋ ያወዳድሩ፣ ከታመኑ ሱቆች ይግዙ",
+    "description": "ከተረጋገጡ የአዲስ አበባ ሱቆች የስልክና የኤሌክትሮኒክስ ዋጋዎችን ያወዳድሩ። እስከ ደጃፍዎ ያለውን ጠቅላላ ዋጋ ይዩ፤ ዕቃውን ፈትሸው ይክፈሉ።"
+  },
+  "brand": {
+    "wordmark": "ማርክኤክስ",
+    "tagline": "ታማኝ የዋጋ ሰሌዳ"
+  },
+  "nav": {
+    "home": "መነሻ",
+    "categories": "ምድቦች",
+    "cart": "ጋሪ",
+    "orders": "ትዕዛዞች",
+    "account": "መለያ",
+    "signIn": "ግባ",
+    "language": "English",
+    "languageLabel": "ወደ እንግሊዝኛ ቀይር",
+    "skip": "ወደ ይዘቱ ዝለል",
+    "sell": "በማርክኤክስ ይሽጡ"
+  },
+  "search": {
+    "label": "ምርቶችን ይፈልጉ",
+    "placeholder": "ስልክ፣ ብራንድ ወይም ሞዴል ይፈልጉ…",
+    "submit": "ፈልግ",
+    "results": "ለ“{query}” {count} ምርቶች",
+    "resultsAll": "{count} ምርቶች",
+    "noResults": "ለ“{query}” ምንም አልተገኘም።",
+    "didYouMean": "ይህን ማለትዎ ነው?",
+    "tryAgain": "ፊደሉን ያረጋግጡ፣ ጥቂት ቃላት ይሞክሩ ወይም ምድብ ይመልከቱ።",
+    "filters": "ማጣሪያዎች",
+    "apply": "ተግብር",
+    "clear": "ማጣሪያዎችን አጥፋ",
+    "category": "ምድብ",
+    "anyCategory": "ሁሉም ምድቦች",
+    "condition": "ሁኔታ",
+    "anyCondition": "ማንኛውም ሁኔታ",
+    "maxPrice": "ከፍተኛ ዋጋ (ብር)",
+    "inStock": "በክምችት ያሉ ብቻ",
+    "sort": "ደርድር",
+    "sortRelevance": "በተሻለ ተዛማጅነት",
+    "sortPrice": "በዝቅተኛ ዋጋ",
+    "sortFreshness": "በአዲስ ዋጋ",
+    "previous": "ቀዳሚ",
+    "next": "ቀጣይ",
+    "requestTitle": "አላገኙትም? ይጠይቁን",
+    "requestBody": "የሚፈልጉትን ይንገሩን። የካታሎግ ቡድናችን እያንዳንዱን ጥያቄ ያነባል።",
+    "requestNote": "ዝርዝር (አማራጭ)",
+    "requestPhone": "መልስ ከፈለጉ ስልክዎ (አማራጭ)",
+    "requestSend": "ጥያቄ ላክ",
+    "requestSent": "እናመሰግናለን። ጥያቄዎ ተልኳል።",
+    "requestFailed": "መላክ አልቻልንም። ስልክ ቁጥሩን አረጋግጠው እንደገና ይሞክሩ።"
+  },
+  "card": {
+    "from": "ከ{price} ጀምሮ",
+    "outOfStock": "በክምችት የለም",
+    "sellerCount": "{count} ሻጮች",
+    "sellerOne": "1 ሻጭ",
+    "level": "ደረጃ {level} ሻጭ",
+    "fresh": "ዋጋዎቹ በቅርቡ ተረጋግጠዋል",
+    "stale": "ዋጋዎቹ በቅርቡ አልተረጋገጡም"
+  },
+  "condition": {
+    "new": "አዲስ",
+    "used": "ያገለገለ",
+    "refurbished": "የታደሰ"
+  },
+  "home": {
+    "heading": "ከታመኑ ሱቆች ዋጋ ያወዳድሩ",
+    "lead": "አንድ ምርት፣ የሁሉም ሱቆች ዋጋ፣ የማድረሻ ክፍያ ተደምሮ።",
+    "categories": "ምድቦች",
+    "popular": "ተፈላጊ ምርቶች",
+    "protectionTitle": "በልበ ሙሉነት ይግዙ",
+    "protection1": "እያንዳንዱ ሱቅ ከመሸጡ በፊት በማርክኤክስ ይረጋገጣል።",
+    "protection2": "ከማዘዝዎ በፊት ማድረሻን ጨምሮ ጠቅላላውን ዋጋ ይዩ።",
+    "protection3": "ዕቃውን ፈትሸው ይክፈሉ፤ ኮድዎን የሚሰጡት ዕቃው ትክክል ሲሆን ብቻ ነው።"
+  },
+  "product": {
+    "specs": "ዝርዝር መግለጫ",
+    "variant": "ዓይነት ይምረጡ",
+    "offersTitle": "ቅናሾችን ያወዳድሩ",
+    "offersCount": "{count} ቅናሾች",
+    "noOffers": "አሁን ይህን ዓይነት የሚሸጥ ሱቅ የለም።",
+    "zone": "የሚደርስበት",
+    "zoneAny": "ማድረሻን ለማየት አካባቢዎን ይምረጡ",
+    "zoneApply": "ጠቅላላውን አሳይ",
+    "seller": "ሱቅ",
+    "price": "ዋጋ",
+    "delivery": "ማድረሻ",
+    "total": "ጠቅላላ",
+    "warranty": "ዋስትና",
+    "warrantyMonths": "{months} ወር",
+    "noWarranty": "ዋስትና የለውም",
+    "confirmed": "ዋጋው {ago} ተረጋግጧል",
+    "collection": "ከሱቁ ይውሰዱ",
+    "freeCollection": "ከሱቁ መውሰድ ብቻ",
+    "best": "ምርጥ ቅናሽ",
+    "bestReasonTotal": "ማድረሻን ጨምሮ ዝቅተኛው",
+    "bestReasonPrice": "ዝቅተኛው ዋጋ",
+    "addToCart": "ወደ ጋሪ ጨምር",
+    "adding": "በመጨመር ላይ…",
+    "added": "ወደ ጋሪዎ ተጨምሯል",
+    "addFailed": "ይህን ቅናሽ መጨመር አልተቻለም። ገጹን አድሰው እንደገና ይሞክሩ።",
+    "outOfStock": "በክምችት የለም",
+    "inspect": "ዕቃውን ፈትሸው ይክፈሉ። የማስረከቢያ ኮድዎን የሚሰጡት ዕቃው ትክክል ሲሆን ብቻ ነው።"
+  },
+  "footer": {
+    "about": "ማርክኤክስ በአዲስ አበባ ካሉ የተረጋገጡ ሱቆች ዋጋዎችን ያወዳድራል። ማርክኤክስ ገንዘብዎን አይይዝም።",
+    "demo": "የልማት ስሪት"
+  },
+  "errors": {
+    "notFound": "ያንን ገጽ ማግኘት አልቻልንም።",
+    "goHome": "ወደ መነሻ ገጽ ይሂዱ",
+    "generic": "በእኛ በኩል ችግር ተፈጥሯል። እባክዎ እንደገና ይሞክሩ።"
+  }
+}

@@ -63,3 +63,36 @@ jobs:
           uv run alembic check
       - name: Tests (one session; they share one test database)
         run: uv run pytest -q -p no:cacheprovider
+      - name: The web app's copy of the API description is current
+        run: |
+          uv run python -m scripts.export_openapi /tmp/openapi.json
+          diff -u ../web/src/lib/api/openapi.json /tmp/openapi.json
+
+  web:
+    name: Web app (lint, types, unit tests, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install the locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Generated API types match the API description
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/lib/api/schema.d.ts
+      - name: Lint
+        run: npm run lint
+      - name: Strict type checks
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build

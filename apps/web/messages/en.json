@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "title": "MarkX — compare prices, buy from trusted shops",
+    "description": "Compare phone and electronics prices from verified Addis Ababa shops. See the total to your door and pay after you inspect."
+  },
+  "brand": {
+    "wordmark": "MarkX",
+    "tagline": "The honest price board"
+  },
+  "nav": {
+    "home": "Home",
+    "categories": "Categories",
+    "cart": "Cart",
+    "orders": "Orders",
+    "account": "Account",
+    "signIn": "Sign in",
+    "language": "አማርኛ",
+    "languageLabel": "Switch to Amharic",
+    "skip": "Skip to content",
+    "sell": "Sell on MarkX"
+  },
+  "search": {
+    "label": "Search products",
+    "placeholder": "Search phones, brands, models…",
+    "submit": "Search",
+    "results": "{count} products for “{query}”",
+    "resultsAll": "{count} products",
+    "noResults": "Nothing found for “{query}”.",
+    "didYouMean": "Did you mean",
+    "tryAgain": "Check the spelling, try fewer words, or browse a category.",
+    "filters": "Filters",
+    "apply": "Apply",
+    "clear": "Clear filters",
+    "category": "Category",
+    "anyCategory": "Any category",
+    "condition": "Condition",
+    "anyCondition": "Any condition",
+    "maxPrice": "Highest price (birr)",
+    "inStock": "In stock only",
+    "sort": "Sort by",
+    "sortRelevance": "Best match",
+    "sortPrice": "Lowest price",
+    "sortFreshness": "Newest prices",
+    "previous": "Previous",
+    "next": "Next",
+    "requestTitle": "Can't find it? Ask for it",
+    "requestBody": "Tell us what you are looking for. Our catalogue team reads every request.",
+    "requestNote": "Details (optional)",
+    "requestPhone": "Your phone, if you want an answer (optional)",
+    "requestSend": "Send request",
+    "requestSent": "Thank you. Your request was sent.",
+    "requestFailed": "We could not send that. Check the phone number and try again."
+  },
+  "card": {
+    "from": "from {price}",
+    "outOfStock": "Out of stock",
+    "sellerCount": "{count} sellers",
+    "sellerOne": "1 seller",
+    "level": "Level {level} seller",
+    "fresh": "Prices recently confirmed",
+    "stale": "Prices not confirmed lately"
+  },
+  "condition": {
+    "new": "New",
+    "used": "Used",
+    "refurbished": "Refurbished"
+  },
+  "home": {
+    "heading": "Compare prices from trusted shops",
+    "lead": "One product, every shop's price, with delivery to your door added in.",
+    "categories": "Categories",
+    "popular": "Popular products",
+    "protectionTitle": "Buy with confidence",
+    "protection1": "Every shop is checked by MarkX before it can sell.",
+    "protection2": "See the total with delivery before you order.",
+    "protection3": "Pay after you inspect, and give your code only when the goods are right."
+  },
+  "product": {
+    "specs": "Specifications",
+    "variant": "Choose a version",
+    "offersTitle": "Compare offers",
+    "offersCount": "{count} offers",
+    "noOffers": "No shop offers this version right now.",
+    "zone": "Deliver to",
+    "zoneAny": "Choose your area to see delivery",
+    "zoneApply": "Show totals",
+    "seller": "Shop",
+    "price": "Price",
+    "delivery": "Delivery",
+    "total": "Total",
+    "warranty": "Warranty",
+    "warrantyMonths": "{months} months",
+    "noWarranty": "No warranty",
+    "confirmed": "Price confirmed {ago}",
+    "collection": "Collect at the shop",
+    "freeCollection": "Collection only",
+    "best": "Best offer",
+    "bestReasonTotal": "Lowest total delivered",
+    "bestReasonPrice": "Lowest price",
+    "addToCart": "Add to cart",
+    "adding": "Adding…",
+    "added": "Added to your cart",
+    "addFailed": "That offer could not be added. Refresh and try again.",
+    "outOfStock": "Out of stock",
+    "inspect": "Pay after you inspect. Give your handover code only when the goods are right."
+  },
+  "footer": {
+    "about": "MarkX compares prices from verified shops in Addis Ababa. MarkX never holds your money.",
+    "demo": "Development build"
+  },
+  "errors": {
+    "notFound": "We could not find that page.",
+    "goHome": "Go to the home page",
+    "generic": "Something went wrong on our side. Please try again."
+  }
+}

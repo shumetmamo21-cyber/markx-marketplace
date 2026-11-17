@@ -90,6 +90,17 @@ It reads the database in `MARKX_DATABASE_URL` (the `markx` database by
 default), so load the real catalogue there first and let the worker build the
 search documents (`uv run python -m markx.worker --once`). It writes nothing.
 
+## 4b. Demo data (laptop only)
+
+```bash
+uv run python -m scripts.seed_demo
+```
+
+Creates a demo catalogue, three demo shops with offers, delivery zones and a
+demo buyer through the real API (D-056). It refuses to run unless
+`MARKX_ENV` is `local`. None of it is real. It prints the demo staff
+sign-in; sign-in codes for the demo phones are in the local SMS inbox.
+
 ## 5. Run the API
 
 ```bash
@@ -217,3 +228,32 @@ Migrations are forward-only. A mistake is fixed by a new migration.
 | Every test errors with `CalledProcessError` | The tests could not reach PostgreSQL as a superuser |
 | `docker: Cannot connect to the Docker daemon` | Docker is installed but not running. Start Docker Desktop, or on a bare Linux machine run `dockerd` as root |
 | `alembic check` fails with `database "markx" does not exist` | Steps 2 and 3 were skipped; the tests alone do not create `markx` |
+
+## 7. Run the web app
+
+Needs Node.js 22 (20.9 at the least). With the API running on port 8000:
+
+```bash
+cd apps/web
+npm ci
+npm run dev            # http://localhost:3000, redirects to /am
+```
+
+The browser talks to one origin: `/api/...` is passed to the API
+(`MARKX_API_ORIGIN`, default `http://127.0.0.1:8000`), so sign-in cookies and
+the CSRF check work as in production. The checks CI runs:
+
+```bash
+npm run lint
+npm run typecheck      # generates the route types, then strict tsc
+npm test               # Vitest unit tests
+npm run build
+```
+
+After changing the API, refresh the web app's copy of its description and
+types (CI fails if they are stale):
+
+```bash
+cd apps/api && uv run python -m scripts.export_openapi ../web/src/lib/api/openapi.json
+cd ../web && npm run gen:api
+```
