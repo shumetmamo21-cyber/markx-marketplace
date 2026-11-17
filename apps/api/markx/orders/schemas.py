@@ -148,6 +148,18 @@ class BuyerSellerOrderOut(ApiModel):
     payment_method: str | None
     payment_reference: str
     can_cancel: bool
+    can_confirm_receipt: bool
+    delivery_status: str
+    # The one-time handover code (C-15): shown only while the goods are on
+    # their way, and only to the buyer. Share it at handover and never before.
+    handover_code: str | None
+    rider_name: str | None
+    rider_phone: str | None
+    delivered_at: datetime | None
+    problem_window_ends_at: datetime | None
+    completed_at: datetime | None
+    paid_method: str | None
+    paid_at: datetime | None
     # Null until the seller confirms (blueprint C.5).
     seller_contact: SellerContactOut | None
     items: list[OrderItemOut]
@@ -175,6 +187,19 @@ class CancelIn(ApiModel):
 
 class DeclineIn(ApiModel):
     reason: Reason
+
+
+class DispatchIn(ApiModel):
+    rider_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)] | None = None  # fmt: skip
+    rider_phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=9, max_length=24)] | None = None  # fmt: skip
+
+
+class HandoverIn(ApiModel):
+    code: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9]{6}$")]
+
+
+class PaymentIn(ApiModel):
+    method: PaymentMethod
 
 
 class DeliveryAreaOut(ApiModel):
@@ -214,6 +239,16 @@ class SellerOrderOut(ApiModel):
     payment_method: str | None
     payment_reference: str
     delivery_area: DeliveryAreaOut
+    delivery_status: str
+    handover_attempts: int
+    rider_name: str | None
+    rider_phone: str | None
+    delivered_at: datetime | None
+    completed_at: datetime | None
+    paid_method: str | None
+    paid_at: datetime | None
+    # The fee actually charged, once the order completed (D.19).
+    fee_charged_santim: int | None
     # Null until this seller confirms (blueprint C.5).
     buyer: BuyerContactOut | None
     items: list[OrderItemOut]

@@ -269,6 +269,18 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
                 "payment_method": intent.method,
                 "payment_reference": intent.reference,
                 "can_cancel": seller_order.status in _BUYER_MAY_CANCEL,
+                "can_confirm_receipt": seller_order.status == "delivered",
+                "delivery_status": shipment.status,
+                "handover_code": service.handover_code(shipment)
+                if service.shows_handover_code(seller_order.status)
+                else None,
+                "rider_name": shipment.rider_name if shows_contact else None,
+                "rider_phone": shipment.rider_phone if shows_contact else None,
+                "delivered_at": seller_order.delivered_at,
+                "problem_window_ends_at": seller_order.problem_window_ends_at,
+                "completed_at": seller_order.completed_at,
+                "paid_method": seller_order.paid_method,
+                "paid_at": seller_order.paid_at,
                 "seller_contact": {
                     "phone": seller.contact_phone,
                     "shop_address": seller.shop_address,
@@ -353,6 +365,17 @@ def _seller_order_out(
         "promised_hours": shipment.promised_hours,
         "payment_method": intent.method,
         "payment_reference": intent.reference,
+        "delivery_status": shipment.status,
+        "handover_attempts": shipment.handover_attempts,
+        "rider_name": shipment.rider_name,
+        "rider_phone": shipment.rider_phone,
+        "delivered_at": seller_order.delivered_at,
+        "completed_at": seller_order.completed_at,
+        "paid_method": seller_order.paid_method,
+        "paid_at": seller_order.paid_at,
+        "fee_charged_santim": seller_order.commission_santim
+        if seller_order.status == "completed"
+        else None,
         # Enough to decide whether the order can be delivered, and no more.
         "delivery_area": {
             key: address.get(key)

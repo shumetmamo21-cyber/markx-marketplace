@@ -94,6 +94,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
     report = run_once(now)
     assert {o.name: o.result for o in report.jobs} == {
         "orders.expire_unanswered": 0,
+        "orders.complete_delivered": 0,
         "offers.mark_stale": 0,
         "sellers.activate_due_payout_accounts": 0,
     }
@@ -103,6 +104,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
     report = run_once(later)
     assert {o.name: (o.ok, o.result) for o in report.jobs} == {
         "orders.expire_unanswered": (True, 0),
+        "orders.complete_delivered": (True, 0),
         "offers.mark_stale": (True, 1),
         "sellers.activate_due_payout_accounts": (True, 1),
     }

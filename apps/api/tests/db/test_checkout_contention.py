@@ -23,9 +23,11 @@ from markx.accounts.models import User
 from markx.audit.service import Actor
 from markx.core.db import session_scope
 from markx.core.errors import AppError
+from markx.delivery.models import Shipment
 from markx.offers import service as offers
 from markx.orders import service
 from markx.orders.models import Order, OrderStatusEvent, SellerOrder
+from markx.payments.models import FeeCharge
 from markx.sellers.models import Seller, SellerMember
 from tests.bazaar import Bazaar, assert_stock_is_consistent, stock
 from tests.factories import new_idempotency_key
@@ -250,3 +252,55 @@ def test_the_seller_the_buyer_and_the_clock_race_for_one_order(bazaar: Bazaar, d
     assert stock(db, bazaar.b128["id"]) == ((3, 2) if final == "confirmed" else (3, 0))
     assert_stock_is_consistent(db)
     assert outcomes.count(0) + outcomes.count(1) == results.count(0) + results.count(1)
+
+
+def test_the_buyer_and_the_clock_race_to_complete_a_delivered_order(
+    bazaar: Bazaar, db: Session
+) -> None:
+    """Completion commits stock and charges the fee. The buyer's early
+    confirmation and the worker's end-of-window completion both lock the
+    seller order first: exactly one of them completes it, once."""
+    crowd = Crowd(db, bazaar, 1)
+    crowd.fill(db, 0, bazaar.b128["id"], 1)
+    order_id = crowd.order(0, {"beta": "shop_collection"}, 1_790_000)
+    seller_id = uuid.UUID(bazaar.b_id)
+    with session_scope() as session:
+        seller = session.get(Seller, seller_id)
+        member = session.scalar(select(SellerMember).where(SellerMember.seller_id == seller_id))
+        assert seller is not None
+        assert member is not None
+        so = session.scalar(select(SellerOrder).where(SellerOrder.order_id == order_id))
+        assert so is not None
+        service.seller_respond(session, seller, member, so.id, accept=True)
+        service.mark_ready(session, seller, member, so.id)
+        shipment = session.scalar(select(Shipment).where(Shipment.seller_order_id == so.id))
+        assert shipment is not None
+        service.confirm_delivery(
+            session, seller, member, so.id, code=service.handover_code(shipment)
+        )
+        so_id, window_end = so.id, so.problem_window_ends_at
+    assert window_end is not None
+
+    def task(index: int) -> Any:
+        with session_scope() as session:
+            if index % 2:
+                return service.complete_delivered_orders(
+                    session, now=window_end + timedelta(hours=1)
+                )
+            user = session.get(User, crowd.user_ids[0])
+            assert user is not None
+            return service.confirm_receipt(session, user, order_id, so_id).status
+
+    results = _race(24, task)
+    assert {r.code for r in results if isinstance(r, AppError)} <= {"order_not_delivered"}
+    db.rollback()
+    moves = list(
+        db.scalars(
+            select(OrderStatusEvent.to_status).where(OrderStatusEvent.seller_order_id == so_id)
+        )
+    )
+    assert moves.count("completed") == 1
+    assert db.scalar(select(func.count()).select_from(FeeCharge)) == 1
+    assert stock(db, bazaar.b128["id"]) == (0, 0)
+    assert_stock_is_consistent(db)
+    assert results.count("completed") + sum(r == 1 for r in results) == 1

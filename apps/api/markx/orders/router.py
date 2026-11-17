@@ -37,7 +37,10 @@ from markx.orders.schemas import (
     CartOut,
     CheckoutIn,
     DeclineIn,
+    DispatchIn,
+    HandoverIn,
     OrderOut,
+    PaymentIn,
     QuoteIn,
     QuoteOut,
     SellerOrderOut,
@@ -324,3 +327,105 @@ def decline_seller_order(
         db, context.seller, context.member, seller_order_id, accept=False, reason=body.reason
     )
     return _seller_order_out(db, context, seller_order_id, lang)
+
+
+# -- fulfilment: from confirmed to completed --------------------------------------
+
+
+@seller_router.post("/orders/{seller_order_id}/ready", response_model=SellerOrderOut)
+def mark_ready(
+    seller_order_id: uuid.UUID, context: OrderHandler, db: Db, lang: LangQuery = "am"
+) -> SellerOrderOut:
+    """Packed and waiting for the rider or the buyer."""
+    service.mark_ready(db, context.seller, context.member, seller_order_id)
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/dispatch", response_model=SellerOrderOut)
+def dispatch(
+    seller_order_id: uuid.UUID,
+    body: DispatchIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """With the rider; also the retry after a failed delivery."""
+    service.dispatch(
+        db, context.seller, context.member, seller_order_id,
+        rider_name=body.rider_name, rider_phone=body.rider_phone,
+    )  # fmt: skip
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/deliver", response_model=SellerOrderOut)
+def confirm_delivery(
+    seller_order_id: uuid.UUID,
+    body: HandoverIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """The buyer's handover code closes the delivery (C-15)."""
+    service.confirm_delivery(db, context.seller, context.member, seller_order_id, code=body.code)
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/delivery-failed", response_model=SellerOrderOut)
+def report_delivery_failure(
+    seller_order_id: uuid.UUID,
+    body: DeclineIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    service.report_delivery_failure(
+        db, context.seller, context.member, seller_order_id, reason=body.reason
+    )
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/return", response_model=SellerOrderOut)
+def return_to_seller(
+    seller_order_id: uuid.UUID,
+    body: DeclineIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """The goods went back to the shop; the held stock returns."""
+    service.return_to_seller(
+        db, context.seller, context.member, seller_order_id, reason=body.reason
+    )
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@seller_router.post("/orders/{seller_order_id}/payment", response_model=SellerOrderOut)
+def record_payment(
+    seller_order_id: uuid.UUID,
+    body: PaymentIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """The seller says the buyer paid them directly, and how (D.12)."""
+    service.record_direct_payment(
+        db, context.seller, context.member, seller_order_id, method=body.method
+    )
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
+@router.post(
+    "/me/orders/{order_id}/seller-orders/{seller_order_id}/confirm-receipt",
+    response_model=OrderOut,
+    tags=["orders"],
+)
+def confirm_receipt(
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    buyer: Buyer,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """The buyer is happy and closes the part before the problem window ends."""
+    service.confirm_receipt(db, buyer.user, order_id, seller_order_id)
+    return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
