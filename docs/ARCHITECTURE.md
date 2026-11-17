@@ -42,8 +42,13 @@ apps/
       orders/               cart, checkout (place_order), seller orders,
                             the G.6 state machine, response deadlines
       worker/               the background worker: scheduled jobs, outbox
-      payments/ trust/ search/ analytics/
-                            MODELS ONLY: tables, no behaviour yet
+      search/               search documents, matching, the evaluator
+      images/               product pictures and problem photos (D-062)
+      ops/                  self-checks, alerts, reconciliation (D-064)
+      admin/                audit-log viewer, settings, staff accounts,
+                            dispatch board, business dashboard (D-065)
+      payments/ trust/      the ledger and fees; problem cases (used by orders)
+      analytics/            MODELS ONLY: tables, no behaviour yet
       main.py               the application factory
       registry.py           imports every model for Alembic and tests
     migrations/versions/    forward-only Alembic migrations
@@ -55,6 +60,8 @@ apps/
       worker/               the worker, driven one pass at a time
 infra/
   postgres/                 bootstrap.sql and bootstrap.sh: roles and database
+  backup/                   backup.sh, restore.sh, drill.sh (D-063)
+  compose/                  API, worker and PostgreSQL on a laptop (D-058)
 docs/
 ```
 
@@ -188,7 +195,28 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
 Identity and licence photos go through `PrivateStorage`
 (`markx/core/storage.py`). They are never served by path. A person opens one
 through `/documents/{id}/content` with a five-minute link signed for that
-person, while signed in. Only the local-disk adapter exists.
+person, while signed in. Problem photos work the same way
+(`/problem-photos/{id}/content`). Only the local-disk adapter exists.
+
+## Pictures
+
+Blueprint F.6, D.5, D.26; D-062. `markx/images/`. An upload is decoded and
+re-encoded at once (`core/images.sanitize_image`), so the camera's metadata
+never reaches storage, and kept privately as the picture's source. The
+worker (`images.render`) renders WebP in two fixed sizes into
+`PublicStorage` and marks the picture `ready`; only ready pictures are
+listed. On a laptop the API serves public files at `/api/v1/media/...`; on a
+real server they belong on the CDN's cookieless domain
+(`MARKX_PUBLIC_MEDIA_BASE_URL`).
+
+## Monitoring
+
+Blueprint F.12; D-064. `markx/ops/`. `checks.py` holds the checks: each
+returns findings with a stable key, run each in its own savepoint.
+`service.py` turns findings into `ops_alerts` rows (one open per key) and
+queues `ops.alert` messages on open and resolve; `alerts.py` sends them to
+Telegram when configured, otherwise to the log. To add a check, add a
+function to `WATCH` or `RECONCILE`; keep personal data out of its summary.
 
 ## The worker
 
@@ -208,13 +236,15 @@ run side by side; PostgreSQL decides who does what. One pass of its loop
 
 Tests drive the worker by calling `run_once(now)` with a clock they control.
 D-034 and D-035 record the guarantees and the one limit. Topics today:
-`notify.push` and `search.rebuild`. Jobs: order expiry, completion after the
-problem window, overdue holds, stale offers, payout accounts, and the hourly
-`search.rebuild_all`.
+`notify.push`, `search.rebuild`, `images.render` and `ops.alert`. Jobs: order
+expiry, completion after the problem window (each order in its own
+savepoint, D-060), overdue holds, stale offers, payout accounts, the hourly
+`search.rebuild_all`, the daily `ops.reconcile` and, last, `ops.watch`.
 
 ## Search
 
-Blueprint D.8 and F.7. `markx/search/`.
+Blueprint D.8 and F.7. `markx/search/`. Searches are throttled per
+address (D-059).
 
 - `service.py` builds one `search_documents` row per approved product
   (`rebuild_document`) and keeps it fresh (D-051): a `before_flush` listener
@@ -243,7 +273,7 @@ Blueprint D.8 and F.7. `markx/search/`.
   checked by a trigger against the G.6 diagram (migration `0007`).
 - **History tables only grow**: `audit_log`, `order_status_events`,
   `offer_price_history`, `inventory_movements`, `tracking_events`,
-  `ledger_transactions`, `ledger_entries`.
+  `ledger_transactions`, `ledger_entries`, `problem_photos`.
 - **The ledger balances** in every transaction, checked at commit.
 - The chain the schema follows (blueprint G): product, variant, offer, order
   item, seller order, order, payment, ledger.
@@ -259,7 +289,9 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | Bot check | `markx/core/botcheck.py` | Fake only |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
 | Private file storage | `markx/core/storage.py` | Local disk only; refused on real servers |
-| Public images, payments, couriers, AI | | Not started |
+| Public picture storage | `markx/core/storage.py` | Local disk only; refused on real servers |
+| Alerts to Telegram | `markx/ops/alerts.py` | Built; tested against a stand-in; no group or bot yet |
+| Payments, couriers, AI | | Not started |
 
 ## Configuration
 

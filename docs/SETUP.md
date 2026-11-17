@@ -59,12 +59,13 @@ uv run ruff check .          # lint
 uv run ruff format --check . # formatting
 uv run mypy markx            # type checks, strict
 uv run alembic check         # models and migrations must not differ
+uv run python -m scripts.check_openapi_copy --exact openapi.json   # D-061
 ```
 
 `alembic check` and `alembic upgrade head` use the `markx` database from
 steps 2 and 3. They do not use the test database.
 
-The whole suite (847 tests) takes five to seven minutes. Never start two
+The whole suite (910 tests) takes eight to ten minutes. Never start two
 test runs at once: they share the `markx_test` database. The tests in
 `tests/db/test_inventory.py` and `tests/db/test_checkout_contention.py` start
 up to 100 threads against the database on purpose.

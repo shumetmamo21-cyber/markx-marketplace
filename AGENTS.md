@@ -103,6 +103,12 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
   `_commit_held_stock`, which completion and a refund without the goods use.
 - **A dispute case is guarded by its seller order's lock** (D-050): lock the
   seller order first, never the case. Only `resolve_dispute` decides one.
+- **The API description has two copies** (D-061). After any API change run
+  `uv run python -m scripts.export_openapi openapi.json` in `apps/api`; CI
+  checks that copy exactly. The web app's copy may lag behind new routes and
+  schemas, never behind a change: do not change an existing route, schema
+  or route docstring unless the web app changes in the same commit, and
+  never give a new schema a name an existing one already has.
 
 ## 4. The working branch
 
@@ -120,6 +126,7 @@ uv run ruff check .     # lint
 uv run ruff format --check .
 uv run mypy markx       # strict type checks
 uv run alembic check    # models and migrations must not differ
+uv run python -m scripts.check_openapi_copy --exact openapi.json
 ```
 
 The tests need PostgreSQL 17 with the three MarkX roles; `docs/SETUP.md`

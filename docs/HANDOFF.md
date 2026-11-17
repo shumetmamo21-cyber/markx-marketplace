@@ -1,7 +1,8 @@
 # MarkX — handoff
 
 **Written:** 17 November 2026, during the sixth AI engineering session, and
-kept current at each pushed milestone.
+kept current at each pushed milestone; Parts A.00 and A.0 were added by the
+two back-end-only sessions that followed.
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -10,6 +11,47 @@ kept current at each pushed milestone.
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.00 — The eighth session: the back end, continued (17 November 2026)
+
+A second back-end-only session, while the web-app session stays paused.
+**`apps/web` was not modified at all** (no page, component, route, style,
+dependency, configuration or generated file; `git diff eab7c21 HEAD --
+apps/web` is empty). It started from `96fddf6` and reproduced the baseline
+first: **858 passed**, lint, formatting, strict types and the migration
+check clean, the API image built.
+
+**Final checks, on `6fe1ce6`:** `uv run pytest` **910 passed** in 625 s;
+ruff clean; 160 files formatted; strict mypy clean over 106 source files;
+`alembic check` no difference; `apps/api/openapi.json` exact; the web
+app's copy true with 52 additions; the restore drill passed on the demo
+data; the API image built and the Compose stack rendered an uploaded
+picture in the worker container. Migrations added: `0008`, `0009`.
+
+| Commit | What |
+| --- | --- |
+| `2e4944c` | **Search throttle** (D-059): searches and suggestions are counted per network address and minute; past the limit a search is refused before it runs or is logged |
+| `6dbaeb7` | **One stuck order no longer blocks the others** (D-060): the completion job completes each order in its own savepoint, with the database's commit-time checks run inside it |
+| `4bcea17` | **The back end may add API routes without touching the web app** (D-061): `apps/api/openapi.json` is checked exactly; the web app's copy must stay true and may lag behind additions |
+| `8702e58` | **Pictures** (D-062, migration `0008`): catalogue pictures and sellers' real photos, cleaned at upload, rendered by the worker to small WebP files with no location data, moderated by staff; **problem photos** for both sides of a reported problem, private, append-only |
+| `2b7ba94` | **Backups** (D-063): an encrypted dump, a restore that never overwrites, and a restore drill that CI runs on every push |
+| `403e101` | **Monitoring** (D-064, migration `0009`): the marketplace checks itself every five minutes and reconciles its money and stock daily; alerts open and close once each and go to the founder's Telegram group when one is configured; a worker health check for an outside monitor |
+| `51f4af8` | **The rest of the admin back end** (D-065): the audit-log viewer, switches and risk limits, staff accounts, the dispatch board, the business dashboard |
+| `6fe1ce6` | **A flaky test fixed**: `test_checkouts_race_the_seller_editing_the_offer_without_deadlock` failed once on GitHub (push run #27) because a buyer whose order won the first round had an empty cart in the next; every cart is now refilled before each round. Its allowed outcomes are unchanged |
+
+**What the web app's owner needs to know:** the API gained 52 routes and
+schemas the web app does not use yet (listed by `uv run python -m
+scripts.check_openapi_copy ../web/src/lib/api/openapi.json`). Nothing the
+web app already uses changed. To use them: `cd apps/api && uv run python -m
+scripts.export_openapi ../web/src/lib/api/openapi.json`, then `npm run
+gen:api` in `apps/web`.
+
+**What needs the founder:** real search queries (unchanged); F-08, how long
+search logs and rate-limit counters are kept (deleting rows needs your
+approval); a private Telegram group and a bot for alerts, when you want
+them; and the provisional choices marked in D-062 to D-065.
 
 ---
 
@@ -191,12 +233,13 @@ laptop database; no history was rewritten; nothing was merged into `main`.
 
 # Part B — The brief for the next AI engineer
 
-Copy everything from `MARKX — SEVENTH ENGINEERING SESSION` to `END OF
-BRIEF` into a new session.
+Copy everything from `MARKX — NEXT ENGINEERING SESSION` to `END OF
+BRIEF` into a new session. It serves the web app's owner when it resumes;
+a back-end-only session follows the same brief with step 5b.
 
 ---
 
-**MARKX — SEVENTH ENGINEERING SESSION**
+**MARKX — NEXT ENGINEERING SESSION**
 
 You continue MarkX from its existing state. Do not rebuild anything.
 
@@ -208,8 +251,8 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-056; D-043, D-050 and D-053 are provisional; F-01 to F-07 are
-open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
+(D-001 to D-065; D-043, D-050, D-053 and parts of D-062 to D-065 are
+provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
 
@@ -220,9 +263,10 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 858 passed, seven to nine minutes
+uv run pytest                  # expect 910, eight to ten minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
+uv run python -m scripts.check_openapi_copy --exact openapi.json
 cd ../web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
@@ -236,13 +280,23 @@ laptop only), `uv run uvicorn markx.main:app --port 8000`, and in
 `GET /api/v1/dev/sms-inbox?phone=...`. `node e2e/buyer-journey.mjs` replays
 the buyer's journey.
 
-**5. Task:** the rest of the admin and seller dashboards, exactly as "The
-exact next task" in `docs/DEVELOPMENT_STATUS.md` lists them. The API for both exists and enforces roles and seller isolation;
-the web app only shows what the API returns and sends the member's
-choices. Every text in both message files; client components receive only
-the message sections they use. Test at 360 pixels. Extend
-`e2e/buyer-journey.mjs` with staff steps (find the order by code, decide a
-problem).
+**5. Task (the web app's owner):** first pick up the back end's 52 API
+additions: `cd apps/api && uv run python -m scripts.export_openapi
+../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
+(nothing the web app uses changed; D-061). Then the screens, in the order
+"The exact next task" in `docs/DEVELOPMENT_STATUS.md` gives: the admin
+screens for picture moderation, operations status, audit log, settings,
+staff, dispatch board and dashboard; pictures and problem photos; the rest
+of the seller dashboard. The API enforces every role and seller boundary;
+the web app only shows what it returns and sends the member's choices.
+Every text in both message files; client components receive only the
+message sections they use. Test at 360 pixels. Extend
+`e2e/buyer-journey.mjs` with staff steps.
+
+**5b. Task (a back-end-only session):** the back-end list in "The exact
+next task". Do not modify `apps/web`; add routes and schemas only, never
+change an existing one (D-061), and keep `apps/api/openapi.json` current
+(`uv run python -m scripts.export_openapi openapi.json`).
 
 **6. Boundaries:** no AWS, no deployment, no paid resource, no secret in
 the repository, no data deletion, no merge into `main`, no weakened test.
@@ -261,24 +315,29 @@ printed.
 
 | Blueprint phase | State |
 | --- | --- |
-| P1 Project foundation | Mostly done: API, database pipeline, web shell, **CI**, typed API link. Containers and an automated page-weight check missing |
-| P2 Database and backend foundation | Mostly done; no backups or alerting |
+| P1 Project foundation | Mostly done: API, database pipeline, web shell, **CI**, typed API link, **containers for API, worker and database**. The web app's container and an automated page-weight check missing |
+| P2 Database and backend foundation | Mostly done: **encrypted backups with a CI restore drill, self-monitoring, alerts, daily reconciliation, worker health check**. Error tracking, the nightly schedule and off-server copy, and the staging criteria missing |
 | P3 Authentication and roles | Done on the API; web sign-in for buyers done; staff sign-in screen missing |
 | **P4 Customer storefront** | **Buyer journey done on the web** (D-055); images, account settings, Mini App shell missing |
-| P5 Product catalogue | Done on the API; image pipeline missing |
+| P5 Product catalogue | Done on the API, **with the image pipeline**; seed data, pictures on cards, a real bucket missing |
 | P6 Seller onboarding | Done on the API; web screens missing |
 | P7 Listings and inventory | Done on the API; **on the web: offers list, quick edit, check-in**; "add an offer" screen and the bot missing |
 | P8 Search | Mostly done on the API, **with the evaluator**; on the web: search, filters, "did you mean", request form. Golden set needs real queries |
 | P9 Cart and checkout | **Done on the API and the web** |
 | P10 Multi-seller orders | Done on the API, **and on the web for both buyer and seller** |
-| P11 Admin operations | **On the web: problems, orders desk, seller review, search tools**; dispatch board, catalogue curation, audit trail missing |
+| P11 Admin operations | **On the web: problems, orders desk, seller review, search tools. On the API also: audit-log viewer, settings and risk limits, staff accounts, dispatch board, dashboard, picture moderation, operations status**; their screens, reports queue, review moderation, data export missing |
 | P12 onwards | Not started |
 
-**Numbers:** 858 API tests, 9 web unit tests, two browser
-journeys; 65 tables; migrations `0001` to `0007`; 90 typed API source files.
+**Numbers:** 910 API tests, 9 web unit tests, two browser
+journeys; 67 tables; migrations `0001` to `0009`; 106 typed API source files.
 
 **Traps already paid for:** see `docs/DEVELOPMENT_STATUS.md` ("Lessons" and
-the rules at its end), plus this session's three: two test sessions at once
-wreck each other; Next.js 16 pages may export only page things (a helper
-exported from a page breaks the build); the dev server keeps old message
-files until restarted.
+the rules at its end), plus the sixth session's three: two test sessions
+at once wreck each other; Next.js 16 pages may export only page things (a
+helper exported from a page breaks the build); the dev server keeps old
+message files until restarted. And the eighth session's: a migration file
+added while a full test run is going fails the "latest revision" test of
+that run; a docstring on a route is part of the API description; two
+Pydantic schemas with one name rename each other in the API description
+(the copy check catches it); time-travel tests stamp `completed_at` in the
+future, so period figures must be tested with real-time actions.
