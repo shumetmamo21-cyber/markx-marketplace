@@ -15,8 +15,9 @@
 // performance page. Every seller page is checked at 360 pixels in both
 // languages.
 //
-// Each run creates one demo shop with a random phone and tax number, signs
-// that phone in once, and adds one unit of stock to the demo catalogue.
+// Each run creates one approved demo shop ("Demo Journey Phones") with a
+// random phone and tax number and signs that phone in once; its offer is
+// removed again at the end, so the demo shops' best offers stay as they were.
 import { createHmac, randomInt } from 'node:crypto';
 import { createRequire } from 'node:module';
 
@@ -139,7 +140,7 @@ let browser;
   const ownerContext = await browser.newContext({ viewport: { width: 360, height: 800 } });
   const owner = await ownerContext.newPage();
   watch(owner, 'owner');
-  await signInByCode(owner, PHONE);
+  const asOwner = await signInByCode(owner, PHONE);
   await owner.goto(`${BASE}/en/seller`);
   await owner.getByRole('heading', { name: 'Open a shop on MarkX' }).waitFor();
   await owner.getByLabel('Legal name, as on the licence').fill('Demo Journey Trading PLC');
@@ -265,6 +266,12 @@ let browser;
   const listed = await owner.locator('main li').first().innerText();
   expect(/Tecno/i.test(listed), `the new offer is not on the offers screen: ${listed}`);
   console.log('9 an offer published from the catalogue; it is on the offers screen');
+  // Withdrawn again, so the demo shops keep the best offers the buyer journey expects.
+  for (const listing of (await asOwner('GET', `/api/v1/seller/${sellerId}/offers?lang=en`)).body ?? []) {
+    const removed = await asOwner('DELETE', `/api/v1/seller/${sellerId}/offers/${listing.id}`);
+    expect(removed.status === 200, `remove the journey's offer: ${removed.status}`);
+  }
+  console.log('  the journey\'s offer is removed again');
 
   // 10. Performance.
   await owner.goto(`${BASE}${base}/performance?days=7`);
