@@ -48,6 +48,7 @@ from markx.core.db import Base, get_engine, get_session_factory  # noqa: E402
 from markx.main import app  # noqa: E402
 from markx.notifications.push import dev_push_outbox_path  # noqa: E402
 from markx.notifications.sms import dev_sms_inbox_path, read_dev_sms_inbox  # noqa: E402
+from markx.ops.alerts import dev_alerts_path  # noqa: E402
 
 API_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = API_DIR.parents[1]
@@ -103,7 +104,7 @@ def _clean_slate(migrator_engine: Engine) -> None:
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with migrator_engine.begin() as connection:
         connection.execute(text(f"truncate {tables} restart identity cascade"))
-    for fake_outbox in (dev_sms_inbox_path(), dev_push_outbox_path()):
+    for fake_outbox in (dev_sms_inbox_path(), dev_push_outbox_path(), dev_alerts_path()):
         if fake_outbox.exists():
             fake_outbox.unlink()
 

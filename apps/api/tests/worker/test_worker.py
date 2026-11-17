@@ -99,6 +99,8 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
         "offers.mark_stale": 0,
         "sellers.activate_due_payout_accounts": 0,
         "search.rebuild_all": 1,  # the one approved product
+        "ops.reconcile": 0,  # nothing out of line (D-064)
+        "ops.watch": 0,
     }
 
     # Fifteen days on, the price is unconfirmed and the cooling-off has passed.
@@ -111,6 +113,8 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
         "offers.mark_stale": (True, 1),
         "sellers.activate_due_payout_accounts": (True, 1),
         "search.rebuild_all": (True, 1),
+        "ops.reconcile": (True, 0),
+        "ops.watch": (True, 0),
     }
     db.rollback()
     assert db.scalar(select(Offer.status).where(Offer.id == offer["id"])) == "stale"

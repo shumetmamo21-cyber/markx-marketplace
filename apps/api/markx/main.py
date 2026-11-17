@@ -30,6 +30,8 @@ from markx.notifications.sms import read_dev_sms_inbox
 from markx.offers.router import admin_router as offers_admin_router
 from markx.offers.router import public_router as offers_public_router
 from markx.offers.router import router as offers_router
+from markx.ops.router import admin_router as ops_admin_router
+from markx.ops.router import public_router as ops_public_router
 from markx.orders.router import admin_router as orders_admin_router
 from markx.orders.router import router as orders_router
 from markx.orders.router import seller_router as orders_seller_router
@@ -107,6 +109,8 @@ def create_app() -> FastAPI:
     api.include_router(images_admin_router)
     api.include_router(images_seller_router)
     api.include_router(images_buyer_router)
+    api.include_router(ops_public_router)
+    api.include_router(ops_admin_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
         api.include_router(images_media_router)

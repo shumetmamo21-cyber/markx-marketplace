@@ -188,6 +188,76 @@
         "title": "AddressOut",
         "type": "object"
       },
+      "AlertOut": {
+        "properties": {
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "occurrences": {
+            "title": "Occurrences",
+            "type": "integer"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "source",
+          "severity",
+          "summary",
+          "details",
+          "first_seen_at",
+          "last_seen_at",
+          "occurrences",
+          "resolved_at"
+        ],
+        "title": "AlertOut",
+        "type": "object"
+      },
       "AliasIn": {
         "additionalProperties": false,
         "properties": {
@@ -2611,6 +2681,80 @@
         "title": "InvitationOut",
         "type": "object"
       },
+      "JobOut": {
+        "properties": {
+          "consecutive_failures": {
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Result"
+          },
+          "last_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At"
+          },
+          "last_succeeded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Succeeded At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "title": "Next Run At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "next_run_at",
+          "last_started_at",
+          "last_succeeded_at",
+          "last_result",
+          "consecutive_failures",
+          "last_error"
+        ],
+        "title": "JobOut",
+        "type": "object"
+      },
       "LegalOut": {
         "additionalProperties": false,
         "properties": {
@@ -3306,6 +3450,39 @@
         "title": "OpenProblemOut",
         "type": "object"
       },
+      "OpsStatusOut": {
+        "description": "Open alerts (critical first), every scheduled job, and the outbox\nmessages that are not done, by topic and status.",
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "open_alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Open Alerts",
+            "type": "array"
+          },
+          "outbox": {
+            "items": {
+              "$ref": "#/components/schemas/OutboxCountOut"
+            },
+            "title": "Outbox",
+            "type": "array"
+          }
+        },
+        "required": [
+          "open_alerts",
+          "jobs",
+          "outbox"
+        ],
+        "title": "OpsStatusOut",
+        "type": "object"
+      },
       "OptionIn": {
         "additionalProperties": false,
         "properties": {
@@ -3571,6 +3748,29 @@
           "code"
         ],
         "title": "OtpVerifyIn",
+        "type": "object"
+      },
+      "OutboxCountOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "status",
+          "count"
+        ],
+        "title": "OutboxCountOut",
         "type": "object"
       },
       "PaymentRecordIn": {
@@ -9036,6 +9236,77 @@
         ]
       }
     },
+    "/api/v1/admin/ops/alerts": {
+      "get": {
+        "operationId": "recent_alerts_api_v1_admin_ops_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlertOut"
+                  },
+                  "title": "Response Recent Alerts Api V1 Admin Ops Alerts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recent Alerts",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/status": {
+      "get": {
+        "description": "What is wrong now, and the machinery behind it.",
+        "operationId": "ops_status_api_v1_admin_ops_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ops Status",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
     "/api/v1/admin/orders/problems": {
       "get": {
         "description": "Reported problems waiting for a decision, the most urgent first (AD-09).",
@@ -11474,6 +11745,26 @@
           }
         },
         "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/healthz/worker": {
+      "get": {
+        "description": "503 when no scheduled job has started for five minutes: the worker is\ndown or stuck (F.12; P2: \"an outage alerts the founder\"). Point the\noutside uptime monitor here as well as at `/healthz`.",
+        "operationId": "worker_health_api_v1_healthz_worker_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Worker Health",
         "tags": [
           "health"
         ]

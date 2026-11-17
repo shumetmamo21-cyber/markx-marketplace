@@ -35,6 +35,7 @@ from markx.images import service as images
 from markx.notifications.models import Notification, Outbox
 from markx.notifications.push import get_push_sender
 from markx.notifications.service import TOPIC_PUSH
+from markx.ops import service as ops
 from markx.search import service as search
 
 logger = logging.getLogger("markx.worker.outbox")
@@ -92,6 +93,7 @@ HANDLERS: dict[str, Handler] = {
     TOPIC_PUSH: push_notification,
     search.TOPIC_REBUILD: search.handle_rebuild,
     images.TOPIC_RENDER: images.handle_render,
+    ops.TOPIC_ALERT: ops.handle_alert,
 }
 
 

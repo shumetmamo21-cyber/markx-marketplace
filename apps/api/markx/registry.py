@@ -11,6 +11,7 @@ from markx.core import models as core_models
 from markx.delivery import models as delivery_models
 from markx.notifications import models as notifications_models
 from markx.offers import models as offers_models
+from markx.ops import models as ops_models
 from markx.orders import models as orders_models
 from markx.payments import models as payments_models
 from markx.search import models as search_models
@@ -27,6 +28,7 @@ __all__ = [
     "delivery_models",
     "notifications_models",
     "offers_models",
+    "ops_models",
     "orders_models",
     "payments_models",
     "search_models",

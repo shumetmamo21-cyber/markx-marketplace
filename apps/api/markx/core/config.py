@@ -54,6 +54,9 @@ class Config(BaseSettings):
     sms_provider: Literal["fake"] = "fake"
     bot_check_provider: Literal["fake"] = "fake"
     telegram_bot_token: str | None = None
+    # The founder's private Telegram group for alerts (blueprint F.12; D-064).
+    # With the bot token set, alerts go there; otherwise to the log.
+    alert_telegram_chat_id: str | None = None
 
     totp_issuer: str = "MarkX"
 

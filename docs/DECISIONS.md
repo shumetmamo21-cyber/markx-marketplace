@@ -1361,6 +1361,56 @@ anywhere; no cloud resource was created.
   (F.6). Restoring staging from last night's backup (P2 criterion 3) needs
   staging.
 
+## D-064 Monitoring: the marketplace checks itself, alerts once, and reconciles daily
+
+**Follows** blueprint F.8 ("a job that keeps failing raises an alert"),
+F.12 (health, alerts to the founder's Telegram, the daily reconciliation)
+and P2. **Accepted.** Migration `0009`.
+
+- **Two scheduled jobs.** `ops.watch` every five minutes and
+  `ops.reconcile` once a day, both after every other job, the watch last.
+- **What the watch looks for** (`markx/ops/checks.py`): a job that failed
+  three times running; a job more than 30 minutes overdue (a stuck worker);
+  outbox messages that gave up in the last week, and messages waiting more
+  than 15 minutes; delivered parts still not completed 30 minutes after
+  their problem window (what D-060 now lets happen to one order without
+  blocking the rest); unanswered parts not expired 15 minutes after their
+  deadline; parts holding stock past their fulfilment hold; problems past
+  their decision time; the daily SMS budget at 80% (warning) or spent
+  (critical); pictures processing for over 30 minutes. Each check runs in
+  its own savepoint: a check that breaks becomes a critical alert of its
+  own (`ops.check_failed:<check>`) and the others still run, because the
+  watch is what reports failing jobs.
+- **What the reconciliation proves:** every order equals the sum of its
+  parts, every part the sum of its lines; every completed part has one fee
+  charge equal to its commission, and every charged fee is in the ledger
+  for that amount, with debits equal to credits overall; every offer's
+  reserved stock equals its held reservations.
+- **Alerts** (`ops_alerts`): one open alert per key. A new finding opens
+  one and sends a message; a finding that persists touches it
+  (`occurrences`, `last_seen_at`) without a second message, except when a
+  warning becomes critical; an alert nobody finds any more resolves and
+  sends "Resolved: ...". Rows are kept. Summaries hold counts, job names and
+  order codes, never a name, phone number or address.
+- **Where messages go:** through the outbox (`ops.alert`), so a delivery
+  failure retries. To the founder's private Telegram group when
+  `MARKX_TELEGRAM_BOT_TOKEN` and `MARKX_ALERT_TELEGRAM_CHAT_ID` are set; to
+  the log at CRITICAL otherwise; on a laptop and in tests also to
+  `var/storage/dev/alerts.jsonl`. The group, the bot and its token are the
+  founder's to create; none exists yet.
+- **For an outside uptime monitor:** `GET /api/v1/healthz` (API and
+  database) and the new `GET /api/v1/healthz/worker`, which answers 503
+  when no scheduled job has started for five minutes. A worker that is down
+  cannot alert about itself; the outside monitor must poll this. Choosing
+  and configuring that monitor is part of deployment.
+- **For staff:** `GET /admin/ops/status` (open alerts, every job's last
+  run and error, outbox messages not done) and `GET /admin/ops/alerts`, for
+  every staff role that may find orders (super administrator, operations,
+  support, finance): they show counts and order codes only.
+- **Not done:** an error tracker (F.12, a free-tier service with personal
+  data removed) needs an account; the cloud spending alarm belongs to the
+  AWS setup the founder has not approved.
+
 ---
 
 ## Decisions that need the founder

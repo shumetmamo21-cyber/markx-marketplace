@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from markx.core.db import session_scope
 from markx.offers import service as offers
+from markx.ops import service as ops
 from markx.orders import service as orders
 from markx.search import service as search
 from markx.sellers import service as sellers
@@ -80,6 +81,11 @@ JOBS: tuple[Job, ...] = (
     ),
     # The safety net behind the queued rebuilds, and the first fill (D-051).
     Job("search.rebuild_all", timedelta(hours=1), lambda db, now: search.rebuild_all(db)),
+    # Last, so they see what the jobs above just did (F.12; D-064); the watch
+    # after the reconciliation, so it never calls a job overdue that this
+    # very pass is about to run.
+    Job("ops.reconcile", timedelta(days=1), ops.reconcile),
+    Job("ops.watch", timedelta(minutes=5), ops.watch),
 )
 
 
