@@ -2,7 +2,8 @@
 
 **Written:** 17 November 2026, during the sixth AI engineering session, and
 kept current at each pushed milestone; Parts A.00 and A.0 were added by the
-two back-end-only sessions that followed.
+two back-end-only sessions that followed, and Part A.000 by the ninth
+session (the web app's owner, resuming).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -11,6 +12,56 @@ two back-end-only sessions that followed.
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.000 — The ninth session: the admin queues on the web (17 November 2026)
+
+The web app's owner, resuming, on the founder's instructions of 17 November
+2026: `claude/project-scaffold` is the official branch; the fourth session's
+implementation is the official one; nothing completed is rebuilt; the
+alternative branch `claude/markx-third-session-cq58yj` is kept as a
+reference and was neither merged, deleted nor rewritten.
+
+**What it did, each step pushed:**
+
+1. **Reproduced the checks** on `88d481b` before any change: 854 API tests
+   passed (the sixth session's figure exactly); the web app's `npm ci`,
+   lint, typecheck, 9 unit tests and build passed.
+2. **Compared the two branches' tests.** The official branch covers
+   everything the alternative branch tested except one refusal: no direct
+   payment is recorded while a part is still `placed`, or after the goods
+   were returned. That one test was ported (`eab7c21`); no implementation
+   changed. A tracking-event fix found in the review turned out to be
+   already on the official branch (`497fcf5`), so the duplicate was dropped
+   before it was pushed.
+3. **Recorded the founder's confirmation of the fulfilment hold** (D-043,
+   D-053, `eab7c21`): after 14 days a part still `confirmed` or `ready` is
+   cancelled and its stock freed, as the provisional pilot policy, subject to
+   safe handling of orders already out for delivery. The job meets that
+   condition by construction (it never selects a part on the road) and an
+   existing test proves it.
+4. **The admin queues on the web** (D-069, D-070), built on the head that had
+   meanwhile moved to `b2b674e`: screens for product proposals, invitations,
+   listing takedowns and the audit trail; a role-aware admin home and menu
+   (catalogue and finance staff were being sent to a page they may not
+   open); codes shown in words in both languages; a page the API refuses
+   now says so. One back-end addition the takedown screen needed:
+   `GET /admin/offers/held`. This session's own audit-log route was dropped
+   in favour of D-065's `GET /admin/audit-log`, which the eighth session had
+   built in parallel.
+
+**Final checks** (on `b2b674e` plus this session's work): `uv run pytest` **935 passed** in 726 s (927 on `b2b674e` plus this session's 8); ruff clean; 176 files formatted; strict mypy clean over 118 source files; `alembic check` no difference; `apps/api/openapi.json` exact and the web app's copy exact too (regenerated). The web app: lint and strict typecheck clean, **11 unit tests passed**, the production build passed, and `e2e/admin-queues.mjs` passed all 7 steps in Chromium with no console errors.
+GitHub Actions run #37 on `b2b674e`, the head this was built on, passed.
+
+**Still to build on the web** (Part B, step 5): picture moderation, the
+operations status, settings and risk limits, staff accounts, the dispatch
+board, the business dashboard, the review and report queues; reviews and
+report links for buyers; pictures and problem photos; the rest of the seller
+dashboard.
+
+**Waiting on the founder:** unchanged — F-01 to F-08 in `docs/DECISIONS.md`.
+Nothing this session did depends on them.
 
 ---
 
@@ -255,7 +306,7 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-067; D-043, D-050, D-053 and parts of D-062 to D-067 are
+(D-001 to D-070; D-043, D-050, D-053 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
@@ -267,11 +318,13 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 923 passed, eight to ten minutes
+uv run pytest                  # expect 935 passed, eight to ten minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json
+uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
 cd ../web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
+# expect 11 web unit tests
 ```
 
 **Never start a second test run while one is going**: both use
@@ -282,16 +335,22 @@ latest GitHub Actions run for the branch passed.
 laptop only), `uv run uvicorn markx.main:app --port 8000`, and in
 `apps/web` `npm run dev`; open `http://localhost:3000`. Sign-in codes are in
 `GET /api/v1/dev/sms-inbox?phone=...`. `node e2e/buyer-journey.mjs` replays
-the buyer's journey.
+the buyer's journey; `MARKX_DEMO_TOTP_SECRET=... node e2e/admin-queues.mjs`
+replays the admin queues (the secret is the one `seed_demo` printed).
 
-**5. Task (the web app's owner):** first pick up the back end's 52 API
-additions: `cd apps/api && uv run python -m scripts.export_openapi
-../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
-(nothing the web app uses changed; D-061). Then the screens, in the order
-"The exact next task" in `docs/DEVELOPMENT_STATUS.md` gives: the admin
-screens for picture moderation, operations status, audit log, settings,
-staff, dispatch board and dashboard; pictures and problem photos; the rest
-of the seller dashboard. The API enforces every role and seller boundary;
+**5. Task (the web app's owner):** first pick up any API additions made
+since the ninth session: `cd apps/api && uv run python -m
+scripts.export_openapi ../web/src/lib/api/openapi.json`, then `cd ../web &&
+npm run gen:api` (D-061; it was current at the ninth session's last commit).
+Then the screens, in the order "The exact next task" in
+`docs/DEVELOPMENT_STATUS.md` gives: the admin screens still missing (picture
+moderation, operations status, settings and risk limits, staff accounts,
+dispatch board, dashboard, the review and report queues); reviews and
+report links for buyers; pictures and problem photos; the rest of the seller
+dashboard. Add each admin queue to `apps/web/src/app/[lang]/admin/(desk)/menu.ts`
+with the capability that opens it (D-070), and a step to
+`e2e/admin-queues.mjs`. The audit trail, proposals, invitations and
+takedowns are done. The API enforces every role and seller boundary;
 the web app only shows what it returns and sends the member's choices.
 Every text in both message files; client components receive only the
 message sections they use. Test at 360 pixels. Extend

@@ -1,7 +1,9 @@
 # Development status
 
-**Last updated:** 17 November 2026, eighth engineering session (back end only;
-`apps/web` untouched, D-061).
+**Last updated:** 17 November 2026, ninth engineering session (the web app's
+owner, resuming: the admin queues for proposals, invitations, takedowns and
+the audit trail; D-069, D-070). The eighth session before it worked on the
+back end only (D-061).
 **Branch:** `claude/project-scaffold`. `main` holds the initial commit only
 and nothing has been merged into it.
 **Latest commit:** see `git log -1`; the handoff (`docs/HANDOFF.md`) names it.
@@ -46,7 +48,8 @@ problem", and the tracking page by secure link; and **the seller dashboard**:
 the order inbox with the answer countdown and every fulfilment step, and the
 offers list with quick price and stock edits; and **the admin dashboard**:
 staff sign-in, the problem queue and decisions, the orders desk, seller
-applications with documents, and the search tools. **CI** runs every API and
+applications with documents, the search tools, and (session nine) product
+proposals, invitations, listing takedowns and the audit trail. **CI** runs every API and
 web check on every push. **The eighth session (back end only)** added search
 throttling (D-059), per-order isolation in the completion job (D-060), a
 compatible-copy rule for the API description (D-061), **product pictures and
@@ -70,7 +73,8 @@ anywhere.
 | 5 | `497fcf5`, `5ce4340`, `cdf16c5` and a documentation commit | Review fix (a cancelled shipment had no tracking event), the next-best offer (C-26), problems on a delivered order with staff decisions (`disputed`, `refunded`), search (P8 on the API side). 847 tests |
 | 6 | `641a95b` to the head; see `docs/HANDOFF.md` | Review fix (a withdrawn product stayed findable), the founder's provisional approvals (D-053), the search evaluator (D-054), CI, the web app (D-055): the storefront and buyer journey, the seller dashboard, the admin dashboard; demo data (D-056); variant labels in the cart and offer lists. 854 API tests, 9 web unit tests, two browser journeys |
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
-| 8 (back end only) | `2e4944c` to the head; see `docs/HANDOFF.md`, Part A.0 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), and listing reports, migration `0011` (D-067). **`apps/web` not touched** |
+| 8 (back end only) | `2e4944c` to `b2b674e`; see `docs/HANDOFF.md`, Part A.0 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), and listing reports, migration `0011` (D-067). **`apps/web` not touched** |
+| 9 (web owner, resuming) | `eab7c21`, then the admin-queues commit and its documentation | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); the admin screens for product proposals, invitations, listing takedowns and the audit trail, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070); `e2e/admin-queues.mjs`. 935 API tests, 11 web unit tests |
 
 ## Blueprint phase tracking
 
@@ -565,6 +569,20 @@ API types are generated from the API's OpenAPI description.
   `e2e/staff-journey.mjs` runs a problem from the buyer's report to the
   staff decision and checks isolation at both layers (another shop's
   dashboard and API: 404; the admin area and API for a buyer: 403).
+- **Admin queues added in session nine** (D-070): product proposals
+  (approve, turn down with a note, merge into an approved product),
+  invitations (invite a phone number, withdraw an open one), listing
+  takedowns (find a product's live offers by its link name, take one down
+  with a reason, the queue of held listings with the reason, lift a hold;
+  D-069), and the audit trail over D-065's viewer (filters by kind of
+  record, record, action or a family of actions; "older entries"). The menu
+  comes from one table of queues and the capability that opens each; the
+  admin home sends each role to its first queue; roles, review states,
+  seller, document and product statuses are shown in words in both
+  languages; a page the API refuses says so. `e2e/admin-queues.mjs` drives
+  all of it in Chromium, in English and Amharic, checks the four pages at
+  360 pixels, and signs in a new catalogue curator who must see only its own
+  three queues.
 - **Demo data:** `apps/api/scripts/seed_demo.py` (D-056), laptop only.
 - **Known gaps:** the seller application, documents, team, store settings
   and "add an offer" screens are not built (their API exists). Variant
@@ -649,8 +667,10 @@ Be careful with these. They were written and never exercised.
 
 ## What does not exist
 
-- Web screens for everything this session added (pictures, problem photos,
-  operations status, audit log, settings, staff, dispatch board, dashboard).
+- Web screens for most of what the eighth session added: pictures, problem
+  photos, operations status, settings and risk limits, staff accounts, the
+  dispatch board, the business dashboard, the review and report queues
+  (D-062, D-064 to D-067). The audit-log viewer has its screen (D-070).
   Photos on reviews, ratings on product cards and in search, payments beyond the direct payment record
   (Release 2: Protected prepay, refunds through a provider, payouts).
 - Ownership transfer between seller members (needs the founder's decision,
@@ -755,6 +775,37 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Ninth session, final run** — on `b2b674e` plus this session's changes, in
+CI's order, against PostgreSQL 17 in Docker with nothing else using the test
+database:
+
+```text
+$ cd apps/api
+$ uv sync --locked
+$ uv run ruff check .         ->  All checks passed!
+$ uv run ruff format --check . ->  176 files already formatted
+$ uv run mypy markx           ->  Success: no issues found in 118 source files
+$ uv run alembic check        ->  No new upgrade operations detected.
+$ uv run pytest               ->  935 passed in 726.22s (0:12:06)
+$ uv run python -m scripts.check_openapi_copy --exact openapi.json         -> openapi.json matches the API exactly.
+$ uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json -> ../web/src/lib/api/openapi.json matches the API exactly.
+
+$ cd apps/web
+$ npm ci && npm run gen:api   ->  schema.d.ts regenerated from the current API
+$ npm run lint                ->  no problems
+$ npm run typecheck           ->  strict tsc clean
+$ npm test                    ->  11 passed (3 files)
+$ npm run build               ->  36 pages; the four new admin routes rendered per request
+$ node e2e/admin-queues.mjs   ->  7 steps passed, "console errors: none"
+```
+
+At the start of the session, on `88d481b` before any change: 854 API tests
+passed (the sixth session's figure, reproduced exactly), and the web app's
+`npm ci`, lint, typecheck, 9 unit tests and build all passed. The head moved
+to `b2b674e` during the session (the eighth session's back-end work); this
+session's work was re-applied on top of it and every check above was run
+again there.
+
 ```text
 $ cd apps/api                  (eighth session, final run, head `2c89323`)
 $ uv run pytest               ->  923 passed in 623.20s (0:10:23)
@@ -773,8 +824,9 @@ $ docker build apps/api; docker compose -f infra/compose/compose.yaml up
                                   worker container
 ```
 
-The web app was not touched in the seventh and eighth sessions; its checks
-below are the sixth session's, and CI runs them on every push.
+The web app was not touched in the seventh and eighth sessions; the checks
+below are the sixth session's (the ninth session's are above), and CI runs
+them on every push.
 
 ```text
 $ cd apps/web
@@ -801,23 +853,12 @@ application code contains no `type: ignore`; the suite treats warnings as
 errors. **Never run two test sessions at once**: they share `markx_test`
 (session five lost one run to that).
 
+Recounted by the ninth session from `pytest --collect-only` (935 tests, 45 files):
+
 | File | Tests |
 | --- | --- |
-| `tests/unit/test_codes.py` | 7 |
-| `tests/unit/test_ethiopic.py` | 35 |
-| `tests/unit/test_images.py` | 9 |
-| `tests/unit/test_money.py` | 40 |
-| `tests/unit/test_openapi_copy.py` | 6 |
-| `tests/unit/test_order_rules.py` | 54 |
-| `tests/unit/test_permissions.py` | 144 |
-| `tests/unit/test_phone.py` | 31 |
-| `tests/db/test_checkout_contention.py` | 5 |
-| `tests/db/test_dispute_contention.py` | 2 |
-| `tests/db/test_fulfilment_contention.py` | 4 |
-| `tests/db/test_inventory.py` | 14 |
-| `tests/db/test_migrations.py` | 8 |
-| `tests/db/test_protection.py` | 49 |
 | `tests/api/test_addresses.py` | 17 |
+| `tests/api/test_admin_takedowns.py` | 8 |
 | `tests/api/test_admin_tools.py` | 6 |
 | `tests/api/test_auth_otp.py` | 35 |
 | `tests/api/test_auth_staff.py` | 14 |
@@ -828,6 +869,7 @@ errors. **Never run two test sessions at once**: they share `markx_test`
 | `tests/api/test_csrf.py` | 8 |
 | `tests/api/test_delivery.py` | 24 |
 | `tests/api/test_disputes.py` | 5 |
+| `tests/api/test_exports.py` | 4 |
 | `tests/api/test_fulfilment.py` | 14 |
 | `tests/api/test_health.py` | 7 |
 | `tests/api/test_next_best_offer.py` | 5 |
@@ -845,6 +887,20 @@ errors. **Never run two test sessions at once**: they share `markx_test`
 | `tests/api/test_seller_staff_permissions.py` | 23 |
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_tracking.py` | 2 |
+| `tests/db/test_checkout_contention.py` | 5 |
+| `tests/db/test_dispute_contention.py` | 2 |
+| `tests/db/test_fulfilment_contention.py` | 4 |
+| `tests/db/test_inventory.py` | 14 |
+| `tests/db/test_migrations.py` | 8 |
+| `tests/db/test_protection.py` | 49 |
+| `tests/unit/test_codes.py` | 7 |
+| `tests/unit/test_ethiopic.py` | 35 |
+| `tests/unit/test_images.py` | 9 |
+| `tests/unit/test_money.py` | 40 |
+| `tests/unit/test_openapi_copy.py` | 6 |
+| `tests/unit/test_order_rules.py` | 54 |
+| `tests/unit/test_permissions.py` | 144 |
+| `tests/unit/test_phone.py` | 31 |
 | `tests/worker/test_worker.py` | 22 |
 | **Total** | **923** |
 
@@ -879,14 +935,17 @@ end. Work in this order within each. Finish and push each step first.
 **The web app's owner (resuming):**
 
 1. Reproduce the checks and confirm the latest CI run passed.
-2. Regenerate the API copy and types: `cd apps/api && uv run python -m
-   scripts.export_openapi ../web/src/lib/api/openapi.json`, then `cd
-   ../web && npm run gen:api` (80 additions, nothing changed; D-061).
-3. The admin screens for what the API now has: picture moderation, the
-   operations status, the audit-log viewer, settings and risk limits, staff
+2. Regenerate the API copy and types whenever the back end has added
+   routes: `cd apps/api && uv run python -m scripts.export_openapi
+   ../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
+   (D-061). Session nine did this; it was current at its last commit.
+3. The admin screens still missing for what the API has: picture
+   moderation, the operations status, settings and risk limits, staff
    accounts, the dispatch board, the business dashboard, the review queue,
-   the reports queue (D-062, D-064 to D-067); then catalogue curation,
-   invitations, takedowns.
+   the reports queue (D-062, D-064 to D-067). Done in session nine: the
+   audit-log viewer, catalogue curation, invitations and takedowns (D-070).
+   Add each new queue to `menu.ts` with its capability, its words to both
+   message files, and a step to `e2e/admin-queues.mjs`.
 3b. Reviews on the product and store pages, "rate this purchase" for the
    buyer, the seller's replies, and a report link on every listing, store
    and review (D-066, D-067).

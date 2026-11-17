@@ -312,10 +312,31 @@ npm test               # Vitest unit tests
 npm run build
 ```
 
-After changing the API, refresh the web app's copy of its description and
-types (CI fails if they are stale):
+To use routes the API has added, refresh the web app's copy of its
+description and types. CI fails if the types do not match the copy, or if the
+copy says anything the API no longer does; a copy that merely lacks newer
+routes passes (D-061):
 
 ```bash
 cd apps/api && uv run python -m scripts.export_openapi ../web/src/lib/api/openapi.json
 cd ../web && npm run gen:api
 ```
+
+### Replay the journeys in a browser
+
+With the API on port 8000 filled by the demo data (section 4b) and the web
+app on port 3000 (`npm run build && npm run start`, or `npm run dev`), from
+`apps/web`. They use the Chromium that Playwright finds, and they change the
+demo data, so run them on a laptop only:
+
+```bash
+node e2e/buyer-journey.mjs     # the buyer's whole journey and the shop's side
+MARKX_DEMO_TOTP=123456 node e2e/staff-journey.mjs     # a problem decided by staff
+MARKX_DEMO_TOTP_SECRET=SECRET node e2e/admin-queues.mjs  # proposals, invitations,
+                               # takedowns, the audit trail, a curator's own menu
+```
+
+`staff-journey.mjs` wants the current six-digit code from the demo staff
+authenticator; `admin-queues.mjs` wants the authenticator secret that
+`seed_demo` printed and computes the code itself. Each prints one line per
+step and ends with "console errors: none".

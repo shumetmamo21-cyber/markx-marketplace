@@ -12,11 +12,11 @@ domain.
 
 | Part | State |
 | --- | --- |
-| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search. Not built: reviews, Release 2 payments |
-| PostgreSQL | Schema for all of Release 1 (65 tables), three roles |
-| Web app (`apps/web`) | **Does not exist** |
+| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search, pictures, monitoring, the admin back end, reviews, reports, exports. Not built: Release 2 payments |
+| PostgreSQL | Schema for all of Release 1 (68 tables), three roles |
+| Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey, the seller dashboard's orders and offers, and the admin dashboard's queues (D-070). Not built: the admin screens for pictures, operations, settings, staff, dispatch, the dashboard, reviews and reports; the seller's application and "add an offer" screens |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
-| Reverse proxy, containers, CI | **Do not exist** |
+| Containers, CI | Built: a Compose file for a laptop (D-058) and CI on every push. **The reverse proxy and any deployment do not exist** |
 
 ## Repository layout
 
@@ -52,18 +52,39 @@ apps/
       main.py               the application factory
       registry.py           imports every model for Alembic and tests
     migrations/versions/    forward-only Alembic migrations
+    openapi.json            the API description, checked exactly (D-061)
     tests/
       unit/                 pure logic, no database
       db/                   rules the database enforces by itself, and
                             contention tests with many threads
       api/                  HTTP tests through the real application
       worker/               the worker, driven one pass at a time
+  web/                      Next.js app (D-055); every page under /am or /en
+    messages/               am.json and en.json: every word on screen
+    src/app/[lang]/         (shop)/ storefront and buyer, seller/, admin/
+    src/components/         client components; admin/StaffActions.tsx holds
+                            every staff form
+    src/lib/                API clients, formatting, labels for API codes
+    e2e/                    browser journeys against the demo data
 infra/
   postgres/                 bootstrap.sql and bootstrap.sh: roles and database
   backup/                   backup.sh, restore.sh, drill.sh (D-063)
   compose/                  API, worker and PostgreSQL on a laptop (D-058)
 docs/
 ```
+
+## The admin dashboard on the web
+
+`apps/web/src/app/[lang]/admin/(desk)/`. Staff only: the layout sends any
+other session to the staff sign-in. `menu.ts` is one table of queues, each
+with the capability that opens it — the same capability the API checks on
+every call (blueprint C.4) — and the admin home sends a person to the first
+queue their role holds. A page the API refuses (403) says so in words. Codes
+the API sends are shown through `codeLabel` in `src/lib/labels.ts` and the
+`labels` group of both message files; `labels.test.ts` lists the API's codes
+and fails if one lacks words. Every staff form is in
+`src/components/admin/StaffActions.tsx` and shows the API's refusal through
+`apiErrorText`. The web app decides nothing (D-070).
 
 ## The layers in every module
 
