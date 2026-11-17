@@ -1,10 +1,8 @@
 # Development status
 
-**Last updated:** 16 November 2026, end of the third engineering session.
-**Branch:** `claude/project-scaffold`. The same commits were pushed to
-`claude/markx-third-session-cq58yj`, which the third session's hosting tool
-required (D-031). `main` holds the initial commit only and nothing has been
-merged into it.
+**Last updated:** 17 November 2026, end of the fifth engineering session.
+**Branch:** `claude/project-scaffold`. `main` holds the initial commit only
+and nothing has been merged into it.
 **Latest commit:** see `git log -1`; the handoff (`docs/HANDOFF.md`) names it.
 **Read this after** `AGENTS.md` and `MARKX_MASTER_BLUEPRINT.md`.
 `docs/HANDOFF.md` holds the last session's report in plain words, the
@@ -31,9 +29,12 @@ buyer confirms or the problem window passes, at which point the stock leaves
 the shelf and the fee is charged. A silent seller's order expires, a failed
 delivery is retried or returned, and an order nobody packs for fourteen days
 is cancelled. The buyer's order page also opens from a signed link without
-sign-in, never showing the handover code. **Not built after P10:** the
-next-best offer, disputes and refunds, reviews, the bot, the web app, search.
-Nothing is deployed anywhere.
+sign-in, never showing the handover code. When a seller declines or stays
+silent, the buyer is pointed at the next-best offer from another seller. A
+buyer can report a problem inside the 72-hour window, which stops
+completion; both sides add their account and staff decide, completing the
+part or recording that the seller refunded the buyer directly. **Not built:**
+reviews, the bot, the web app, search, CI. Nothing is deployed anywhere.
 
 ## Sessions so far
 
@@ -42,7 +43,8 @@ Nothing is deployed anywhere.
 | 1 | `617a276` to `6f36391` | Blueprint, schema, sign-in, permissions, delivery zones, addresses, catalogue, documents. 454 tests |
 | 2 | `8a6e583` to `8df958b` | Status corrections, sellers (P6), offers and inventory (P7). 647 tests |
 | 3 | `399507e`, `bd835ef`, `7079cb5`, `eb52d2f` | Review fixes (a moderation bypass, lock ordering), the worker, cart and checkout (P9), multi-seller orders (P10, first half). 779 tests |
-| 4 | `7c492c6`, `6582017` and the documentation commit | The second half of P10: ready, dispatch, the handover code, delivered, completed with `commit_stock` and the fee charge posted to the ledger, failed deliveries and returns, the direct payment record, the overdue-hold job, the staff orders desk's first three routes, the tracking page by secure link. 801 tests |
+| 4 | `7c492c6`, `6582017`, `10573b4` | The second half of P10: ready, dispatch, the handover code, delivered, completed with `commit_stock` and the fee charge posted to the ledger, failed deliveries and returns, the direct payment record, the overdue-hold job, the staff orders desk's first three routes, the tracking page by secure link. 801 tests |
+| 5 | see `docs/HANDOFF.md` | Review fix (a cancelled shipment had no tracking event), the next-best offer (C-26), problems on a delivered order with staff decisions (`disputed`, `refunded`). 815 tests |
 
 ## Blueprint phase tracking
 
@@ -59,7 +61,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P7 | Seller listings and inventory | **Done on the API side.** Offers, price history, inventory and movements, quick edit, product proposals, the ranked offers list, the check-in, the stale-offer job **now run by the worker**, and a staff takedown that holds (D-032). **Not done:** the seller Telegram bot, the web screens |
 | P8 | Search and product discovery | **Not started** (tables exist) |
 | P9 | Cart and checkout | **Done on the API side.** Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Not done:** the web screens, the legal disclosure wording (a founder input), and guest checkout as such: a visitor's cart survives signing in, but the order is placed by a signed-in account (see D-036) |
-| P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`). **Not done:** the next-best-offer suggestion, `disputed` and `refunded`, reviews and problem reports, the bot, the web screens. Criteria 3 and 5 need the bot and real buyers |
+| P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. The next-best offer after a decline or an expiry (D-049). Problems on a delivered order: `delivered -> disputed` by the buyer in the window, `disputed -> completed | refunded` by staff, Release 1 form with no money moved (D-050). Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`, `tests/api/test_disputes.py`). **Not done:** reviews, photos on a problem report, the bot, the web screens. Criteria 3 and 5 need the bot and real buyers |
 | P11–P16 | Everything else | **Not started** (tables exist; no behaviour) |
 
 ## What is built and tested
@@ -301,7 +303,7 @@ runs one pass). Decisions D-034 and D-035.
 Code: `markx/orders/`, `markx/payments/ledger.py`. Routes: `/cart...`,
 `/checkout/quote`, `/checkout`, `/me/orders...`,
 `/seller/{seller_id}/orders...`, `/admin/orders...`, `/track/{order_id}`.
-Decisions D-036 to D-048.
+Decisions D-036 to D-050.
 
 - **The cart** lives on the server. A visitor's cart is found by a secret in
   an `HttpOnly` cookie (only its hash is stored); it moves into the person's
@@ -413,26 +415,55 @@ Decisions D-036 to D-048.
   signature, an unknown order, a missing parameter, a link sixty-one days
   old, a link that claims to live too long.
 
+- **Review fix (session five).** `_release_everything` cancelled waiting
+  shipments with a bulk `UPDATE` and no tracking event, on decline, buyer
+  cancellation, expiry and the overdue-hold job: four paths broke "every
+  shipment change writes its event" (J.10). It now locks those shipments in
+  id order (after the seller orders, before the stock) and cancels each
+  through `_track`. Test: `test_every_cancelled_shipment_has_its_tracking_event`,
+  which failed on the old code (an empty trail) and passes now.
+- **The next-best offer (C-26, D-049).** On a decline or an expiry the buyer
+  gets one `order.next_best_offer` notification per line that has an
+  alternative: the best offer in stock for the same variant from another
+  seller, by the product page's own ranking for the buyer's zone. `GET
+  /me/orders/{order_id}/seller-orders/{id}/alternatives` reads it live.
+  Nothing is reserved; the buyer buys through the normal checkout. Tests
+  (`tests/api/test_next_best_offer.py`, 5): Beta declines and Alpha is
+  suggested; Alpha stays silent and Beta is suggested; nothing when no other
+  seller has the variant or the other offer is out of stock; another buyer
+  gets 404 and a visitor 401.
+- **Problems on a delivered order (D.17, G.6, G.7, D-050).** Buyer: `POST
+  /me/orders/{order_id}/seller-orders/{id}/problem` (type and description,
+  only while `delivered` and inside the window) and `.../problem/messages`.
+  Seller: `POST /seller/{seller_id}/orders/{id}/problem/reply`. Staff with
+  `handle_cases`: `GET /admin/orders/problems` (the queue, most urgent
+  first) and `POST /admin/orders/seller-orders/{id}/resolve-problem`
+  (`no_action` completes the part with stock committed and fee charged;
+  `seller_refunded` marks it `refunded`, no fee, stock back on sale if
+  `goods_returned`, otherwise off the count). A written reason always, an
+  audit row always. The buyer's and the seller's pages carry the case and
+  its messages by role; the tracking link shows only the status. Setting
+  `orders.problem_decision_hours` (48). Tests (`tests/api/test_disputes.py`,
+  5; `tests/db/test_dispute_contention.py`, 2): a report stops the worker's
+  completion; both sides add their account; support decides; refunds with
+  and without the goods returned, with the stock trail replaying exactly and
+  nothing in the ledger; who may report, reply and decide (another buyer,
+  another seller, finance and catalogue staff all refused); no report after
+  the window. Contention: a report racing the buyer's "received" and the
+  worker's completion (exactly one wins); two staff decisions and a seller
+  reply racing on one case (exactly one decision, stock settled once, no
+  message after the decision).
+
 ## What exists but is NOT tested
 
 Be careful with these. They were written and never exercised.
 
-- Models for payments beyond the intent, the ledger's application code,
-  reviews, cases, search and analytics: the tables exist and are constrained;
-  **no service, route or test uses them**.
-- `shipments` rows are created at placement and cancelled on decline, cancel
-  and expiry; nothing moves one to `ready` or beyond, and no
-  `tracking_events` row is ever written.
-- `inventory_reservations` rows are held at placement, released on decline,
-  cancel and expiry, and given a 14-day expiry when the seller confirms
-  (`orders.fulfilment_hold_days`). **Nothing acts on that expiry**, and
-  nothing commits a reservation: a confirmed order holds its stock until it
-  is cancelled, because completion is not built. The next session must build
-  the rest of the life cycle, and only then decide what a confirmed hold's
-  expiry should do.
-- `payment_intents` rows are created `pending` at placement and cancelled
-  with the seller order; nothing marks one `succeeded`. There is no "mark as
-  paid" for direct orders.
+- Models for refunds, payouts, reviews, reports, search and analytics: the
+  tables exist and are constrained; **no service, route or test uses them**.
+- `fee_charges.reversal_ledger_transaction_id` and `reversed_at`: unused.
+  Release 1 never charges a fee on a refunded part, so nothing is reversed
+  (D-050).
+- `refunds`, `payouts`, provider webhooks: tables only (Release 2).
 - `offer_price_tiers`, `seller_metrics_daily`, `product_images`,
   `stores.logo_key`: tables or columns with no behaviour.
 - `commission_rules`: read by checkout, never written by any route.
@@ -441,13 +472,10 @@ Be careful with these. They were written and never exercised.
 
 - The web app (Next.js): storefront, cart and checkout screens, seller
   dashboard, admin dashboard.
-- The second half of the order life cycle: ready, dispatch, the handover code
-  and `confirm_delivery`, `complete_seller_order` with `commit_stock` and the
-  fee charge, delivery failure and return, disputes and refunds.
-- The buyer's tracking page by secure link without sign-in (D.14).
-- The next-best-offer suggestion when a seller declines or is silent (C-26).
-- Search (P8), reviews, problem reports, the staff orders desk and dispatch
-  board (P11), payments beyond recording the intent.
+- Search (P8), reviews, listing reports (C-30), photos on a problem report,
+  the staff dispatch board and the rest of P11, payments beyond the direct
+  payment record (Release 2: Protected prepay, refunds through a provider,
+  payouts).
 - Ownership transfer between seller members (needs the founder's decision,
   F-02).
 - Store logo upload, share cards, QR code.
@@ -489,9 +517,19 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
-- No failing test and no known defect in the tested code. The 779 tests of
-  session three were reproduced unchanged at the start of session four before
-  any code was written.
+- No failing test and no known defect in the tested code. The 801 tests of
+  session four were reproduced unchanged at the start of session five before
+  any code was written. One defect in session four's code was found and
+  fixed (a cancelled shipment without its tracking event).
+- **D-050 has two provisional parts**: what a refund does to the stock, and
+  that support may decide a refund outcome alone.
+- The next-best offer runs the product page's ranking once per line, inside
+  the decline or expiry transaction. Fine at today's volume; the expiry job
+  handles up to 200 orders a pass, so a very large batch makes that pass
+  slower. Move the suggestion to the outbox if it ever shows up in timings.
+- A seller who records a direct payment and later has the part refunded
+  keeps the payment record as it was; the case decision is the record that
+  the money went back. There is no `refunds` row in Release 1.
 - A TIN is validated as exactly ten digits. That is the engineer's
   understanding of the Ethiopian format, not something the blueprint states
   (F-03).
@@ -523,22 +561,23 @@ Be careful with these. They were written and never exercised.
 
 ```text
 $ cd apps/api
-$ uv run pytest               ->  801 passed in 290.38s (0:04:50)
+$ uv run pytest               ->  815 passed in 330.72s (0:05:30)
 $ uv run ruff check .         ->  All checks passed!
-$ uv run ruff format --check . ->  125 files already formatted
+$ uv run ruff format --check . ->  128 files already formatted
 $ uv run mypy markx           ->  Success: no issues found in 85 source files
 $ uv run alembic check        ->  No new upgrade operations detected.
 ```
 
-Run on 16 November 2026 against PostgreSQL 17 in Docker, after rebuilding
-the test database from empty. At the start of the session, before any change,
-the same commands gave 779 passed in 217.85s, a clean lint, 121 formatted
-files, 84 typed source files and no migration difference: the third session's
-report was accurate. mypy runs in strict mode and the application code
-contains no `type: ignore`. The suite treats warnings as errors. The whole
-suite was run twice in the session (799 passed after the fulfilment commit,
-then the figure above after the tracking link); the new test files were run
-several more times on their own.
+Run on 17 November 2026 against PostgreSQL 17 in Docker, after rebuilding
+the test database from empty. At the start of session five, before any
+change, the same commands gave 801 passed in 236.20s, a clean lint, 125
+formatted files, 85 typed source files and no migration difference: the
+fourth session's report was accurate. mypy runs in strict mode and the
+application code contains no `type: ignore`. The suite treats warnings as
+errors. The whole suite ran three times in session five (801 at the start,
+814 before the review fix's test was added, 815 at the end); the five files
+touching orders were run again on their own after a last change to
+`buyer_add_to_dispute` (79 passed).
 
 | File | Tests |
 | --- | --- |
@@ -553,6 +592,7 @@ several more times on their own.
 | `tests/db/test_inventory.py` | 14 |
 | `tests/db/test_checkout_contention.py` | 5 |
 | `tests/db/test_fulfilment_contention.py` | 4 |
+| `tests/db/test_dispute_contention.py` | 2 |
 | `tests/api/test_health.py` | 7 |
 | `tests/api/test_auth_otp.py` | 35 |
 | `tests/api/test_auth_staff.py` | 14 |
@@ -563,14 +603,16 @@ several more times on their own.
 | `tests/api/test_catalog.py` | 36 |
 | `tests/api/test_seller_onboarding.py` | 38 |
 | `tests/api/test_seller_documents.py` | 14 |
-| `tests/api/test_seller_isolation.py` | 55 |
+| `tests/api/test_seller_isolation.py` | 56 |
 | `tests/api/test_seller_staff_permissions.py` | 23 |
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_offers.py` | 42 |
 | `tests/api/test_cart.py` | 22 |
 | `tests/api/test_checkout.py` | 21 |
-| `tests/api/test_fulfilment.py` | 10 |
+| `tests/api/test_fulfilment.py` | 11 |
 | `tests/api/test_tracking.py` | 2 |
+| `tests/api/test_next_best_offer.py` | 5 |
+| `tests/api/test_disputes.py` | 5 |
 | `tests/worker/test_worker.py` | 22 |
 
 No end-to-end test exists, because no web app exists.
@@ -588,7 +630,7 @@ No end-to-end test exists, because no web app exists.
 | `0007` | `20261116_2030_order_life_cycle.py` | The seller order state diagram as a database function and trigger; a seller order starts as `placed`; a status without its event is refused at commit (D-038) |
 
 The schema has 65 tables. P9 and P10 needed no new table and no migration at
-all in session four: the first session's
+all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
 
@@ -597,56 +639,50 @@ shipments and payment intents.
 Work in this order. Finish and push each step before starting the next.
 
 1. **Reproduce the checks** (the five commands above) and report the real
-   numbers. Then review what the fourth session built: the fulfilment half
-   of `markx/orders/service.py` (everything after `# -- fulfilment`),
-   `markx/payments/ledger.py`, the new selectors and routes, with
-   `tests/api/test_fulfilment.py` and `tests/db/test_fulfilment_contention.py`.
-   Look for a path by which the handover code reaches anyone but the
-   signed-in buyer, a shipment change without its tracking event, a lock
-   taken out of the written order (cart, sellers, offers, seller orders,
-   shipment, stock), and a way to complete or return a part twice. Fix what
-   is wrong with a test that fails first.
-2. **The next-best-offer suggestion** when a seller declines or expires
-   (C-26): a selector over the ranked offers for the same variant (the
-   product page's ranking in `markx/offers/selectors.py`), then a
-   notification template to the buyer carrying the offer id, tested with the
-   bazaar's two sellers. Review the tracking page (`tracking_view`,
-   `open_tracking_link`, D-048) while you are there: it must never show the
-   handover code or the recipient's details.
-3. **Disputes and refunds in Release 1 form** (G.6: `delivered -> disputed`,
-   `disputed -> completed | refunded`): the buyer's "report a problem" inside
-   the window, which pauses completion; staff resolve it, with the fee
-   reversed on refund (`fee_charges.reversal_ledger_transaction_id`) and the
-   seller returning the money directly. Problem cases are P11's log.
-4. **Search (P8)**: `search_documents` rebuilt by a worker job when an offer's
-   price, stock or status changes, queued through the outbox.
-5. **The web app (P4)**, starting with the shell at `/am` and `/en`, then the
-   storefront, cart and checkout screens, the seller application and
-   dashboard screens, and the seller's order screens for the routes above.
-6. **CI** (`.github/workflows`): the five commands on every push with a
+   numbers. Then review what the fifth session built: `next_best_offers`
+   and `_suggest_next_best`, `open_dispute` to `resolve_dispute` and
+   `_commit_held_stock` in `markx/orders/service.py`; `next_best_offer` in
+   `markx/offers/selectors.py`; `_problems`, `buyer_alternatives` and
+   `staff_open_problems` in `markx/orders/selectors.py`; with
+   `tests/api/test_next_best_offer.py`, `tests/api/test_disputes.py` and
+   `tests/db/test_dispute_contention.py`. Look for: a case's text reaching
+   the tracking link or another seller; a refunded part that is ever charged
+   a fee or completes later; stock released or committed twice; a dispute
+   operation that locks out of the written order.
+2. **Search (P8).** `search_documents` rebuilt by a worker job when an
+   offer's price, stock or status changes, queued through the outbox; then
+   the search route with filters and the ranking of F.7 and D-015. Read the
+   blueprint's P8 criteria first.
+3. **CI** (`.github/workflows`): the five commands on every push with a
    PostgreSQL 17 service container. Nothing paid.
+4. **The web app (P4)**, starting with the shell at `/am` and `/en`, then the
+   storefront, cart and checkout screens, the seller's order screens and the
+   "report a problem" screen.
+5. **The rest of P11**: the dispatch board, commission rules managed by
+   finance (`change_fees`), the problem-case log with evidence.
 
 Keep `ruff`, `mypy`, `alembic check` and `pytest` green at every commit.
 
 `docs/HANDOFF.md`, Part B, holds the same assignment written as a brief that
-can be handed straight to the next engineer, with the commands, the files to
-read and the traps found so far.
+can be handed straight to the next engineer.
 
-Five rules the fourth session asks the next one to keep:
+Six rules the fifth session asks the next one to keep:
 
 1. **Reproduce the checks before changing anything** and report the real
    numbers.
 2. **A seller order changes status only through `_move`**, a shipment only
-   through `_track`, both in `markx/orders/service.py`; the database refuses
-   a status without its event. Stock moves only through
-   `markx/offers/service.py`, and `commit_stock` only from
-   `complete_seller_order`.
+   through `_track` (cancellations included, since session five), both in
+   `markx/orders/service.py`. Stock moves only through
+   `markx/offers/service.py`; `commit_stock` only from `_commit_held_stock`.
 3. **Take locks in the written order** (`cart -> sellers -> offers -> seller
-   orders -> shipment -> stock`, each in ascending id), lock `offers`,
-   `sellers`, `seller_orders`, `shipments` and `payment_intents` with
-   `with_for_update(key_share=True)`, and write a contention test for every
-   operation that takes two locks.
+   orders -> shipment -> stock`, each in ascending id), with
+   `with_for_update(key_share=True)` for sellers, offers, seller orders,
+   shipments and payment intents, and write a contention test for every
+   operation that takes two locks. A dispute case is guarded by its seller
+   order's lock.
 4. **The handover code is derived, never stored, never logged**, and shown
    only on the signed-in buyer's page while a handover is awaited (D-044).
-5. **Do not replace working code to change its shape.** If a departure is
+5. **MarkX moves no money in Release 1.** A refund is the record that the
+   seller paid the buyer back; no fee is charged on a refunded part.
+6. **Do not replace working code to change its shape.** If a departure is
    genuinely better, record it in `docs/DECISIONS.md` with its reason first.

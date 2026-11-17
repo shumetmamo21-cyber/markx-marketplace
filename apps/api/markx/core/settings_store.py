@@ -146,6 +146,14 @@ _SPECS: tuple[SettingSpec, ...] = (
         720,
     ),
     SettingSpec(
+        "orders.problem_decision_hours",
+        48,
+        "int",
+        "Hours staff have to decide a reported problem (blueprint D.17).",
+        1,
+        720,
+    ),
+    SettingSpec(
         "orders.max_open_direct_orders",
         3,
         "int",

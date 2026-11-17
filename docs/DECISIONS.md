@@ -830,6 +830,82 @@ notes (the address keeps only zone, area and city), the action flags
 seller's and rider's contact appear under the same rules as on the signed-in
 page (D-041). Reporting a problem from the page is the dispute work.
 
+## D-049 The next-best offer: the product page's ranking, minus the seller that failed
+
+**Follows** blueprint C-26 and D.11. **Accepted.**
+
+When a seller declines its part or lets it expire, `_suggest_next_best` looks,
+for each line, for the best offer **in stock** for the **same variant** from
+**another seller**, using `product_offers` itself (D-029) with the buyer's
+delivery zone from the order's address snapshot. So the suggestion is always
+the offer the product page would put first among the remaining sellers; there
+is no second ranking to drift. The failed seller is left out even though its
+stock has just been released. One notification per line that has an
+alternative, template `order.next_best_offer`, carrying identifiers only
+(order, seller order, line, variant, product slug, offer). No price is put in
+the message: it may have changed by the time the buyer reads it.
+`GET /me/orders/{order_id}/seller-orders/{seller_order_id}/alternatives`
+reads the same suggestion live for the order page, and answers an empty list
+unless the part is `declined` or `expired`.
+
+Nothing is reserved and nothing is re-ordered automatically: the buyer
+decides, and buys through the normal cart and checkout. The requested
+quantity is not checked against the alternative's stock beyond "in stock",
+because buyers never see a seller's exact count (D-029); checkout does the
+real check.
+
+## D-050 Problems on a delivered order: reported in the window, decided by staff, no money moved
+
+**Follows** blueprint D.17, G.6, G.7 (`open_dispute`, `resolve_dispute`),
+C-16, S-16, AD-09. **Accepted, with two provisional parts below.**
+
+- `open_dispute`: the buyer, on their own part, only while it is `delivered`
+  and before `problem_window_ends_at`. `delivered -> disputed` through
+  `_move`, and one `dispute_cases` row with the problem type, the buyer's
+  words and a decision due 48 hours later (`orders.problem_decision_hours`,
+  the blueprint's [A] figure). The worker's completion job selects only
+  `delivered` parts, so a disputed part waits for staff for as long as it
+  takes. The stock stays held meanwhile.
+- Each side may add to an open case (`dispute_messages`): the seller through
+  `/seller/{seller_id}/orders/{id}/problem/reply` (the case becomes
+  `seller_responded`), the buyer through `.../problem/messages`. Everyone
+  sees authors by role, never by person. A decided case accepts nothing.
+- `resolve_dispute`: staff with `handle_cases` (super admin, operations,
+  support: blueprint C.4), always with a written reason, audit-logged as
+  `dispute.resolve`.
+  - `no_action`: `disputed -> completed` through `complete_seller_order`,
+    exactly as any completion: stock committed, fee charged.
+  - `seller_refunded`: `disputed -> refunded`. MarkX holds no money; this
+    records that the seller returned the buyer's money directly (G.6).
+- **No fee is charged on a refunded part, so there is nothing to reverse.**
+  The fee is charged only at completion (D-045) and the diagram has no arrow
+  from `completed` to `refunded`: a refunded part never completed.
+  `fee_charges.reversal_ledger_transaction_id` therefore stays unused in
+  Release 1. It is needed only if a later release lets a completed order be
+  refunded, which would also need a new arrow in the diagram (a migration).
+- The seller order's lock guards the case: every operation on a case takes
+  the seller order row first, so the case row itself is never locked and
+  nothing new enters the lock order.
+- The public tracking page shows the `disputed` status and never the case
+  text. Photos (C-16) wait for the image pipeline. A seller's payment record
+  made before the refund stays as recorded (it was the seller's word, D-046);
+  the case's decision is the record that the money went back. There is no
+  `refunds` table yet; it arrives with Protected payments (Release 2).
+
+**PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH** (both are easy to change):
+
+1. **What happens to the stock on a refund.** Staff tick "the goods went back
+   to the shop" (`goods_returned`). If ticked, the held units go back on sale;
+   if not (lost, damaged, kept by the buyer), they leave the shop's count.
+   *Other options:* always take them off the count and let the seller add
+   stock back by hand; or hold returned goods for inspection before resale.
+   It is one branch in `resolve_dispute`.
+2. **Who decides, and how fast.** Support staff may decide alone, including a
+   refund outcome, and the target is 48 hours. The blueprint asks for a
+   second approver only for money MarkX moves, which Release 1 never does.
+   *Other option:* require operations or finance for a refund outcome; it is
+   one line in the route's permission.
+
 ---
 
 ## Decisions that need the founder

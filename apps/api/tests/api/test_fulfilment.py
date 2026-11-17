@@ -578,3 +578,58 @@ def test_a_cancelled_or_returned_part_never_completes(bazaar: Bazaar, db: DbSess
     shipment = db.scalar(select(Shipment).where(Shipment.seller_order_id == uuid.UUID(alpha_id)))
     assert shipment is not None
     assert service.handover_code(shipment) == code
+
+
+def test_every_cancelled_shipment_has_its_tracking_event(bazaar: Bazaar, db: DbSession) -> None:
+    """A shipment changes only with its tracking event (J.10), also when the
+    order around it is declined, cancelled by the buyer, expired unanswered
+    or cancelled by the overdue-hold job. Found in the fifth session's review:
+    those four paths changed the shipment with a bulk update and no event."""
+    buyer, _, order = _two_seller_order(bazaar)
+    alpha_id, beta_id = _part(order, "alpha")["id"], _part(order, "beta")["id"]
+    declined = bazaar.b.post(
+        f"/seller/{bazaar.b_id}/orders/{beta_id}/decline", json={"reason": "Sold out"}
+    )
+    assert declined.status_code == 200, declined.text
+    assert bazaar.a.post(f"/seller/{bazaar.a_id}/orders/{alpha_id}/confirm").status_code == 200
+    cancelled = buyer.post(f"/me/orders/{order['id']}/seller-orders/{alpha_id}/cancel", json={})
+    assert cancelled.status_code == 200, cancelled.text
+
+    silent_buyer, address_id = bazaar.buyer()
+    add_to_cart(silent_buyer, bazaar.a256["id"], 1)
+    silent = checkout(silent_buyer, address_id, {"alpha": "seller_rider"}).json()
+    deadline = datetime.fromisoformat(silent["seller_orders"][0]["response_deadline"])
+    assert {o.name: o.result for o in run_once(deadline + timedelta(minutes=2)).jobs}[
+        "orders.expire_unanswered"
+    ] == 1
+
+    late_buyer, address_id = bazaar.buyer()
+    add_to_cart(late_buyer, bazaar.b128["id"], 1)
+    late = checkout(late_buyer, address_id, {"beta": "shop_collection"}).json()
+    late_id = late["seller_orders"][0]["id"]
+    for step in ("confirm", "ready"):
+        assert bazaar.b.post(f"/seller/{bazaar.b_id}/orders/{late_id}/{step}").status_code == 200
+    jobs = {o.name: o.result for o in run_once(datetime.now(UTC) + timedelta(days=15)).jobs}
+    assert jobs["orders.cancel_overdue_fulfilment"] == 1
+
+    db.rollback()
+    shipments = list(db.scalars(select(Shipment)))
+    assert len(shipments) == 4
+    for shipment in shipments:
+        trail = list(
+            db.scalars(
+                select(TrackingEvent.status)
+                .where(TrackingEvent.shipment_id == shipment.id)
+                .order_by(TrackingEvent.occurred_at, TrackingEvent.id)
+            )
+        )
+        assert shipment.status == "cancelled"
+        assert trail, shipment.id
+        assert trail[-1] == "cancelled", (shipment.id, trail)
+    sources = Counter(
+        db.scalars(select(TrackingEvent.source).where(TrackingEvent.status == "cancelled"))
+    )
+    assert sources == {"seller": 1, "buyer": 1, "system": 2}
+    # The buyer's timeline shows it.
+    events = _part(_mine(buyer, order["id"]), "beta")["shipment"]["events"]
+    assert [e["status"] for e in events] == ["cancelled"]

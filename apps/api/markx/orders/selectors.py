@@ -12,6 +12,7 @@ Who may see what (blueprint C.5, G.11):
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -27,6 +28,7 @@ from markx.orders.models import Cart, Order, OrderItem, OrderStatusEvent, Seller
 from markx.orders.status import AWAITING_HANDOVER, contact_visible, derive_order_status
 from markx.payments.models import PaymentIntent
 from markx.sellers.models import Seller, Store
+from markx.trust.models import CaseStatus, DisputeCase, DisputeMessage
 
 # As on the product page: in stock or not, never a competitor-readable count.
 PUBLIC_STOCK_CAP = 5
@@ -196,6 +198,44 @@ def _events(
     return by_order
 
 
+def _problems(db: Session, seller_order_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict[str, Any]]:
+    """The problem reported on each seller order, if any, with what each side
+    wrote (D.17). Authors by role, never by person."""
+    by_order: dict[uuid.UUID, dict[str, Any]] = {}
+    if not seller_order_ids:
+        return by_order
+    by_case: dict[uuid.UUID, dict[str, Any]] = {}
+    for case in db.scalars(
+        select(DisputeCase).where(DisputeCase.seller_order_id.in_(seller_order_ids))
+    ):
+        out = {
+            "problem_type": case.problem_type,
+            "description": case.description,
+            "status": case.status,
+            "opened_at": case.created_at,
+            "decision_due_at": case.decision_due_at,
+            "decision": case.decision,
+            "decision_reason": case.decision_reason,
+            "resolved_at": case.resolved_at,
+            "messages": [],
+        }
+        by_order[case.seller_order_id] = by_case[case.id] = out
+    if by_case:
+        for message in db.scalars(
+            select(DisputeMessage)
+            .where(DisputeMessage.case_id.in_(list(by_case)))
+            .order_by(DisputeMessage.created_at, DisputeMessage.id)
+        ):
+            by_case[message.case_id]["messages"].append(
+                {
+                    "author_type": message.author_type,
+                    "body": message.body,
+                    "created_at": message.created_at,
+                }
+            )
+    return by_order
+
+
 def _item_out(item: OrderItem, language: str) -> dict[str, Any]:
     other = "en" if language == "am" else "am"
     return {
@@ -286,6 +326,8 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
     items, events = _items(db, ids), _events(db, ids)
     shipments, intents = _shipments(db, ids), _intents(db, ids)
     tracking = _tracking(db, shipments)
+    problems = _problems(db, ids)
+    now = datetime.now(UTC)
     seller_orders = []
     for seller_order, seller, store in rows:
         shipment, intent = shipments[seller_order.id], intents[seller_order.id]
@@ -315,6 +357,10 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
                 "paid_at": seller_order.paid_at,
                 "can_cancel": seller_order.status in _BUYER_MAY_CANCEL,
                 "can_confirm_received": seller_order.status == "delivered",
+                "can_report_problem": seller_order.status == "delivered"
+                and seller_order.problem_window_ends_at is not None
+                and now < seller_order.problem_window_ends_at,
+                "problem": problems.get(seller_order.id),
                 # Only the signed-in buyer, only while a handover is awaited.
                 "handover_code": service.handover_code(shipment) if awaiting_handover else None,
                 "shipment": _shipment_out(
@@ -356,6 +402,28 @@ def buyer_order(db: Session, user_id: uuid.UUID, order_id: uuid.UUID, language: 
     return _buyer_order_out(db, order, language)
 
 
+def buyer_alternatives(
+    db: Session, user_id: uuid.UUID, order_id: uuid.UUID, seller_order_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """The next-best offer for each line of a part its seller declined or let
+    expire (C-26), read live. Nothing for a part in any other state."""
+    row = db.execute(
+        select(SellerOrder, Order)
+        .join(Order, Order.id == SellerOrder.order_id)
+        .where(
+            SellerOrder.id == seller_order_id,
+            Order.id == order_id,
+            Order.buyer_user_id == user_id,
+        )
+    ).first()
+    if row is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    seller_order, order = row
+    if seller_order.status not in ("declined", "expired"):
+        return []
+    return service.next_best_offers(db, seller_order, order)
+
+
 def buyer_orders(
     db: Session, user_id: uuid.UUID, language: str, *, before: uuid.UUID | None, limit: int
 ) -> list[dict[str, Any]]:
@@ -383,6 +451,7 @@ def _seller_order_out(
     language: str,
     *,
     may_see_contact: bool,
+    problem: dict[str, Any] | None,
 ) -> dict[str, Any]:
     address: dict[str, Any] = order.address_snapshot
     fee = Money.zero()
@@ -416,6 +485,7 @@ def _seller_order_out(
         "paid_method": seller_order.paid_method,
         "paid_at": seller_order.paid_at,
         "handover_attempts_left": MAX_HANDOVER_ATTEMPTS - shipment.handover_attempts,
+        "problem": problem,
         # The seller's own rider: always shown to the seller.
         "shipment": _shipment_out(shipment, tracking, show_rider=True),
         # Enough to decide whether the order can be delivered, and no more.
@@ -463,11 +533,13 @@ def seller_orders(
     items, events = _items(db, ids), _events(db, ids)
     shipments, intents = _shipments(db, ids), _intents(db, ids)
     tracking = _tracking(db, shipments)
+    problems = _problems(db, ids)
     return [
         _seller_order_out(
             order, seller_order, items.get(seller_order.id, []), events.get(seller_order.id, []),
             shipments[seller_order.id], tracking.get(shipments[seller_order.id].id, []),
             intents[seller_order.id], language, may_see_contact=may_see_contact,
+            problem=problems.get(seller_order.id),
         )
         for seller_order, order in rows
     ]  # fmt: skip
@@ -495,6 +567,7 @@ def seller_order(
         order, found, _items(db, ids).get(found.id, []), _events(db, ids).get(found.id, []),
         shipments[found.id], _tracking(db, shipments).get(shipments[found.id].id, []),
         _intents(db, ids)[found.id], language, may_see_contact=may_see_contact,
+        problem=_problems(db, ids).get(found.id),
     )  # fmt: skip
 
 
@@ -508,6 +581,7 @@ def _staff_order_out(db: Session, order: Order | None, language: str) -> dict[st
     out["tracking_path"] = None
     for seller_order in out["seller_orders"]:
         seller_order["handover_code"] = None
+        seller_order["can_report_problem"] = False
     return out
 
 
@@ -528,6 +602,9 @@ def tracking_view(db: Session, order: Order, language: str) -> dict[str, Any]:
         seller_order["handover_code"] = None
         seller_order["can_cancel"] = False
         seller_order["can_confirm_received"] = False
+        seller_order["can_report_problem"] = False
+        # What the buyer wrote about a problem is for the signed-in page.
+        seller_order["problem"] = None
     return out
 
 
@@ -539,3 +616,28 @@ def staff_order(db: Session, code: str, language: str) -> dict[str, Any]:
 
 def staff_order_by_id(db: Session, order_id: uuid.UUID, language: str) -> dict[str, Any]:
     return _staff_order_out(db, db.get(Order, order_id), language)
+
+
+def staff_open_problems(db: Session, *, limit: int) -> list[dict[str, Any]]:
+    """The cases waiting for a decision, the most urgent first (AD-09)."""
+    rows = db.execute(
+        select(DisputeCase, SellerOrder, Order, Store)
+        .join(SellerOrder, SellerOrder.id == DisputeCase.seller_order_id)
+        .join(Order, Order.id == SellerOrder.order_id)
+        .join(Store, Store.seller_id == SellerOrder.seller_id)
+        .where(DisputeCase.status != CaseStatus.RESOLVED)
+        .order_by(DisputeCase.decision_due_at, DisputeCase.id)
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "seller_order_id": seller_order.id,
+            "order_code": order.code,
+            "store_slug": store.slug,
+            "problem_type": case.problem_type,
+            "status": case.status,
+            "opened_at": case.created_at,
+            "decision_due_at": case.decision_due_at,
+        }
+        for case, seller_order, order, store in rows
+    ]

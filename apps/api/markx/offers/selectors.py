@@ -325,6 +325,31 @@ def product_offers(
     }
 
 
+def next_best_offer(
+    db: Session, variant_id: uuid.UUID, *, zone_code: str | None, exclude_seller_id: uuid.UUID
+) -> dict[str, Any] | None:
+    """The best offer in stock for the same variant from another seller, by
+    the product page's own ranking (blueprint C-26), or None when there is
+    none. Used when a seller declines an order or lets it expire."""
+    row = db.execute(
+        select(Product.slug)
+        .join(ProductVariant, ProductVariant.product_id == Product.id)
+        .where(ProductVariant.id == variant_id)
+    ).first()
+    excluded = db.scalar(select(Store.slug).where(Store.seller_id == exclude_seller_id))
+    if row is None:
+        return None
+    try:
+        ranked = product_offers(db, row.slug, zone_code=zone_code, variant_id=variant_id)
+    except NotFound:
+        # The product was withdrawn, or the buyer's zone closed: nothing to suggest.
+        return None
+    for offer in ranked["offers"]:
+        if offer["in_stock"] and offer["store_slug"] != excluded:
+            return dict(offer, product_slug=ranked["product_slug"])
+    return None
+
+
 def store_price_list(
     db: Session, store_slug: str, language: str, *, limit: int
 ) -> list[dict[str, Any]]:

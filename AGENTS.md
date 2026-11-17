@@ -95,7 +95,9 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
 - **A shipment changes only through `_track`** in `markx/orders/service.py`,
   and the handover code is never stored, logged or shown to anyone but the
   signed-in buyer (D-044). `commit_stock` is called only from
-  `complete_seller_order`.
+  `_commit_held_stock`, which completion and a refund without the goods use.
+- **A dispute case is guarded by its seller order's lock** (D-050): lock the
+  seller order first, never the case. Only `resolve_dispute` decides one.
 
 ## 4. The working branch
 

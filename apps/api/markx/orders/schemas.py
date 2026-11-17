@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, StringConstraints
 
 from markx.core.schemas import ApiModel, PhoneText, ShortText
+from markx.offers.schemas import RankedOfferOut
 from markx.orders.models import MAX_QUANTITY_PER_LINE
 
 DeliveryMethod = Literal["seller_rider", "partner_courier", "shop_collection"]
@@ -154,6 +155,26 @@ class ShipmentOut(ApiModel):
     events: list[TrackingEventOut]
 
 
+class ProblemMessageOut(ApiModel):
+    author_type: str
+    body: str
+    created_at: datetime
+
+
+class ProblemOut(ApiModel):
+    """A problem the buyer reported on a delivered part (D.17)."""
+
+    problem_type: str
+    description: str
+    status: str
+    opened_at: datetime
+    decision_due_at: datetime
+    decision: str | None
+    decision_reason: str | None
+    resolved_at: datetime | None
+    messages: list[ProblemMessageOut]
+
+
 class BuyerSellerOrderOut(ApiModel):
     id: uuid.UUID
     store_slug: str
@@ -177,6 +198,9 @@ class BuyerSellerOrderOut(ApiModel):
     paid_at: datetime | None
     can_cancel: bool
     can_confirm_received: bool
+    # "Report a problem" is open: delivered, and inside the problem window.
+    can_report_problem: bool
+    problem: ProblemOut | None
     # The one-time code (C-15), shown only while a handover is awaited and
     # only to the signed-in buyer. Give it only after seeing the goods.
     handover_code: str | None
@@ -202,6 +226,49 @@ class OrderOut(ApiModel):
     grand_total_santim: int
     address: dict[str, Any]
     seller_orders: list[BuyerSellerOrderOut]
+
+
+class AlternativeOfferOut(RankedOfferOut):
+    product_slug: str
+
+
+class AlternativeOut(ApiModel):
+    """The next-best offer for one line of a part that fell through (C-26)."""
+
+    order_item_id: uuid.UUID
+    quantity: int
+    offer: AlternativeOfferOut
+
+
+LongText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=2000)]
+
+
+class ProblemIn(ApiModel):
+    problem_type: Literal[
+        "not_received", "wrong_item", "not_as_described", "damaged", "suspected_fake", "other"
+    ]
+    description: LongText
+
+
+class ProblemMessageIn(ApiModel):
+    body: LongText
+
+
+class ResolveProblemIn(ApiModel):
+    decision: Literal["no_action", "seller_refunded"]
+    reason: Reason
+    # With a refund: did the goods go back to the shop? Then the stock returns to sale.
+    goods_returned: bool = False
+
+
+class OpenProblemOut(ApiModel):
+    seller_order_id: uuid.UUID
+    order_code: str
+    store_slug: str
+    problem_type: str
+    status: str
+    opened_at: datetime
+    decision_due_at: datetime
 
 
 class CancelIn(ApiModel):
@@ -274,6 +341,7 @@ class SellerOrderOut(ApiModel):
     paid_method: str | None
     paid_at: datetime | None
     handover_attempts_left: int
+    problem: ProblemOut | None
     shipment: ShipmentOut
     delivery_area: DeliveryAreaOut
     # Null until this seller confirms (blueprint C.5).

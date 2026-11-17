@@ -142,12 +142,16 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   `expire_unanswered_orders`, and after confirmation `mark_ready`,
   `seller_dispatch` / `staff_dispatch`, `confirm_delivery` (the handover
   code, D-044), `report_delivery_failed`, `return_to_seller`,
-  `complete_seller_order` (the only caller of `commit_stock`, and the fee,
-  D-045), `confirm_received`, `record_direct_payment` (D-046),
+  `complete_seller_order` (stock through `_commit_held_stock`, the only
+  caller of `commit_stock`, and the fee, D-045), `confirm_received`, `record_direct_payment` (D-046),
   `staff_reissue_handover_code`, the jobs
   `complete_after_problem_window` and `cancel_overdue_fulfilment` (D-043),
-  and the tracking link (`issue_tracking_link`, `open_tracking_link`,
-  D-048).
+  the tracking link (`issue_tracking_link`, `open_tracking_link`, D-048),
+  the next-best offer after a decline or an expiry (`next_best_offers`,
+  D-049), and problems on a delivered order (`open_dispute`,
+  `seller_reply_to_dispute`, `buyer_add_to_dispute`, `resolve_dispute`,
+  D-050). A dispute case is guarded by its seller order's lock; the case
+  row is never locked on its own.
   **A seller order changes status only through `_move`**, which refuses any
   move that is not an arrow and writes the status event in the same
   transaction. Migration `0007` makes the database refuse the same things, so
@@ -173,7 +177,9 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   link), `tests/api/test_fulfilment.py` (placed to
   completed for two sellers, the handover code and its lockout, failed
   deliveries and returns, the payment record, the fee and the ledger, the
-  overdue hold), `tests/db/test_checkout_contention.py` and
+  overdue hold), `tests/api/test_next_best_offer.py`,
+  `tests/api/test_disputes.py`, `tests/db/test_dispute_contention.py`,
+  `tests/db/test_checkout_contention.py` and
   `tests/db/test_fulfilment_contention.py` for the races (100 checkouts of
   the last unit, and every pair of operations that share locks).
 

@@ -63,6 +63,7 @@ from markx.delivery.models import (
 )
 from markx.delivery.selectors import active_rates_for_zone
 from markx.notifications import service as notifications
+from markx.offers import selectors as offer_selectors
 from markx.offers import service as offers
 from markx.offers.models import (
     Inventory,
@@ -101,6 +102,7 @@ from markx.payments.models import (
     RuleScope,
 )
 from markx.sellers.models import Seller, SellerMember, SellerStatus, Store
+from markx.trust.models import CaseDecision, CaseStatus, DisputeCase, DisputeMessage
 
 MAX_CART_LINES = 30
 EXPIRY_BATCH = 200
@@ -631,6 +633,42 @@ def _notify_buyer(db: Session, seller_order: SellerOrder, order: Order, template
     )  # fmt: skip
 
 
+def next_best_offers(db: Session, seller_order: SellerOrder, order: Order) -> list[dict[str, Any]]:
+    """For each line of a seller order, the best offer in stock for the same
+    variant from another seller (C-26), ranked as on the product page for the
+    buyer's delivery zone. Lines with no other offer are left out."""
+    zone_code = order.address_snapshot.get("zone_code")
+    found = []
+    for item in db.scalars(
+        select(OrderItem).where(OrderItem.seller_order_id == seller_order.id).order_by(OrderItem.id)
+    ):
+        offer = offer_selectors.next_best_offer(
+            db, item.variant_id, zone_code=zone_code, exclude_seller_id=seller_order.seller_id
+        )
+        if offer is not None:
+            found.append({"order_item_id": item.id, "quantity": item.quantity, "offer": offer})
+    return found
+
+
+def _suggest_next_best(db: Session, seller_order: SellerOrder, order: Order) -> None:
+    """The seller declined or stayed silent: point the buyer at the next-best
+    offer for each line (C-26). Identifiers only; the page reads the live
+    price, which may have changed by the time the buyer looks."""
+    for found in next_best_offers(db, seller_order, order):
+        notifications.notify(
+            db, order.buyer_user_id, "order.next_best_offer",
+            {
+                "order_id": str(order.id),
+                "seller_order_id": str(seller_order.id),
+                "order_code": order.code,
+                "order_item_id": str(found["order_item_id"]),
+                "variant_id": str(found["offer"]["variant_id"]),
+                "product_slug": found["offer"]["product_slug"],
+                "offer_id": str(found["offer"]["id"]),
+            },
+        )  # fmt: skip
+
+
 def open_order_count(db: Session, user_id: uuid.UUID) -> int:
     """How many of this buyer's orders still have a part in progress."""
     return int(
@@ -895,12 +933,31 @@ def _move(
 
 
 def _release_everything(
-    db: Session, seller_order_ids: Sequence[uuid.UUID], *, actor_user_id: uuid.UUID | None, now: datetime
-) -> None:  # fmt: skip
+    db: Session,
+    seller_order_ids: Sequence[uuid.UUID],
+    *,
+    actor_type: ActorType,
+    actor_user_id: uuid.UUID | None,
+    now: datetime,
+) -> None:
     """Give back the stock held for these seller orders and close what hung on
-    them. Releases run in ascending offer id order across all of them."""
+    them. The caller holds the seller orders' locks. Shipments not yet on the
+    road are cancelled first, each with its tracking event, then releases run
+    in ascending offer id order across all of them."""
     if not seller_order_ids:
         return
+    waiting = db.scalars(
+        select(Shipment)
+        .where(
+            Shipment.seller_order_id.in_(seller_order_ids),
+            Shipment.status.in_((ShipmentStatus.PENDING, ShipmentStatus.READY)),
+        )
+        .order_by(Shipment.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    for shipment in list(waiting):
+        _track(db, shipment, ShipmentStatus.CANCELLED, actor_type=actor_type, actor_user_id=actor_user_id)  # fmt: skip
     held = db.scalars(
         select(InventoryReservation)
         .join(OrderItem, OrderItem.id == InventoryReservation.order_item_id)
@@ -919,14 +976,6 @@ def _release_everything(
         reservation.status = "released"
         reservation.closed_at = now
     db.flush()
-    db.execute(
-        update(Shipment)
-        .where(
-            Shipment.seller_order_id.in_(seller_order_ids),
-            Shipment.status.in_((ShipmentStatus.PENDING, ShipmentStatus.READY)),
-        )
-        .values(status=ShipmentStatus.CANCELLED.value, updated_at=now)
-    )
     db.execute(
         update(PaymentIntent)
         .where(
@@ -1002,8 +1051,15 @@ def seller_respond(
             db, seller_order, SellerOrderStatus.DECLINED, actor_type=ActorType.SELLER,
             actor_user_id=member.user_id, reason=reason, now=now,
         )  # fmt: skip
-        _release_everything(db, [seller_order.id], actor_user_id=member.user_id, now=now)
+        _release_everything(
+            db,
+            [seller_order.id],
+            actor_type=ActorType.SELLER,
+            actor_user_id=member.user_id,
+            now=now,
+        )
         _notify_buyer(db, seller_order, order, "order.seller_declined")
+        _suggest_next_best(db, seller_order, order)
     return seller_order
 
 
@@ -1040,7 +1096,9 @@ def cancel_by_buyer(
         db, seller_order, SellerOrderStatus.CANCELLED, actor_type=ActorType.BUYER,
         actor_user_id=user.id, reason=reason or "cancelled_by_buyer", now=now,
     )  # fmt: skip
-    _release_everything(db, [seller_order.id], actor_user_id=user.id, now=now)
+    _release_everything(
+        db, [seller_order.id], actor_type=ActorType.BUYER, actor_user_id=user.id, now=now
+    )
     _notify_seller(db, seller_order, order, "order.cancelled_by_buyer")
     return seller_order
 
@@ -1071,10 +1129,13 @@ def expire_unanswered_orders(db: Session, *, now: datetime | None = None) -> int
             db, seller_order, SellerOrderStatus.EXPIRED, actor_type=ActorType.SYSTEM,
             actor_user_id=None, reason="no_answer_in_time", now=now,
         )  # fmt: skip
-    _release_everything(db, [so.id for so in due], actor_user_id=None, now=now)
+    _release_everything(
+        db, [so.id for so in due], actor_type=ActorType.SYSTEM, actor_user_id=None, now=now
+    )
     for seller_order in due:
         order = _parent(db, seller_order)
         _notify_buyer(db, seller_order, order, "order.seller_did_not_answer")
+        _suggest_next_best(db, seller_order, order)
         _notify_seller(db, seller_order, order, "order.expired_unanswered")
     return len(due)
 
@@ -1379,7 +1440,9 @@ def return_to_seller(
         db, seller_order, SellerOrderStatus.RETURNED, actor_type=ActorType.SELLER,
         actor_user_id=member.user_id, reason=reason, now=now,
     )  # fmt: skip
-    _release_everything(db, [seller_order.id], actor_user_id=member.user_id, now=now)
+    _release_everything(
+        db, [seller_order.id], actor_type=ActorType.SELLER, actor_user_id=member.user_id, now=now
+    )
     shipment = _shipment(db, seller_order)
     _track(
         db, shipment, ShipmentStatus.RETURNED, actor_type=ActorType.SELLER,
@@ -1387,6 +1450,33 @@ def return_to_seller(
     )  # fmt: skip
     _notify_buyer(db, seller_order, _parent(db, seller_order), "order.returned")
     return seller_order
+
+
+def _commit_held_stock(
+    db: Session, seller_order: SellerOrder, *, actor_user_id: uuid.UUID | None, now: datetime
+) -> None:
+    """The goods are gone from the shop for good: every unit held for this
+    seller order leaves `on_hand`, in ascending offer id order. The caller
+    holds the seller order's lock. The only caller of `commit_stock`."""
+    held = list(
+        db.scalars(
+            select(InventoryReservation)
+            .join(OrderItem, OrderItem.id == InventoryReservation.order_item_id)
+            .where(
+                OrderItem.seller_order_id == seller_order.id,
+                InventoryReservation.status == ReservationStatus.HELD,
+            )
+            .order_by(InventoryReservation.offer_id, InventoryReservation.id)
+            .with_for_update(of=InventoryReservation)
+        )
+    )
+    for reservation in held:
+        offers.commit_stock(
+            db, reservation.offer_id, reservation.quantity, reference_type="order_item",
+            reference_id=reservation.order_item_id, actor_user_id=actor_user_id,
+        )  # fmt: skip
+        reservation.status = ReservationStatus.COMMITTED.value
+        reservation.closed_at = now
 
 
 def complete_seller_order(
@@ -1411,25 +1501,7 @@ def complete_seller_order(
         actor_user_id=actor_user_id, reason=None, now=now,
     )  # fmt: skip
     seller_order.completed_at = now
-    held = list(
-        db.scalars(
-            select(InventoryReservation)
-            .join(OrderItem, OrderItem.id == InventoryReservation.order_item_id)
-            .where(
-                OrderItem.seller_order_id == seller_order.id,
-                InventoryReservation.status == ReservationStatus.HELD,
-            )
-            .order_by(InventoryReservation.offer_id, InventoryReservation.id)
-            .with_for_update(of=InventoryReservation)
-        )
-    )
-    for reservation in held:
-        offers.commit_stock(
-            db, reservation.offer_id, reservation.quantity, reference_type="order_item",
-            reference_id=reservation.order_item_id, actor_user_id=actor_user_id,
-        )  # fmt: skip
-        reservation.status = ReservationStatus.COMMITTED.value
-        reservation.closed_at = now
+    _commit_held_stock(db, seller_order, actor_user_id=actor_user_id, now=now)
     items = list(
         db.scalars(
             select(OrderItem)
@@ -1541,7 +1613,9 @@ def cancel_overdue_fulfilment(db: Session, *, now: datetime | None = None) -> in
             db, seller_order, SellerOrderStatus.CANCELLED, actor_type=ActorType.SYSTEM,
             actor_user_id=None, reason="fulfilment_hold_expired", now=now,
         )  # fmt: skip
-    _release_everything(db, [so.id for so in due], actor_user_id=None, now=now)
+    _release_everything(
+        db, [so.id for so in due], actor_type=ActorType.SYSTEM, actor_user_id=None, now=now
+    )
     for seller_order in due:
         order = _parent(db, seller_order)
         _notify_buyer(db, seller_order, order, "order.cancelled_not_fulfilled")
@@ -1618,6 +1692,203 @@ def staff_reissue_handover_code(
         before={"code_version": before}, after={"code_version": shipment.code_version, "reason": reason},
     )  # fmt: skip
     _notify_buyer(db, seller_order, _parent(db, seller_order), "order.handover_code_reissued")
+    return seller_order
+
+
+# -- problems on a delivered order (D.17, G.6, G.7: open_dispute, resolve_dispute) ----------
+
+
+def dispute_case(db: Session, seller_order_id: uuid.UUID) -> DisputeCase | None:
+    return db.scalar(select(DisputeCase).where(DisputeCase.seller_order_id == seller_order_id))
+
+
+def open_dispute(
+    db: Session,
+    user: User,
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    *,
+    problem_type: str,
+    description: str,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """The buyer reports a problem (`delivered -> disputed`, C-16), only on
+    their own delivered order and only inside the problem window. The part no
+    longer completes by itself: staff decide (`resolve_dispute`)."""
+    now = now or _now()
+    order = db.scalar(select(Order).where(Order.id == order_id, Order.buyer_user_id == user.id))
+    if order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    seller_order = db.scalar(
+        select(SellerOrder)
+        .where(SellerOrder.id == seller_order_id, SellerOrder.order_id == order.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    if seller_order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    if seller_order.status != SellerOrderStatus.DELIVERED:
+        raise Conflict(
+            "order_not_delivered", "A problem can be reported only on a delivered order."
+        )
+    window_end = seller_order.problem_window_ends_at
+    if window_end is None or now >= window_end:
+        raise Conflict("problem_window_closed", "The time to report a problem has passed.")
+    _move(
+        db, seller_order, SellerOrderStatus.DISPUTED, actor_type=ActorType.BUYER,
+        actor_user_id=user.id, reason=problem_type, now=now,
+    )  # fmt: skip
+    db.add(
+        DisputeCase(
+            seller_order_id=seller_order.id,
+            opened_by_user_id=user.id,
+            problem_type=problem_type,
+            description=description,
+            decision_due_at=now
+            + timedelta(hours=settings_store.get_int(db, "orders.problem_decision_hours")),
+        )
+    )
+    db.flush()
+    _notify_buyer(db, seller_order, order, "order.problem_reported")
+    _notify_seller(db, seller_order, order, "order.problem_reported_for_seller")
+    return seller_order
+
+
+def _add_dispute_message(
+    db: Session, seller_order: SellerOrder, *, author_type: ActorType, user_id: uuid.UUID, body: str
+) -> DisputeCase:
+    """One side adds its account or evidence to an open case. The caller holds
+    the seller order's lock, which is what guards the case."""
+    case = dispute_case(db, seller_order.id)
+    if case is None:
+        raise NotFound("problem_not_found", "No problem was reported on this order.")
+    if case.status == CaseStatus.RESOLVED:
+        raise Conflict("problem_already_resolved", "This problem has already been decided.")
+    db.add(
+        DisputeMessage(
+            case_id=case.id, author_type=author_type.value, author_user_id=user_id, body=body
+        )
+    )
+    db.flush()
+    return case
+
+
+def seller_reply_to_dispute(
+    db: Session, seller: Seller, member: SellerMember, seller_order_id: uuid.UUID, *, body: str
+) -> SellerOrder:
+    """The seller answers a reported problem (S-16)."""
+    seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    case = _add_dispute_message(
+        db, seller_order, author_type=ActorType.SELLER, user_id=member.user_id, body=body
+    )
+    if case.status == CaseStatus.OPEN:
+        case.status = CaseStatus.SELLER_RESPONDED.value
+        db.flush()
+    _notify_buyer(db, seller_order, _parent(db, seller_order), "order.problem_seller_replied")
+    return seller_order
+
+
+def buyer_add_to_dispute(
+    db: Session, user: User, order_id: uuid.UUID, seller_order_id: uuid.UUID, *, body: str
+) -> SellerOrder:
+    """The buyer adds to their own open case."""
+    order = db.scalar(select(Order).where(Order.id == order_id, Order.buyer_user_id == user.id))
+    if order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    # Found together with the buyer's own order, so a stranger's guess never
+    # locks someone else's row.
+    seller_order = db.scalar(
+        select(SellerOrder)
+        .where(SellerOrder.id == seller_order_id, SellerOrder.order_id == order.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    if seller_order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    _add_dispute_message(db, seller_order, author_type=ActorType.BUYER, user_id=user.id, body=body)
+    _notify_seller(db, seller_order, order, "order.problem_buyer_added")
+    return seller_order
+
+
+def resolve_dispute(
+    db: Session,
+    actor: Actor,
+    seller_order_id: uuid.UUID,
+    *,
+    decision: CaseDecision,
+    reason: str,
+    goods_returned: bool = False,
+    now: datetime | None = None,
+) -> SellerOrder:
+    """Staff decide a reported problem (G.7, AD-09), with a written reason.
+
+    `no_action`: the part completes as any other (`disputed -> completed`):
+    the stock is committed and the fee charged.
+
+    `seller_refunded`: `disputed -> refunded`. MarkX holds no money, so this
+    records that the seller gave the buyer's money back directly (G.6). No fee
+    is charged: the fee is charged only at completion, which a refunded part
+    never reaches, so there is nothing to reverse (D-050). The held stock
+    goes back on sale if staff say the goods went back to the shop, and
+    leaves the shop's count otherwise (D-049).
+    """
+    now = now or _now()
+    assert actor.user_id is not None, "a dispute is decided by a signed-in member of staff"
+    seller_order = _lock_seller_order(db, seller_order_id)
+    if seller_order.status != SellerOrderStatus.DISPUTED:
+        raise Conflict("order_not_disputed", "No problem is waiting for a decision on this order.")
+    case = dispute_case(db, seller_order.id)
+    assert case is not None, "a disputed seller order always has its case"
+    order = _parent(db, seller_order)
+    if decision == CaseDecision.NO_ACTION:
+        if goods_returned:
+            raise ValidationFailed(
+                "goods_returned_without_refund",
+                "Goods that went back to the shop mean a refund, not a completed order.",
+            )
+        complete_seller_order(
+            db, seller_order, actor_type=ActorType.STAFF, actor_user_id=actor.user_id, now=now
+        )
+    else:
+        _move(
+            db, seller_order, SellerOrderStatus.REFUNDED, actor_type=ActorType.STAFF,
+            actor_user_id=actor.user_id, reason=decision.value, now=now,
+        )  # fmt: skip
+        if goods_returned:
+            _release_everything(
+                db,
+                [seller_order.id],
+                actor_type=ActorType.STAFF,
+                actor_user_id=actor.user_id,
+                now=now,
+            )
+        else:
+            _commit_held_stock(db, seller_order, actor_user_id=actor.user_id, now=now)
+            # Nothing is owed any more on a part the buyer never paid for.
+            db.execute(
+                update(PaymentIntent)
+                .where(
+                    PaymentIntent.seller_order_id == seller_order.id,
+                    PaymentIntent.status == IntentStatus.PENDING,
+                )
+                .values(status=IntentStatus.CANCELLED.value)
+            )
+        _notify_buyer(db, seller_order, order, "order.refunded")
+        _notify_seller(db, seller_order, order, "order.refunded_for_seller")
+    case.status = CaseStatus.RESOLVED.value
+    case.decision = decision.value
+    case.decision_reason = reason
+    case.resolved_by_user_id = actor.user_id
+    case.resolved_at = now
+    db.flush()
+    audit.record_by(
+        db, actor, "dispute.resolve", "dispute_case", case.id,
+        before={"status": SellerOrderStatus.DISPUTED.value},
+        after={
+            "seller_order_id": str(seller_order.id), "decision": decision.value,
+            "goods_returned": goods_returned, "reason": reason,
+        },
+    )  # fmt: skip
     return seller_order
 
 

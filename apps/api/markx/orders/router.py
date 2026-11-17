@@ -35,6 +35,7 @@ from markx.core.http import Db
 from markx.orders import selectors, service
 from markx.orders.models import Cart
 from markx.orders.schemas import (
+    AlternativeOut,
     CancelIn,
     CartItemIn,
     CartOut,
@@ -42,18 +43,24 @@ from markx.orders.schemas import (
     DeclineIn,
     DispatchIn,
     HandoverIn,
+    OpenProblemOut,
     OrderOut,
     PaymentRecordIn,
+    ProblemIn,
+    ProblemMessageIn,
     QuoteIn,
     QuoteOut,
     ReasonIn,
+    ResolveProblemIn,
     SellerOrderOut,
 )
+from markx.trust.models import CaseDecision
 
 router = APIRouter()
 seller_router = APIRouter(prefix="/seller/{seller_id}", tags=["seller: orders"])
 admin_router = APIRouter(prefix="/admin/orders", tags=["admin: orders"])
 OrderFinder = Annotated[Principal, Depends(require_staff(StaffCapability.FIND_ORDERS))]
+CaseHandler = Annotated[Principal, Depends(require_staff(StaffCapability.HANDLE_CASES))]
 OrderIntervener = Annotated[Principal, Depends(require_staff(StaffCapability.INTERVENE_IN_ORDERS))]
 
 CART_COOKIE = "markx_cart"
@@ -288,6 +295,61 @@ def confirm_my_seller_order_received(
     return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
 
 
+@router.post(
+    "/me/orders/{order_id}/seller-orders/{seller_order_id}/problem",
+    response_model=OrderOut,
+    tags=["orders"],
+)
+def report_a_problem(
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    body: ProblemIn,
+    buyer: Buyer,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """ "Report a problem" inside the problem window (C-16). The part then
+    waits for MarkX staff instead of completing by itself."""
+    service.open_dispute(
+        db, buyer.user, order_id, seller_order_id,
+        problem_type=body.problem_type, description=body.description,
+    )  # fmt: skip
+    return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
+
+
+@router.post(
+    "/me/orders/{order_id}/seller-orders/{seller_order_id}/problem/messages",
+    response_model=OrderOut,
+    tags=["orders"],
+)
+def add_to_my_problem(
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    body: ProblemMessageIn,
+    buyer: Buyer,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    service.buyer_add_to_dispute(db, buyer.user, order_id, seller_order_id, body=body.body)
+    return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
+
+
+@router.get(
+    "/me/orders/{order_id}/seller-orders/{seller_order_id}/alternatives",
+    response_model=list[AlternativeOut],
+    tags=["orders"],
+)
+def my_seller_order_alternatives(
+    order_id: uuid.UUID, seller_order_id: uuid.UUID, buyer: Buyer, db: Db
+) -> list[AlternativeOut]:
+    """The next-best offer for each line of a part the seller declined or let
+    expire (C-26)."""
+    return [
+        AlternativeOut.model_validate(row)
+        for row in selectors.buyer_alternatives(db, buyer.user.id, order_id, seller_order_id)
+    ]
+
+
 @router.get("/track/{order_id}", response_model=OrderOut, tags=["orders"])
 def track_order(
     order_id: uuid.UUID,
@@ -456,7 +518,32 @@ def record_seller_order_payment(
     return _seller_order_out(db, context, seller_order_id, lang)
 
 
+@seller_router.post("/orders/{seller_order_id}/problem/reply", response_model=SellerOrderOut)
+def reply_to_seller_order_problem(
+    seller_order_id: uuid.UUID,
+    body: ProblemMessageIn,
+    context: OrderHandler,
+    db: Db,
+    lang: LangQuery = "am",
+) -> SellerOrderOut:
+    """The seller's answer to a problem the buyer reported (S-16)."""
+    service.seller_reply_to_dispute(
+        db, context.seller, context.member, seller_order_id, body=body.body
+    )
+    return _seller_order_out(db, context, seller_order_id, lang)
+
+
 # -- the staff orders desk -----------------------------------------------------------
+
+
+@admin_router.get("/problems", response_model=list[OpenProblemOut])
+def staff_open_problems(
+    staff: CaseHandler, db: Db, limit: Annotated[int, Query(ge=1, le=100)] = 50
+) -> list[OpenProblemOut]:
+    """Reported problems waiting for a decision, the most urgent first (AD-09)."""
+    return [
+        OpenProblemOut.model_validate(row) for row in selectors.staff_open_problems(db, limit=limit)
+    ]
 
 
 @admin_router.get("/{code}", response_model=OrderOut)
@@ -499,4 +586,23 @@ def staff_reissue_handover_code(
     seller_order = service.staff_reissue_handover_code(
         db, staff.actor(request), seller_order_id, reason=body.reason
     )
+    return OrderOut.model_validate(selectors.staff_order_by_id(db, seller_order.order_id, lang))
+
+
+@admin_router.post("/seller-orders/{seller_order_id}/resolve-problem", response_model=OrderOut)
+def staff_resolve_problem(
+    seller_order_id: uuid.UUID,
+    body: ResolveProblemIn,
+    staff: CaseHandler,
+    request: Request,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """Decide a reported problem, with a written reason (D.17). Release 1
+    records the outcome; MarkX moves no money."""
+    seller_order = service.resolve_dispute(
+        db, staff.actor(request), seller_order_id,
+        decision=CaseDecision(body.decision), reason=body.reason,
+        goods_returned=body.goods_returned,
+    )  # fmt: skip
     return OrderOut.model_validate(selectors.staff_order_by_id(db, seller_order.order_id, lang))
