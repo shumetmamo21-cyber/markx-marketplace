@@ -1021,6 +1021,33 @@ was implemented):
 | Fulfilment hold (D-043) | A part still `confirmed` or `ready` 14 days after confirmation is cancelled and its stock freed | the setting `orders.fulfilment_hold_days`, or the job `cancel_overdue_fulfilment` |
 | Merged products' offers (F-06), lifting a takedown (F-07) | As their F- entries say | as their F- entries say |
 
+## D-054 The search golden set: a file the founder fills, a command that scores it
+
+**Follows** blueprint P8 completion criteria. **Accepted.**
+
+`markx/search/evaluation.py` scores real queries against the real search, as
+a buyer would run them, and writes nothing (no query is logged; the session
+is rolled back). The file is CSV with four columns: `query` (exactly as
+typed), `expected` (the meant product's slug, or several separated by `|`),
+`kind` (`amharic`, `english`, `latin_amharic`) and `source` (where it came
+from, without names or phone numbers). `apps/api/search_eval/golden_queries.template.csv`
+is the empty template with instructions.
+
+The report gives the share with a right answer in the top three, per kind,
+the 95th-percentile and slowest time per search, every miss with what came
+back instead, and every expected slug that names no searchable product (a
+mistake in the file or the catalogue, counted as a miss and listed). **It
+never calls a set valid below 100 queries**, nor one missing a kind, and
+says so. Time is measured around the whole search call, so it is an upper
+bound on the blueprint's "database time". Exit status 0 only when the
+criteria are met on a valid set.
+
+The tests use a file marked SYNTHETIC (`tests/fixtures/search_eval_synthetic.csv`)
+to check the evaluator's arithmetic. **No real query exists in the
+repository, and the 85% target has not been measured.** Real queries belong
+in `search_eval/golden_queries.csv` once the founder collects them; they
+carry no personal data by construction.
+
 ---
 
 ## Decisions that need the founder

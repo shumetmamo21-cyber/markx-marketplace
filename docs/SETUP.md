@@ -77,6 +77,19 @@ PostgreSQL superuser as step 2. If yours differs, set `MARKX_TEST_PGHOST`,
 Expected: all tests pass and the suite prints no warnings (a warning is
 treated as a failure).
 
+## 4a. Score search against real queries (P8)
+
+```bash
+cp search_eval/golden_queries.template.csv search_eval/golden_queries.csv
+# fill it in with real queries (the template explains each column), then:
+uv run python -m markx.search.evaluation search_eval/golden_queries.csv
+uv run python -m markx.search.evaluation search_eval/golden_queries.csv --json
+```
+
+It reads the database in `MARKX_DATABASE_URL` (the `markx` database by
+default), so load the real catalogue there first and let the worker build the
+search documents (`uv run python -m markx.worker --once`). It writes nothing.
+
 ## 5. Run the API
 
 ```bash

@@ -1,0 +1,20 @@
+# MarkX search golden set (blueprint P8). Copy this file to golden_queries.csv and fill it in.
+#
+# One row per real query: exactly what a person typed, and the product they meant.
+# The P8 target needs 100 rows across the three kinds, collected from real people
+# (shop owners, buyers, Telegram groups). Do not make queries up: the score is only
+# meaningful if the queries are real.
+#
+#   query     exactly as typed, spelling mistakes and all
+#   expected  the product's slug as it appears in its MarkX link (for example
+#             samsung-galaxy-a16); several slugs separated by | if any is right
+#   kind      amharic (Ethiopic script), english, or latin_amharic (Amharic in Latin letters)
+#   source    where it came from, without names or phone numbers, for example
+#             "shop owner, Merkato, 20 Nov 2026"
+#
+# Lines starting with # are notes. Score it, from apps/api, against a database
+# that holds the real catalogue:
+#
+#   uv run python -m markx.search.evaluation search_eval/golden_queries.csv
+#
+query,expected,kind,source
