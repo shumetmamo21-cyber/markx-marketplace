@@ -43,6 +43,9 @@ class Config(BaseSettings):
     cookie_secure: bool = False
 
     storage_dir: Path = Path("./var/storage")
+    # Where browsers load product pictures from (F.6): on a real server the
+    # CDN's own cookieless domain; on a laptop the API's media route.
+    public_media_base_url: str = "/api/v1/media"
 
     # Where identity and licence documents are kept. Only the local-disk
     # adapter exists; it is refused on real servers (see markx/core/storage.py).

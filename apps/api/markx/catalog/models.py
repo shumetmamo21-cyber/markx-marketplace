@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -42,6 +44,15 @@ class AttributeType(StrEnum):
 class ImageKind(StrEnum):
     CATALOGUE = "catalogue"
     SELLER_REAL_PHOTO = "seller_real_photo"
+
+
+class ImageStatus(StrEnum):
+    """Where a picture is in the pipeline (D-062). Only `ready` is shown."""
+
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+    REMOVED = "removed"
 
 
 class Category(UUIDPrimaryKey, CreatedAt, Base):
@@ -250,14 +261,28 @@ class ProductVariant(UUIDPrimaryKey, CreatedAt, Base):
 
 
 class ProductImage(UUIDPrimaryKey, CreatedAt, Base):
+    """A product picture (blueprint F.6, D.5; D-062). The upload is cleaned
+    and kept privately as `source_key`; the worker renders it to WebP in two
+    sizes under `file_key` in public storage and marks it `ready`."""
+
     __tablename__ = "product_images"
     __table_args__ = (
         in_check("kind", ImageKind),
+        in_check("status", ImageStatus),
         # A "real photo" always names the seller who took it.
         CheckConstraint(
             "(kind = 'seller_real_photo') = (seller_id is not null)", name="real_photo_has_seller"
         ),
         CheckConstraint("width > 0 and height > 0", name="dimensions_positive"),
+        CheckConstraint(
+            "status <> 'ready' or (processed_at is not null and thumb_bytes > 0 "
+            "and main_bytes > 0)",
+            name="ready_has_renditions",
+        ),
+        CheckConstraint(
+            "(status = 'removed') = (removed_at is not null and removed_reason is not null)",
+            name="removed_has_reason",
+        ),
         Index("ix_product_images_product_position", "product_id", "position"),
     )
 
@@ -273,6 +298,21 @@ class ProductImage(UUIDPrimaryKey, CreatedAt, Base):
     width: Mapped[int] = mapped_column(Integer, nullable=False)
     height: Mapped[int] = mapped_column(Integer, nullable=False)
     position: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="processing")
+    # The cleaned upload, in private storage; never served.
+    source_key: Mapped[str | None] = mapped_column(Text, unique=True)
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    thumb_bytes: Mapped[int | None] = mapped_column(Integer)
+    main_bytes: Mapped[int | None] = mapped_column(Integer)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    removed_reason: Mapped[str | None] = mapped_column(Text)
+    removed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
 
 
 class ProductAlias(UUIDPrimaryKey, CreatedAt, Base):

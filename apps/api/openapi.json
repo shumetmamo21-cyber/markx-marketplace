@@ -784,6 +784,69 @@
         "title": "AttributeOut",
         "type": "object"
       },
+      "Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "position": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post",
+        "type": "object"
+      },
+      "Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post",
+        "type": "object"
+      },
+      "Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post",
+        "type": "object"
+      },
+      "Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post",
+        "type": "object"
+      },
       "Body_upload_document_api_v1_seller__seller_id__documents_post": {
         "properties": {
           "doc_type": {
@@ -2300,6 +2363,143 @@
         "title": "HandoverIn",
         "type": "object"
       },
+      "ImageOut": {
+        "description": "A picture with its pipeline state, for staff and for the seller who\nuploaded it. `thumb_url` and `main_url` are set once it is `ready`.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "main_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Bytes"
+          },
+          "main_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Url"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "removed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed Reason"
+          },
+          "seller_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thumb_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Bytes"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "product_id",
+          "kind",
+          "seller_id",
+          "status",
+          "position",
+          "width",
+          "height",
+          "thumb_bytes",
+          "main_bytes",
+          "failure_reason",
+          "removed_reason",
+          "created_at",
+          "thumb_url",
+          "main_url"
+        ],
+        "title": "ImageOut",
+        "type": "object"
+      },
       "InvitationIn": {
         "additionalProperties": false,
         "properties": {
@@ -3783,6 +3983,53 @@
         "title": "ProblemOut",
         "type": "object"
       },
+      "ProblemPhotoOut": {
+        "description": "An evidence photo, with a link that works for five minutes and only\nfor the person it was issued to.",
+        "properties": {
+          "author_type": {
+            "title": "Author Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "url_expires_at": {
+            "format": "date-time",
+            "title": "Url Expires At",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "author_type",
+          "width",
+          "height",
+          "created_at",
+          "url",
+          "url_expires_at"
+        ],
+        "title": "ProblemPhotoOut",
+        "type": "object"
+      },
       "ProductCardOut": {
         "additionalProperties": false,
         "description": "The product card used everywhere (blueprint D.9).",
@@ -3861,6 +4108,36 @@
           "price_is_fresh"
         ],
         "title": "ProductCardOut",
+        "type": "object"
+      },
+      "ProductImagesOut": {
+        "description": "A product page's pictures: catalogue pictures first, then each store's\nreal photos, tagged with the store (D.5).",
+        "properties": {
+          "catalogue": {
+            "items": {
+              "$ref": "#/components/schemas/PublicImageOut"
+            },
+            "title": "Catalogue",
+            "type": "array"
+          },
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "real_photos": {
+            "items": {
+              "$ref": "#/components/schemas/RealPhotoOut"
+            },
+            "title": "Real Photos",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_slug",
+          "catalogue",
+          "real_photos"
+        ],
+        "title": "ProductImagesOut",
         "type": "object"
       },
       "ProductIn": {
@@ -4267,6 +4544,54 @@
           "status"
         ],
         "title": "ProposalOut",
+        "type": "object"
+      },
+      "PublicImageOut": {
+        "properties": {
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "main_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Url"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height",
+          "thumb_url",
+          "main_url"
+        ],
+        "title": "PublicImageOut",
         "type": "object"
       },
       "PublicStoreOut": {
@@ -4755,6 +5080,74 @@
           "is_active"
         ],
         "title": "RateOut",
+        "type": "object"
+      },
+      "RealPhotoOut": {
+        "properties": {
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "main_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Url"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height",
+          "thumb_url",
+          "main_url",
+          "store_slug"
+        ],
+        "title": "RealPhotoOut",
+        "type": "object"
+      },
+      "RemoveImageIn": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RemoveImageIn",
         "type": "object"
       },
       "ResolveProblemIn": {
@@ -7456,6 +7849,60 @@
         ]
       }
     },
+    "/api/v1/admin/catalog/images/{image_id}/remove": {
+      "post": {
+        "description": "Take a catalogue picture or a seller's photo down, with a reason (AD-03).",
+        "operationId": "remove_image_api_v1_admin_catalog_images__image_id__remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveImageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Image",
+        "tags": [
+          "admin: pictures"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/products": {
       "get": {
         "operationId": "list_products_api_v1_admin_catalog_products_get",
@@ -7837,6 +8284,106 @@
         "summary": "Archive",
         "tags": [
           "admin: catalog"
+        ]
+      }
+    },
+    "/api/v1/admin/catalog/products/{product_id}/images": {
+      "get": {
+        "description": "Every picture of a product in every state, for moderation (AD-03).",
+        "operationId": "staff_product_images_api_v1_admin_catalog_products__product_id__images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImageOut"
+                  },
+                  "title": "Response Staff Product Images Api V1 Admin Catalog Products  Product Id  Images Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Staff Product Images",
+        "tags": [
+          "admin: pictures"
+        ]
+      },
+      "post": {
+        "description": "Accepted for processing: the picture is `processing` until the worker\nhas rendered it, then `ready`.",
+        "operationId": "add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Catalogue Image",
+        "tags": [
+          "admin: pictures"
         ]
       }
     },
@@ -8600,6 +9147,54 @@
         "summary": "Staff Dispatch Seller Order",
         "tags": [
           "admin: orders"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/seller-orders/{seller_order_id}/problem/photos": {
+      "get": {
+        "description": "The evidence both sides added, each with a link for this member of staff.",
+        "operationId": "staff_problem_photos_api_v1_admin_orders_seller_orders__seller_order_id__problem_photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProblemPhotoOut"
+                  },
+                  "title": "Response Staff Problem Photos Api V1 Admin Orders Seller Orders  Seller Order Id  Problem Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Staff Problem Photos",
+        "tags": [
+          "admin: pictures"
         ]
       }
     },
@@ -10397,6 +10992,51 @@
         ]
       }
     },
+    "/api/v1/catalog/products/{slug}/images": {
+      "get": {
+        "description": "Ready pictures only. Catalogue pictures in their order, then real\nphotos from stores that may publish, each with its store.",
+        "operationId": "product_images_api_v1_catalog_products__slug__images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductImagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Images",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/products/{slug}/offers": {
       "get": {
         "description": "Every seller's live offer for a product, ranked for the buyer's zone.",
@@ -11593,6 +12233,125 @@
         ]
       }
     },
+    "/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/problem/photos": {
+      "get": {
+        "operationId": "my_problem_photos_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProblemPhotoOut"
+                  },
+                  "title": "Response My Problem Photos Api V1 Me Orders  Order Id  Seller Orders  Seller Order Id  Problem Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Problem Photos",
+        "tags": [
+          "orders"
+        ]
+      },
+      "post": {
+        "description": "The buyer's photo evidence on their own open problem (C-16).",
+        "operationId": "add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemPhotoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add My Problem Photo",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/v1/me/telegram": {
       "post": {
         "operationId": "link_telegram_api_v1_me_telegram_post",
@@ -11631,6 +12390,110 @@
         "summary": "Link Telegram",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/api/v1/media/{key}": {
+      "get": {
+        "description": "Rendered product pictures, served by the API on a laptop and in tests\nonly. A real server serves them from the CDN's cookieless domain (F.6).",
+        "operationId": "media_api_v1_media__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Media",
+        "tags": [
+          "dev"
+        ]
+      }
+    },
+    "/api/v1/problem-photos/{photo_id}/content": {
+      "get": {
+        "description": "The photo behind a signed link. The link alone is not enough: the same\nperson it was issued to must be signed in, and still be allowed.",
+        "operationId": "read_problem_photo_api_v1_problem_photos__photo_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Photo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expires",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Expires",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "signature",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 20,
+              "title": "Signature",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Problem Photo",
+        "tags": [
+          "orders"
         ]
       }
     },
@@ -13779,6 +14642,125 @@
         ]
       }
     },
+    "/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/photos": {
+      "get": {
+        "operationId": "seller_problem_photos_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProblemPhotoOut"
+                  },
+                  "title": "Response Seller Problem Photos Api V1 Seller  Seller Id  Orders  Seller Order Id  Problem Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seller Problem Photos",
+        "tags": [
+          "seller: pictures"
+        ]
+      },
+      "post": {
+        "description": "The seller's evidence on a reported problem, while it is open.",
+        "operationId": "add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemPhotoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Seller Problem Photo",
+        "tags": [
+          "seller: pictures"
+        ]
+      }
+    },
     "/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/reply": {
       "post": {
         "description": "The seller's answer to a problem the buyer reported (S-16).",
@@ -14094,6 +15076,59 @@
         ]
       }
     },
+    "/api/v1/seller/{seller_id}/photos/{image_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_seller_photo_api_v1_seller__seller_id__photos__image_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Seller Photo",
+        "tags": [
+          "seller: pictures"
+        ]
+      }
+    },
     "/api/v1/seller/{seller_id}/product-proposals": {
       "post": {
         "description": "A seller proposes a product missing from the catalogue. It is shown to\nnobody until catalogue staff approve it or merge it into an existing one.",
@@ -14145,6 +15180,126 @@
         "summary": "Propose Product",
         "tags": [
           "seller: offers"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/products/{product_id}/photos": {
+      "get": {
+        "description": "This store's own photos of one product, in every state.",
+        "operationId": "seller_photos_api_v1_seller__seller_id__products__product_id__photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImageOut"
+                  },
+                  "title": "Response Seller Photos Api V1 Seller  Seller Id  Products  Product Id  Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seller Photos",
+        "tags": [
+          "seller: pictures"
+        ]
+      },
+      "post": {
+        "description": "A real photo of a product this store has an offer for (D.5, S-06).",
+        "operationId": "add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Seller Photo",
+        "tags": [
+          "seller: pictures"
         ]
       }
     },

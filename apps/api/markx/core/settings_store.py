@@ -169,6 +169,40 @@ _SPECS: tuple[SettingSpec, ...] = (
         100,
         10_000_000_000,
     ),
+    # Pictures (blueprint F.6, S-06, C-16; D-062)
+    SettingSpec(
+        "images.max_upload_bytes",
+        8_000_000,
+        "int",
+        "Largest photo accepted for upload, in bytes. Phones compress before sending "
+        "(S-06), so a real photo is far smaller.",
+        100_000,
+        25_000_000,
+    ),
+    SettingSpec(
+        "images.max_catalogue_per_product",
+        12,
+        "int",
+        "Catalogue pictures one product may have, not counting removed ones.",
+        1,
+        50,
+    ),
+    SettingSpec(
+        "images.max_real_photos_per_seller",
+        6,
+        "int",
+        "Real photos one seller may show on one product, not counting removed ones (D.5).",
+        1,
+        20,
+    ),
+    SettingSpec(
+        "images.max_problem_photos_per_side",
+        5,
+        "int",
+        "Evidence photos the buyer, and separately the seller, may add to one problem (C-16).",
+        1,
+        20,
+    ),
     # Search (blueprint H.2: "throttles on search"; D-059)
     SettingSpec(
         "search.requests_per_ip_per_minute",

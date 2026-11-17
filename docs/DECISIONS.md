@@ -1263,6 +1263,62 @@ copy (`export_openapi ../web/src/lib/api/openapi.json`, then `npm run
 gen:api`) to use the additions. Changing an existing route or schema still
 needs both sides in one change.
 
+## D-062 The picture pipeline: cleaned at upload, rendered by the worker, private evidence
+
+**Follows** blueprint F.6, D.5, D.26 (image sizes), S-06, C-16, AD-03, H.2
+and the P5 criterion "images are served as small WebP files with no
+location data". **Accepted.** Migration `0008`.
+
+- **Upload.** Staff who curate the catalogue add catalogue pictures
+  (`POST /admin/catalog/products/{id}/images`); a seller member who manages
+  offers adds a "real photo" of a product its store has an offer on
+  (`POST /seller/{seller_id}/products/{id}/photos`). The bytes are decoded
+  and written out again (`sanitize_image`), so only JPEG, PNG and WebP
+  pictures pass, and the camera's EXIF, including location, never reaches
+  storage. Uploads are capped by `images.max_upload_bytes` (8 MB; the phone
+  compresses first, S-06), read one byte past the cap and no further, and
+  rate-limited. Limits per product: `images.max_catalogue_per_product` (12)
+  and `images.max_real_photos_per_seller` (6), held under a per-product
+  advisory lock so two uploads at once cannot both pass. Answer: 202, the
+  picture `processing`.
+- **Render.** The clean copy is kept privately as the source and the outbox
+  queues `images.render` in the same transaction. The worker renders WebP in
+  two fixed sizes: a thumbnail within 320 pixels and 30 KB, a main picture
+  within 1,200 pixels and 150 KB (D.26), lowering quality and then size
+  until each fits, upright (the camera's rotation applied), with no EXIF,
+  XMP or ICC data. Then `ready`. A source that cannot be rendered is marked
+  `failed` (final, with its reason); a storage error is retried by the
+  outbox.
+- **Showing.** `GET /catalog/products/{slug}/images` lists ready catalogue
+  pictures in order, then ready real photos of stores that may publish
+  (active, at the publishing level), each with its store. A merged product
+  shows its survivor's; a draft shows nothing. Public files live in public
+  storage under unguessable keys. On a laptop the API serves them at
+  `/api/v1/media/...` (dev tools only, immutable cache, no cookies); on a
+  real server they come from the CDN's cookieless domain
+  (`MARKX_PUBLIC_MEDIA_BASE_URL`), and the public storage adapter, like the
+  private one, refuses to run there until a real bucket adapter exists
+  (F-01).
+- **Moderation.** Staff who moderate listings (super administrator,
+  operations, catalogue) remove any picture with a written reason
+  (`POST /admin/catalog/images/{id}/remove`); a seller withdraws its own.
+  Nothing is deleted: the row keeps who, when and why, and the audit log
+  has before and after.
+- **Problem photos (C-16).** The buyer, and separately the seller's order
+  handlers, add up to `images.max_problem_photos_per_side` (5) photos to an
+  open problem. They are rendered at once to one private WebP (1,600 pixels,
+  600 KB: evidence keeps detail), never shown publicly, and opened only
+  through a link that works for five minutes, for the person it was issued
+  to, who must still be the buyer, an order handler of that seller, or staff
+  who handle cases. Staff views are audit-logged. `problem_photos` is
+  append-only for every role, like the history tables.
+- **Not done:** the product card and product page do not carry picture
+  addresses yet, because adding them changes existing response schemas the
+  web app types (D-061); the web app reads `/catalog/products/{slug}/images`
+  until both sides change together. Pictures on order lines
+  (`order_items.image_key`) and on reviews are not wired. No real bucket or
+  CDN adapter.
+
 ---
 
 ## Decisions that need the founder

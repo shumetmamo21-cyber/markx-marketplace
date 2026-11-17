@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from markx.accounts.models import User
 from markx.core.db import session_scope
+from markx.images import service as images
 from markx.notifications.models import Notification, Outbox
 from markx.notifications.push import get_push_sender
 from markx.notifications.service import TOPIC_PUSH
@@ -90,6 +91,7 @@ def push_notification(db: Session, row: Outbox) -> None:
 HANDLERS: dict[str, Handler] = {
     TOPIC_PUSH: push_notification,
     search.TOPIC_REBUILD: search.handle_rebuild,
+    images.TOPIC_RENDER: images.handle_render,
 }
 
 

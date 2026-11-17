@@ -66,3 +66,53 @@ def get_private_storage() -> PrivateStorage:
             "the local-disk adapter is for development only"
         )
     return LocalPrivateStorage(config.storage_dir / "private")
+
+
+# -- public files: product pictures (blueprint F.6; D-062) ----------------------------
+
+
+class PublicStorage(Protocol):
+    """Where rendered product pictures go. In production this is a public
+    bucket behind the CDN, on its own cookieless domain (F.6)."""
+
+    def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+    def get(self, key: str) -> bytes: ...
+
+
+class LocalPublicStorage:
+    """The laptop and test stand-in for the public bucket. Files are served by
+    the API's media route, which exists only where dev tools do."""
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def _path(self, key: str) -> Path:
+        return self._root / _checked(key)
+
+    def put(self, key: str, data: bytes, content_type: str) -> None:
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        path.write_bytes(data)
+
+    def get(self, key: str) -> bytes:
+        try:
+            return self._path(key).read_bytes()
+        except FileNotFoundError as exc:
+            raise StoredFileMissing(key) from exc
+
+
+def get_public_storage() -> PublicStorage:
+    config = get_config()
+    if config.is_real_environment:
+        raise RuntimeError(
+            "no public file storage adapter is configured for a real environment; "
+            "the local-disk adapter is for development only"
+        )
+    return LocalPublicStorage(config.storage_dir / "public")
+
+
+def public_url(key: str) -> str:
+    """The address a browser loads a public file from (F.6: in production a
+    separate cookieless domain; on a laptop the API's media route)."""
+    return f"{get_config().public_media_base_url.rstrip('/')}/{_checked(key)}"

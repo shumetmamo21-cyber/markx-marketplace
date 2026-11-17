@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, SmallInteger, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, SmallInteger, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -160,3 +160,30 @@ class DisputeMessage(UUIDPrimaryKey, CreatedAt, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ProblemPhoto(UUIDPrimaryKey, CreatedAt, Base):
+    """A photo added to a reported problem as evidence (blueprint C-16, D.17,
+    I.5; D-062). Private: re-encoded to WebP without metadata, kept in
+    private storage and opened only through a short-lived link issued to the
+    buyer, a member of the seller who handles orders, or staff."""
+
+    __tablename__ = "problem_photos"
+    __table_args__ = (
+        in_check("author_type", ("buyer", "seller")),
+        CheckConstraint("width > 0 and height > 0", name="dimensions_positive"),
+        CheckConstraint("size_bytes > 0", name="size_positive"),
+        Index("ix_problem_photos_case_created", "case_id", "created_at"),
+    )
+
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dispute_cases.id", ondelete="RESTRICT"), nullable=False
+    )
+    author_type: Mapped[str] = mapped_column(Text, nullable=False)
+    uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    file_key: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
