@@ -24,7 +24,7 @@ what the tests actually printed.
 | --- | --- |
 | Repository | `shumetmamo21-cyber/markx-marketplace` |
 | Working branch | `claude/project-scaffold` |
-| Latest code commits | `497fcf5` (next-best offer, problems on delivered orders, the review fix), then the search commit that carries this version of the file. `git log -3 origin/claude/project-scaffold` shows them; the head is the search commit |
+| Latest code commits | `497fcf5` (next-best offer, problems on delivered orders, the review fix) and `cdf16c5` (search). This file's last correction is the documentation commit after `cdf16c5`; `git log -1 origin/claude/project-scaffold` shows the head |
 | `main` | `617a276`, the initial commit. **Untouched. Nothing was merged into it.** |
 
 Everything is committed and pushed. The fourth session ended at `10573b4`.
@@ -242,8 +242,9 @@ its existing state; do not rebuild it.
 - Repository: `shumetmamo21-cyber/markx-marketplace`
 - Working branch: **`claude/project-scaffold`**. Never start from `main`, and
   never merge anything into `main`.
-- The fifth session's code commits are `497fcf5` (orders) and the search
-  commit after it, with the documentation commit `5ce4340` between them.
+- The fifth session's code commits are `497fcf5` (orders) and `cdf16c5`
+  (search), with documentation commits `5ce4340` between them and one after
+  `cdf16c5`.
   Verify the real remote head yourself (`git fetch origin
   claude/project-scaffold && git log -3 FETCH_HEAD`).
 
