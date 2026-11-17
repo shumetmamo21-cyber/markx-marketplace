@@ -22,6 +22,7 @@ from markx.core.logging import configure_logging
 from markx.core.phone import normalize_phone
 from markx.delivery.router import admin_router as delivery_admin_router
 from markx.delivery.router import router as delivery_router
+from markx.exports.router import router as exports_router
 from markx.images.router import admin_router as images_admin_router
 from markx.images.router import buyer_router as images_buyer_router
 from markx.images.router import media_router as images_media_router
@@ -125,6 +126,7 @@ def create_app() -> FastAPI:
     api.include_router(reviews_admin_router)
     api.include_router(reports_router)
     api.include_router(reports_admin_router)
+    api.include_router(exports_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
         api.include_router(images_media_router)

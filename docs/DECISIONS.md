@@ -1534,6 +1534,37 @@ The `reports` table existed since `0001` with no behaviour.
   the existing takedown, hide and suspend routes); a report link in the
   web app (its owner's, D-061).
 
+## D-068 Data exports for an accountant: four CSV files, no buyer data, every export logged
+
+**Follows** blueprint C.4 ("export data": super administrator and finance),
+D.21 ("exports for an accountant"), G.10, G.11 and H.2 (data exports in the
+audit log). **Accepted.** No migration.
+
+`GET /admin/exports/{kind}?first_day=&last_day=` returns a CSV file for
+whole days in Addis Ababa time (UTC+3, the same fixed zone the order
+deadlines use), at most 366 days:
+
+| Kind | One row per | What it is for |
+| --- | --- | --- |
+| `fees` | fee charged on a completed seller order, by completion time | MarkX's revenue in Release 1, with the seller's legal name and TIN for invoicing |
+| `ledger` | ledger entry, both sides of each transaction, by posting time | the double-entry record (G.10) |
+| `seller-orders` | seller order placed in the period | totals, status, the fee, how the buyer paid the seller: **no buyer name, phone or address** (G.11: an accountant needs totals, not people) |
+| `seller-balances` | seller with a fee account | fees charged in the period and the balance owed at its end, read from the ledger, never recalculated (G.10 rule 5) |
+
+- **Amounts** appear as exact birr with two decimals, made from whole santim
+  with integer arithmetic ("555.00"), and as santim.
+- **Spreadsheet safety.** Text a seller typed (legal name, TIN, closing
+  reasons, ledger descriptions) that starts with `=`, `+`, `-`, `@`, a tab
+  or a carriage return gets a leading apostrophe, so a spreadsheet shows it
+  instead of running it (OWASP "CSV injection"). The file starts with a
+  UTF-8 byte-order mark so Amharic names open correctly.
+- **Every export is audit-logged** (`data.export`, with kind, period and
+  row count) and sent with `Cache-Control: private, no-store`.
+- Built in memory: fine for Release 1's volumes (a year of a pilot is
+  thousands of rows). Streaming and an export history are for later.
+- **Not done:** seller statements (S-14, AD-11) are Release 2; payouts and
+  refunds have no rows to export in Release 1.
+
 ---
 
 ## Decisions that need the founder

@@ -10639,6 +10639,71 @@
         ]
       }
     },
+    "/api/v1/admin/exports/{kind}": {
+      "get": {
+        "description": "Whole days in Addis Ababa time, at most 366. UTF-8 with a byte-order\nmark; amounts in exact birr and in santim. Every export is audit-logged.",
+        "operationId": "export_api_v1_admin_exports__kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "fees",
+                "ledger",
+                "seller-orders",
+                "seller-balances"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "first_day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "First Day",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last_day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Last Day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "The CSV file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export",
+        "tags": [
+          "admin: exports"
+        ]
+      }
+    },
     "/api/v1/admin/offers/{offer_id}/remove": {
       "post": {
         "operationId": "staff_remove_offer_api_v1_admin_offers__offer_id__remove_post",
