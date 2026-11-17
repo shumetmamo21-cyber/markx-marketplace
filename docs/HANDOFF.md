@@ -75,10 +75,19 @@ the checks actually printed.
 7. **Demo data** (`e97c722`, D-056) for a laptop: five phones, three made-up
    shops, delivery zones and a buyer, created through the real API so
    every rule applies. It refuses to run anywhere but a local machine.
-8. **Proof in a browser.** A script drives the whole journey in Chromium:
-   sign in with a code, add the best offer, check out, the shop confirms,
-   packs and dispatches, the buyer sees the six-digit code, the shop enters
-   it, the buyer confirms the goods. **It passes with no errors.** It also
+8. **The seller dashboard** (`dca2864`): the order inbox with the answer
+   countdown and what the shop receives after the fee; every fulfilment
+   step on the order page (accept, decline, pack, send with a rider, enter
+   the buyer's code, failed delivery, return, record the payment, answer a
+   problem); the offers list with one-tap "still right" and in-place price
+   and stock edits. A shop can only act for itself: the API checks it on
+   every call.
+9. **Proof in a browser.** A script drives the whole journey in Chromium:
+   sign in with a code, add the best offer, check out; **the shop, in its
+   own dashboard,** accepts, packs and sends a rider; the buyer sees the
+   six-digit code; the shop types a wrong code (refused: "4 attempts
+   left"), then the right one; the buyer confirms the goods. **It passes
+   with no errors.** It also
    showed the API's protections working as designed: five codes per phone
    an hour, and no more than three open pay-at-the-door orders per buyer.
 
@@ -110,8 +119,9 @@ milestone records this baseline; see D-055).
 
 ## A.4 What is NOT built
 
-- **The seller dashboard and the admin dashboard on the web.** Their API
-  exists and is tested; the screens are the next task.
+- **The admin dashboard on the web** (the next task), and the seller's
+  onboarding, "add an offer", team and settings screens. Their API exists
+  and is tested.
 - Product photos (no image pipeline yet), reviews, listing reports.
 - The Telegram bot and Mini App shell; real SMS, Telegram and storage
   adapters (F-01 still blocks onboarding a real seller).
@@ -185,12 +195,14 @@ laptop only), `uv run uvicorn markx.main:app --port 8000`, and in
 `GET /api/v1/dev/sms-inbox?phone=...`. `node e2e/buyer-journey.mjs` replays
 the buyer's journey.
 
-**5. Task: the seller dashboard on the web**, then **the admin dashboard**,
-exactly as "The exact next task" in `docs/DEVELOPMENT_STATUS.md` lists
-them. The API for both exists and enforces roles and seller isolation;
+**5. Task: the admin dashboard on the web**, then the rest of the seller
+dashboard, exactly as "The exact next task" in `docs/DEVELOPMENT_STATUS.md`
+lists them. The API for both exists and enforces roles and seller isolation;
 the web app only shows what the API returns and sends the member's
-choices. Every text in both message files. Test at 360 pixels. Extend the
-browser journey so the shop's steps use the new screens.
+choices. Every text in both message files; client components receive only
+the message sections they use. Test at 360 pixels. Extend
+`e2e/buyer-journey.mjs` with staff steps (find the order by code, decide a
+problem).
 
 **6. Boundaries:** no AWS, no deployment, no paid resource, no secret in
 the repository, no data deletion, no merge into `main`, no weakened test.
@@ -215,10 +227,10 @@ printed.
 | **P4 Customer storefront** | **Buyer journey done on the web** (D-055); images, account settings, Mini App shell missing |
 | P5 Product catalogue | Done on the API; image pipeline missing |
 | P6 Seller onboarding | Done on the API; web screens missing |
-| P7 Listings and inventory | Done on the API; web screens and the bot missing |
+| P7 Listings and inventory | Done on the API; **on the web: offers list, quick edit, check-in**; "add an offer" screen and the bot missing |
 | P8 Search | Mostly done on the API, **with the evaluator**; on the web: search, filters, "did you mean", request form. Golden set needs real queries |
 | P9 Cart and checkout | **Done on the API and the web** |
-| P10 Multi-seller orders | Done on the API; buyer's side done on the web; seller's side on the web missing |
+| P10 Multi-seller orders | Done on the API, **and on the web for both buyer and seller** |
 | P11 Admin operations | Six API routes; web screens missing |
 | P12 onwards | Not started |
 

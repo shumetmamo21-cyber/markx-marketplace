@@ -41,9 +41,12 @@ queries once the founder supplies them. **The web app** (`apps/web`, Next.js)
 now serves the buyer's whole journey in Amharic and English: home, search,
 product with the offers table, shop page, sign-in by code, cart, checkout,
 orders with the handover code, cancel, "the goods are right", "report a
-problem", and the tracking page by secure link. **CI** runs every API and web
-check on every push. **Not built:** the seller and admin dashboards on the
-web, reviews, the bot, deployment. Nothing is deployed anywhere.
+problem", and the tracking page by secure link; and **the seller dashboard**:
+the order inbox with the answer countdown and every fulfilment step, and the
+offers list with quick price and stock edits. **CI** runs every API and web
+check on every push. **Not built:** the admin dashboard on the web, seller
+onboarding screens, reviews, the bot, deployment. Nothing is deployed
+anywhere.
 
 ## Sessions so far
 
@@ -526,10 +529,24 @@ API types are generated from the API's OpenAPI description.
   (8 Vitest tests: price and time formatting, message keys and
   placeholders equal in both languages, API errors always in words) and
   `npm run build`, all in CI. `e2e/buyer-journey.mjs` drives the whole
-  journey in Chromium against the demo data and passed on 17 November 2026
+  journey in Chromium against the demo data, the buyer's side and the shop's
+  side through their screens (including a wrong handover code), and passed
+  on 17 November 2026
   (not in CI: it needs a running API with demo data). Checked by hand at
   320, 360, 768 and 1280 pixels: no page is wider than the screen.
+- **Seller dashboard** (`[lang]/seller/{seller}`): the order inbox by stage
+  with the answer countdown and the payout after the fee; the order page
+  with accept, decline with a reason, mark as packed, send with a rider,
+  enter the buyer's code (attempts left; lockout), delivery failed, goods
+  back on the shelf, record the payment, answer a problem; offers with
+  counts, one-tap "still right", in-place price and stock edits, pause and
+  resume. Seller isolation stays the API's: every call is checked by
+  `require_seller`.
 - **Demo data:** `apps/api/scripts/seed_demo.py` (D-056), laptop only.
+- **Known gaps:** variants show their codes ("black · 128gb") in the cart
+  and the seller's offers, because those API responses carry codes, not
+  labels; the seller application, documents, team, store settings and
+  "add an offer" screens are not built (their API exists).
 
 ### CI (blueprint P1)
 
@@ -745,23 +762,15 @@ Work in this order. Finish and push each step before starting the next.
    `apps/web`: `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`,
    `npm run build`) and report the real numbers. Check that the latest CI
    run on GitHub passed.
-2. **The seller dashboard on the web** (blueprint I.4, I.5, S-12; the API
-   exists under `/seller/{seller_id}/...`): a route group `[lang]/seller`
-   with its own layout and bottom bar (Orders, Offers, Stock, More). Orders
-   first: the inbox with the answer countdown, confirm and decline with a
-   reason, mark ready, dispatch with the rider, enter the buyer's code,
-   record the payment, failed delivery and return, reply to a problem. Then
-   offers: the list with freshness, quick price and stock edit, "still in
-   stock" check-in, add an offer by searching the catalogue. Every call goes
-   to the API, which already enforces roles and seller isolation; the web
-   app shows only what the API returns for the signed-in member's seller.
-   Extend `e2e/buyer-journey.mjs` so the shop's steps go through these
-   screens instead of raw API calls.
-3. **The admin dashboard on the web** (I.4: a side menu, queues first):
+2. **The admin dashboard on the web** (I.4: a side menu, queues first):
    seller applications with documents, product proposals, the orders desk
    (find by code, dispatch, reissue a handover code), open problems with
    the decision form, the zero-result report and synonyms. Staff sign-in
    with password and authenticator.
+3. **The rest of the seller dashboard:** add an offer by searching the
+   catalogue (I.6 workflow 4), the application and documents screens, team
+   and store settings. Return variant labels from the API so the cart and
+   the offers list stop showing codes.
 4. **The search golden set**, only when the founder sends real queries
    (D-054): load them into `search_eval/golden_queries.csv`, score, tune
    `LETTER_MATCH`, report the real figure.
