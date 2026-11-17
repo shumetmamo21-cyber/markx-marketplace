@@ -12,7 +12,7 @@ domain.
 
 | Part | State |
 | --- | --- |
-| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, seller orders up to confirmation. Not built: search, the rest of the order life cycle, payments beyond the intent |
+| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search. Not built: reviews, Release 2 payments |
 | PostgreSQL | Schema for all of Release 1 (65 tables), three roles |
 | Web app (`apps/web`) | **Does not exist** |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
@@ -207,7 +207,29 @@ run side by side; PostgreSQL decides who does what. One pass of its loop
   commit. To add a topic, add a handler to `HANDLERS`.
 
 Tests drive the worker by calling `run_once(now)` with a clock they control.
-D-034 and D-035 record the guarantees and the one limit.
+D-034 and D-035 record the guarantees and the one limit. Topics today:
+`notify.push` and `search.rebuild`. Jobs: order expiry, completion after the
+problem window, overdue holds, stale offers, payout accounts, and the hourly
+`search.rebuild_all`.
+
+## Search
+
+Blueprint D.8 and F.7. `markx/search/`.
+
+- `service.py` builds one `search_documents` row per approved product
+  (`rebuild_document`) and keeps it fresh (D-051): a `before_flush` listener
+  queues a `search.rebuild` outbox row whenever the ORM changes a column a
+  document uses; Core statements that change those columns call
+  `queue_rebuild` / `queue_for_offers` themselves; stock queues only when an
+  offer goes in or out of stock. The hourly job rebuilds everything. **If you
+  add a Core `update()` or `insert()` on offers, products, translations,
+  aliases, variants or sellers, queue the rebuild in the same transaction.**
+  Also the synonym tool and the product-request form.
+- `selectors.py` answers queries (D-052): normalise, expand synonyms, match
+  by words, sound or letters, filter, rank, log the query.
+- Tests: `tests/api/test_search_index.py` (the document follows every kind
+  of change) and `tests/api/test_search.py` (matching in three scripts,
+  filters, ranking, the log, staff tools, the request form).
 
 ## Database
 

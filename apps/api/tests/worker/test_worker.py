@@ -98,6 +98,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
         "orders.cancel_overdue_fulfilment": 0,
         "offers.mark_stale": 0,
         "sellers.activate_due_payout_accounts": 0,
+        "search.rebuild_all": 1,  # the one approved product
     }
 
     # Fifteen days on, the price is unconfirmed and the cooling-off has passed.
@@ -109,6 +110,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
         "orders.cancel_overdue_fulfilment": (True, 0),
         "offers.mark_stale": (True, 1),
         "sellers.activate_due_payout_accounts": (True, 1),
+        "search.rebuild_all": (True, 1),
     }
     db.rollback()
     assert db.scalar(select(Offer.status).where(Offer.id == offer["id"])) == "stale"

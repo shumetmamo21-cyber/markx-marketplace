@@ -90,8 +90,13 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
   `docs/ARCHITECTURE.md`.
 - **The worker must be running** for stale offers to hide, payout changes to
   apply, unanswered orders to expire, delivered orders to complete after the
-  problem window and overdue fulfilment holds to cancel:
+  problem window, overdue fulfilment holds to cancel and search documents to
+  follow changes:
   `uv run python -m markx.worker`.
+- **Search documents are derived, never edited** (D-051). A Core
+  `update()`/`insert()` on offers, products, translations, aliases, variants
+  or sellers must queue `search.queue_rebuild` itself; ORM changes are
+  queued by the flush listener.
 - **A shipment changes only through `_track`** in `markx/orders/service.py`,
   and the handover code is never stored, logged or shown to anyone but the
   signed-in buyer (D-044). `commit_stock` is called only from

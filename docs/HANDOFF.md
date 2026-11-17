@@ -24,7 +24,7 @@ what the tests actually printed.
 | --- | --- |
 | Repository | `shumetmamo21-cyber/markx-marketplace` |
 | Working branch | `claude/project-scaffold` |
-| Latest code commit | `497fcf5` (next-best offer, problems on delivered orders, the review fix). This file's own commit is the one after it; `git log -1 origin/claude/project-scaffold` shows the head |
+| Latest code commits | `497fcf5` (next-best offer, problems on delivered orders, the review fix), then the search commit that carries this version of the file. `git log -3 origin/claude/project-scaffold` shows them; the head is the search commit |
 | `main` | `617a276`, the initial commit. **Untouched. Nothing was merged into it.** |
 
 Everything is committed and pushed. The fourth session ended at `10573b4`.
@@ -84,6 +84,33 @@ and `refunded` states):
   directly**. MarkX moves no money. No fee is charged on a refunded part.
 - Staff have a queue of open problems, most urgent first.
 
+**Fifth, search** (blueprint D.8 and F.7, phase P8, on the API side). One
+box takes Amharic script, Amharic typed in Latin letters, and English, and
+forgives typos:
+
+- "samsung", "ሳምሰንግ", "ሳምሱንግ", "samsang", "smsng", "galaksi", "a16",
+  "SM-A165F" and "samsunk" all find the Samsung Galaxy A16 first in the
+  tests; "tecno", "ቴክኖ", "tekno" and "kj5" find the Tecno.
+- Results are **products, never duplicate listings**, each with the card the
+  blueprint describes: the "from" price (lowest in stock), how many sellers,
+  the best seller's level, whether the price is fresh.
+- Filters: category (with its sub-categories), brand, condition, price
+  range, seller level, in stock. Sorting: best match, price, freshness.
+- Out-of-stock products sink below in-stock ones; a draft or archived
+  product, or a suspended seller's offer, is never shown.
+- When nothing matches: "did you mean" suggestions, and a "can't find it?
+  ask for it" form that stores the request for catalogue staff.
+- Every search is logged with its result count. Catalogue staff get a report
+  of searches that found nothing, and a synonym tool (for example, make
+  "ሞባይል" also search "phones").
+- The search index follows every change automatically: a price edit, a
+  sold-out offer, a suspended seller, a renamed or archived product. The
+  worker also rebuilds it all every hour as a safety net.
+
+**Not yet proven:** the blueprint's two P8 targets, the right product in the
+top three for 85% of 100 real queries, and searches under 300 ms. Both need
+**real queries from you** and a real-sized catalogue; see A.6.
+
 ## A.3 The concurrency guarantee, extended
 
 `tests/db/test_dispute_contention.py`, real threads and real database
@@ -101,32 +128,48 @@ Neither deadlocked.
 ## A.4 The tests that were actually run
 
 From `apps/api`, against PostgreSQL 17 in Docker, with the test database
-rebuilt from empty:
+rebuilt from empty and nothing else running:
 
 ```
-uv run pytest                  ->  815 passed in 330.72s (0:05:30)
+uv run pytest                  ->  847 passed in 393.88s (0:06:33)
 uv run ruff check .            ->  All checks passed!
-uv run ruff format --check .   ->  128 files already formatted
-uv run mypy markx              ->  Success: no issues found in 85 source files
+uv run ruff format --check .   ->  134 files already formatted
+uv run mypy markx              ->  Success: no issues found in 89 source files
 uv run alembic check           ->  No new upgrade operations detected.
 ```
 
-That is 14 more than the 801 inherited: five in
-`tests/api/test_next_best_offer.py`, five in `tests/api/test_disputes.py`,
-two in `tests/db/test_dispute_contention.py`, one in
-`tests/api/test_fulfilment.py` (the review fix), and one more in the seller
-isolation sweep, which attacked the new seller route automatically. No test
-was weakened or removed. No migration was needed. After one last small change
-(a buyer's message on a case is looked up together with the buyer's own
-order), the five affected files were run again: 79 passed.
+That is 46 tests more than the 801 inherited:
+
+- orders (commit `497fcf5`, 815 in total at that commit): five in
+  `tests/api/test_next_best_offer.py`, five in `tests/api/test_disputes.py`,
+  two in `tests/db/test_dispute_contention.py`, one in
+  `tests/api/test_fulfilment.py` (the review fix), and one more in the seller
+  isolation sweep, which attacked the new seller route automatically;
+- search: six in `tests/api/test_search_index.py`, 26 in
+  `tests/api/test_search.py`.
+
+No test was removed or weakened. Two existing tests changed their
+expectations, both for a stated reason: the worker test now lists the new
+hourly search job, and one checkout test that counted every outbox row
+against notifications now counts the notification topic only, because search
+rebuilds share the outbox (D-051). No migration was needed.
+
+One run during the session is **not valid** and is not counted: a second
+test run was started against the same test database while the full suite
+ran, and the two emptied each other's tables (791 passed, 30 errors in test
+set-up). Everything was run again afterwards with nothing else running: the
+figure above.
 
 ## A.5 What is NOT built
 
 - **Photos on a problem report** (waits for the image pipeline), **reviews**,
   **listing reports**, the **staff dispatch board** and the rest of P11, and
   managing commission rules (they can be charged but no route creates one).
-- **Search (P8)**, **the web app**, **the Telegram bot**, **CI**, seed data,
-  containers, backups, alerting, deployment.
+- **The web app**, **the Telegram bot**, **CI**, seed data, containers,
+  backups, alerting, deployment.
+- In search: sorting by total cost to the door, filters by rating and
+  delivery speed, and pages that search engines can read (they need the web
+  app).
 - Real outside adapters: Telegram, SMS, the bot check and the private
   document store have fakes only (F-01 still blocks onboarding a real seller).
 - Release 2 money: Protected prepay, refunds through a provider, payouts.
@@ -145,6 +188,14 @@ were taken provisionally, in D-050, so that engineering did not wait:
 - **Other options:** always take them off the count and let the seller add
   them back; or hold returned goods for inspection before resale.
 - **Blocks:** nothing. **Your approval: not needed to carry on.**
+
+### Search needs real queries from you (not a decision, an input)
+
+The blueprint's P8 test is a "golden set" of 100 real queries in Amharic,
+English and Latin-letter Amharic, each with the product a buyer meant. Only
+you can collect those (from shop owners, Telegram groups, your own typing).
+A plain list of "what someone typed, which product they meant" is enough;
+the next engineer turns it into a test and tunes the matching against it.
 
 ### D-050 (2) (PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH) Who may decide a problem
 
@@ -191,16 +242,18 @@ its existing state; do not rebuild it.
 - Repository: `shumetmamo21-cyber/markx-marketplace`
 - Working branch: **`claude/project-scaffold`**. Never start from `main`, and
   never merge anything into `main`.
-- The fifth session's code commit is `497fcf5`, followed by one
-  documentation commit. Verify the real remote head yourself (`git fetch
-  origin claude/project-scaffold && git log -1 FETCH_HEAD`).
+- The fifth session's code commits are `497fcf5` (orders) and the search
+  commit after it, with the documentation commit `5ce4340` between them.
+  Verify the real remote head yourself (`git fetch origin
+  claude/project-scaffold && git log -3 FETCH_HEAD`).
 
 **2. Read these first, in this order**
 
 1. `AGENTS.md`, the rules for every AI agent here. They are not negotiable.
 2. `MARKX_MASTER_BLUEPRINT.md`, the single source of truth. **Do not ask the
    founder to upload it again, and do not create a second copy or summary.**
-   For this session: P8 in L.4, F.7, D-015 and D.8 (search), then P4.
+   For this session: L.4 (the phase list: P1's CI, then P4), D.8 and F.7
+   (to review search).
 3. `docs/HANDOFF.md` (this file).
 4. `docs/DEVELOPMENT_STATUS.md`. Start from "The exact next task" at its end.
 5. `docs/DECISIONS.md`. D-001 to D-050 are engineering decisions you may rely
@@ -223,16 +276,17 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. From
 
 ```bash
 uv sync
-uv run pytest                  # expect 815 passed, four to six minutes
+uv run pytest                  # expect 847 passed, five to seven minutes
 uv run ruff check .            # expect: All checks passed!
-uv run ruff format --check .   # expect: 128 files already formatted
-uv run mypy markx              # expect: no issues in 85 source files
+uv run ruff format --check .   # expect: 134 files already formatted
+uv run mypy markx              # expect: no issues in 89 source files
 uv run alembic upgrade head
 uv run alembic check           # expect: No new upgrade operations detected.
 ```
 
 Report the real numbers. Do not weaken a test. Fix a genuine regression
-before new work.
+before new work. **Never start a second test run while one is going**: both
+use the `markx_test` database and wreck each other.
 
 **4. Task two: review what the fifth session built**
 
@@ -244,15 +298,18 @@ before new work.
 `tracking_view` in `markx/orders/selectors.py`; with the three new test
 files. Look for a case's text reaching the tracking link or another seller,
 a refunded part that is ever charged or completes later, stock settled
-twice, and a lock taken out of the written order. Fix what is wrong with a
-test that fails first; if nothing is wrong, say so and move on.
+twice, and a lock taken out of the written order. Then review `markx/search/`
+(D-051, D-052): a Core `update()`/`insert()` on a watched table that does not
+queue a rebuild, a query that matches too much or too little, a filter that
+lets through a draft, archived or suspended seller's product. Fix what is
+wrong with a test that fails first; if nothing is wrong, say so.
 
-**5. Task three: search (P8)**
+**5. Task three: the search golden set, if the founder sent queries**
 
-`search_documents` rebuilt by a worker job when an offer's price, stock or
-status changes, queued through the outbox (the tables exist), then the
-search route with the filters and ranking of F.7 and D-015, in Amharic and
-English. Write the P8 completion criteria as tests first.
+Turn each "typed / meant" pair into a parametrised test case, measure how
+many put the meant product in the top three, and tune `LETTER_MATCH` in
+`markx/search/selectors.py`. If no queries came, skip this; do not invent
+them and call them real.
 
 **6. Task four: CI**, then **the web app (P4)**
 
@@ -303,14 +360,14 @@ printed, what you could not verify, and what needs a decision.
 | P5 Product catalogue | Done on the API side and tested. Image pipeline and seed data missing |
 | P6 Seller onboarding | Done on the API side and tested. Web screens, share cards, QR code and ownership transfer missing |
 | P7 Seller listings and inventory | Done on the API side and tested. Seller Telegram bot missing |
-| P8 Search | Not started. The tables exist |
+| P8 Search | **Mostly done on the API side**: the index kept fresh, matching in three scripts with typos, filters, sorting, suggestions, "did you mean", the request form, the query log, the zero-result report, synonyms. **Not done:** the golden-set and speed criteria, cost-to-the-door sort, rating and delivery-speed filters, search-engine pages |
 | P9 Cart and checkout | Done on the API side and tested. Web screens missing |
 | **P10 Multi-seller orders** | **Done on the API side**: placement to completion in both delivery modes, the handover code, failed deliveries, returns, the payment record, the fee and the ledger, the tracking link, **the next-best offer, and problems with staff decisions (`disputed`, `refunded`)**. **Not done:** photos on a problem, reviews, the bot, the web screens |
 | P11 Admin operations | Five routes: find an order, dispatch, reissue a handover code, the open-problems queue, decide a problem. The rest not started |
 | P12 onwards | Not started. The ledger posting helper exists |
 
-**Numbers:** 815 tests pass. 65 database tables. Seven migrations, `0001` to
-`0007`; none added in sessions four or five. 85 application source files,
+**Numbers:** 847 tests pass. 65 database tables. Seven migrations, `0001` to
+`0007`; none added in sessions four or five. 89 application source files,
 all strictly typed.
 
 **Traps already paid for, so nobody pays twice:** a plain `FOR UPDATE` on a
@@ -324,7 +381,9 @@ holds (D-035); two correct features can compose into one wrong one (D-032);
 a failed request's attempt count survives only if the service commits it
 itself (D-044); the parent order reads `completed` once every part is handed
 over (D-045); a dispute case is guarded by its seller order's lock, never
-its own (D-050).
+its own (D-050); a Core statement on a table search watches must queue the
+rebuild itself (D-051); two test runs at once share one database and wreck
+each other.
 
 **Waiting on the founder:** F-01 to F-07 in `docs/DECISIONS.md`, and a view
 on the provisional D-043 and D-050. Only F-01, a private store for identity

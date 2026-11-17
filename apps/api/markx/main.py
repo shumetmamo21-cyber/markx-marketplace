@@ -28,6 +28,8 @@ from markx.offers.router import router as offers_router
 from markx.orders.router import admin_router as orders_admin_router
 from markx.orders.router import router as orders_router
 from markx.orders.router import seller_router as orders_seller_router
+from markx.search.router import admin_router as search_admin_router
+from markx.search.router import router as search_router
 from markx.sellers.router import admin_router as sellers_admin_router
 from markx.sellers.router import public_router as sellers_public_router
 from markx.sellers.router import router as sellers_router
@@ -94,6 +96,8 @@ def create_app() -> FastAPI:
     api.include_router(orders_router)
     api.include_router(orders_seller_router)
     api.include_router(orders_admin_router)
+    api.include_router(search_router)
+    api.include_router(search_admin_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
     app.include_router(api)

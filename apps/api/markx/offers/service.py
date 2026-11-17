@@ -48,6 +48,7 @@ from markx.offers.models import (
     OfferPriceHistory,
     OfferStatus,
 )
+from markx.search import service as search
 from markx.sellers.models import Seller, SellerMember, SellerRole, SellerStatus
 
 MAX_PRICE_SANTIM = 10_000_000_000  # ETB 100 million: a typing mistake, not a price
@@ -122,6 +123,12 @@ def _movement(
     reference_id: uuid.UUID | None,
     actor_user_id: uuid.UUID | None,
 ) -> None:
+    # Search keeps "in stock" and the lowest in-stock price: only a move that
+    # takes an offer in or out of stock changes a search document.
+    available_after = on_hand_after - reserved_after
+    available_before = available_after - delta_on_hand + delta_reserved
+    if (available_before > 0) != (available_after > 0):
+        search.queue_for_offers(db, [offer_id])
     db.add(
         InventoryMovement(
             offer_id=offer_id,
@@ -571,6 +578,7 @@ def confirm_offers(
             updated_at=now,
         )
     )
+    search.queue_for_offers(db, locked)
     record_by(db, actor, "offer.confirm", "seller", seller.id, after={"offers": len(locked)})
     return len(locked)
 
@@ -651,6 +659,7 @@ def mark_stale_offers(db: Session, *, now: datetime | None = None) -> int:
             .where(Offer.id.in_(stale))
             .values(status=OfferStatus.STALE, updated_at=now)
         )
+        search.queue_for_offers(db, stale)
     if stale:
         record_by(
             db, Actor.system(), "offer.mark_stale", "offers", "batch",

@@ -34,6 +34,7 @@ from markx.core.db import session_scope
 from markx.notifications.models import Notification, Outbox
 from markx.notifications.push import get_push_sender
 from markx.notifications.service import TOPIC_PUSH
+from markx.search import service as search
 
 logger = logging.getLogger("markx.worker.outbox")
 
@@ -86,7 +87,10 @@ def push_notification(db: Session, row: Outbox) -> None:
     )
 
 
-HANDLERS: dict[str, Handler] = {TOPIC_PUSH: push_notification}
+HANDLERS: dict[str, Handler] = {
+    TOPIC_PUSH: push_notification,
+    search.TOPIC_REBUILD: search.handle_rebuild,
+}
 
 
 # -- the dispatcher ----------------------------------------------------------------

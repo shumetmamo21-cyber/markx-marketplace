@@ -906,6 +906,86 @@ C-16, S-16, AD-09. **Accepted, with two provisional parts below.**
    *Other option:* require operations or finance for a refund outcome; it is
    one line in the route's permission.
 
+## D-051 Search documents are rebuilt through the outbox, with an hourly safety net
+
+**Follows** blueprint F.7 step 4 and F.8 ("rebuilding search documents" is a
+worker job). **Accepted.**
+
+One `search_documents` row per approved product, derived entirely from the
+catalogue and the live offers (the same visibility rules as the product page:
+active offer, trading seller at the publishing level, active variant).
+`rebuild_document` is idempotent and reads the database as it is when it
+runs; it deletes the document of a product that is no longer approved.
+
+A change that can alter a document writes an outbox row (`search.rebuild`,
+the product id) **in the transaction that made the change**. The rebuild
+therefore runs only after that change is committed and always sees it. A
+comparison of `updated_at` stamps would have been simpler, but can miss a
+transaction that started before a rebuild and committed after it (D-028).
+
+Where the rows come from:
+
+- **A SQLAlchemy `before_flush` listener** (`markx/search/service.py`)
+  catches every ORM change to the columns a document is built from: offers
+  (status, price, condition, price confirmation, variant, seller), products
+  (status, category, brand, model, specs, merge), variants, translations,
+  aliases, and sellers (status, verification level). New code that changes
+  those through the ORM is covered without remembering to.
+- **Explicit calls** where the ORM does not see the change: the Core upsert
+  of product names, the bulk price check-in and the bulk stale-offer job.
+- **Stock** queues only when an offer goes **in or out of stock**
+  (`_movement` in `markx/offers/service.py`): a document holds "in stock"
+  and the lowest in-stock price, so a count moving from five to four changes
+  nothing. Checkouts therefore add no outbox rows in the common case.
+- **`search.rebuild_all`**, hourly, rebuilds every document: it repairs
+  anything a change path missed (a brand or category rename today), fills an
+  empty table on first run, and keeps `popularity` (units in completed
+  seller orders) current.
+
+Search rebuild rows share the outbox with notification pushes. One test that
+counted all outbox rows against notifications now counts the push topic only.
+
+## D-052 How a query matches and ranks
+
+**Follows** blueprint D.8 and F.7 steps 5 and 6. **Accepted; the thresholds
+are starting values for the golden-set tuning P8 asks for.**
+
+The query is normalised exactly as documents are (`normalize_text`), cut to
+eight words, and expanded by staff synonyms: a synonym for the whole query or
+for one of its words gives an extra wording. A product matches a wording in
+one of three ways, which are also the first ranking key:
+
+1. **words** (tier 3): every word is a prefix of a document word (`simple`
+   full-text vector with `:*`);
+2. **sound** (tier 2): every query skeleton is among the document's skeleton
+   keys (D-015), and words without a skeleton (model numbers) still match by
+   prefix;
+3. **letters** (tier 1): **every** query word has `word_similarity` of at
+   least 0.45 to the document. Per word, not for the whole query: tested,
+   "phones samsung" matched the Tecno on "phones" alone when the whole query
+   was compared.
+
+Then: in stock, a fresh price (D-029's sink rule), the best seller level, the
+lowest in-stock price, popularity, and closeness. Sorting by price or by
+freshness puts that key first and keeps the rest. "Total cost to the door"
+(C-03) needs the buyer's zone and the delivery rates per offer; it is not in
+the document yet and is not offered as a sort. Filters: category (with its
+sub-categories), brand, condition, price range, seller level, in stock.
+Rating and delivery speed wait for reviews and per-offer delivery data.
+
+Every first page of a non-empty query is logged in `search_queries` with
+its result count (later pages and suggestions are not). With no result, "did
+you mean" offers up to three products that match at least one word, closest
+first. The empty-result product-request form (`POST /product-requests`, ten
+an hour from one address) stores the request for catalogue staff. Staff with
+`tune_search` read the zero-result report and manage synonyms, audit-logged.
+
+Not verified: the P8 criteria themselves (85% of a golden set of 100 real
+queries in the top three; 95% of queries under 300 ms). Both need real
+queries and a real-sized catalogue. The trigram match does not use the
+trigram index (it compares per word with a threshold), which is fine at
+pilot scale; F.7 names the point to move to a dedicated engine.
+
 ---
 
 ## Decisions that need the founder

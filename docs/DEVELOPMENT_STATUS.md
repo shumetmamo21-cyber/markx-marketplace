@@ -33,8 +33,11 @@ sign-in, never showing the handover code. When a seller declines or stays
 silent, the buyer is pointed at the next-best offer from another seller. A
 buyer can report a problem inside the 72-hour window, which stops
 completion; both sides add their account and staff decide, completing the
-part or recording that the seller refunded the buyer directly. **Not built:**
-reviews, the bot, the web app, search, CI. Nothing is deployed anywhere.
+part or recording that the seller refunded the buyer directly. **Search**
+finds products from one box in Amharic script, Latin-letter Amharic or
+English, tolerating typos, with filters, sorting, a query log, a zero-result
+report and a synonym tool for staff. **Not built:** reviews, the bot, the web
+app, CI. Nothing is deployed anywhere.
 
 ## Sessions so far
 
@@ -44,7 +47,7 @@ reviews, the bot, the web app, search, CI. Nothing is deployed anywhere.
 | 2 | `8a6e583` to `8df958b` | Status corrections, sellers (P6), offers and inventory (P7). 647 tests |
 | 3 | `399507e`, `bd835ef`, `7079cb5`, `eb52d2f` | Review fixes (a moderation bypass, lock ordering), the worker, cart and checkout (P9), multi-seller orders (P10, first half). 779 tests |
 | 4 | `7c492c6`, `6582017`, `10573b4` | The second half of P10: ready, dispatch, the handover code, delivered, completed with `commit_stock` and the fee charge posted to the ledger, failed deliveries and returns, the direct payment record, the overdue-hold job, the staff orders desk's first three routes, the tracking page by secure link. 801 tests |
-| 5 | see `docs/HANDOFF.md` | Review fix (a cancelled shipment had no tracking event), the next-best offer (C-26), problems on a delivered order with staff decisions (`disputed`, `refunded`). 815 tests |
+| 5 | see `docs/HANDOFF.md` | Review fix (a cancelled shipment had no tracking event), the next-best offer (C-26), problems on a delivered order with staff decisions (`disputed`, `refunded`), search (P8 on the API side). 847 tests |
 
 ## Blueprint phase tracking
 
@@ -59,7 +62,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P5 | Product catalogue | **Mostly done on the API side.** Categories, typed attributes, brands, products, variants, translations, staff create/approve/merge/archive, aliases, the restricted-goods list and seller product proposals are done and tested. The image pipeline, seed data and the web pages are **not done**; merging a product that has offers is still refused (see D-026) |
 | P6 | Seller onboarding and dashboard | **Done on the API side.** Application, private document upload, staff review queue, verification levels with the checks behind the badge, owner and manager members, store page, payout account, dashboard counts. **Not done:** the web screens, share cards and QR code, ownership transfer, a real file-storage adapter |
 | P7 | Seller listings and inventory | **Done on the API side.** Offers, price history, inventory and movements, quick edit, product proposals, the ranked offers list, the check-in, the stale-offer job **now run by the worker**, and a staff takedown that holds (D-032). **Not done:** the seller Telegram bot, the web screens |
-| P8 | Search and product discovery | **Not started** (tables exist) |
+| P8 | Search and product discovery | **Mostly done on the API side.** Search documents kept fresh through the outbox with an hourly rebuild (D-051); normalisation, letter merging and skeleton keys; prefix, sound and trigram matching; filters and sorting; suggestions and "did you mean"; the product-request form; the query log, the zero-result report and the synonym tool (D-052). **Not done:** the two completion criteria (a golden set of 100 real queries, and timings at real size), "total cost to the door" as a sort, rating and delivery-speed filters, edge caching and pages readable by search engines (they need the web app) |
 | P9 | Cart and checkout | **Done on the API side.** Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Not done:** the web screens, the legal disclosure wording (a founder input), and guest checkout as such: a visitor's cart survives signing in, but the order is placed by a signed-in account (see D-036) |
 | P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. The next-best offer after a decline or an expiry (D-049). Problems on a delivered order: `delivered -> disputed` by the buyer in the window, `disputed -> completed | refunded` by staff, Release 1 form with no money moved (D-050). Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`, `tests/api/test_disputes.py`). **Not done:** reviews, photos on a problem report, the bot, the web screens. Criteria 3 and 5 need the bot and real buyers |
 | P11–P16 | Everything else | **Not started** (tables exist; no behaviour) |
@@ -454,12 +457,50 @@ Decisions D-036 to D-050.
   reply racing on one case (exactly one decision, stock settled once, no
   message after the decision).
 
+### Search (blueprint D.8, F.7, AD-07, P8)
+
+Code: `markx/search/`. Routes: `GET /search`, `GET /search/suggest`, `POST
+/product-requests`, `/admin/search/zero-results`, `/admin/search/synonyms`.
+Decisions D-051 and D-052.
+
+- **Documents.** One per approved product: names in both languages, brand,
+  model, model codes, aliases and category names, normalised; the `simple`
+  full-text vector; skeleton keys; category path, brand, facets (condition of
+  in-stock offers, specs and variant attributes); the lowest in-stock price,
+  offer and seller counts, in stock, best seller level, freshest price,
+  popularity. Rebuilt through the outbox in the transaction that made the
+  change (a flush listener for ORM changes, explicit calls for Core
+  statements, stock only when an offer goes in or out of stock), and all of
+  them hourly by the worker.
+- **Queries.** Normalised like documents, expanded by synonyms, matched by
+  words (prefix), sound (skeleton keys) or letters (trigrams, every word),
+  ranked by match tier, stock, freshness, seller level, price, popularity.
+  Filters: category with its sub-categories, brand, condition, price range,
+  seller level, in stock. Sorts: relevance, price, freshness. Every first
+  page logged with its count. "Did you mean" when nothing matches.
+- **Tests** (`tests/api/test_search_index.py`, 6; `tests/api/test_search.py`,
+  26): the document holds what a buyer can find; stock crossing zero moves
+  the lowest price (and a purchase that does not empty an offer queues
+  nothing); a price change, a pause and a seller suspension reach it; the
+  stale job's bulk update and the bulk check-in reach it; a rename, an alias
+  added and removed, and an archive reach it; the hourly rebuild repairs a
+  missing document and is safe to run twice. Thirteen spellings find the
+  Samsung (English, Amharic script with two vowel spellings, Latin-letter
+  Amharic, no vowels, a model code, a typo only trigrams catch) and six find
+  the Tecno; results are products with the card's facts; a draft is never
+  found; every filter; ranking and both sorts; the query log and the
+  zero-result report with its permission; "did you mean" and suggestions;
+  synonyms for a whole query and for one word, with their refusals,
+  permission and audit rows; the product-request form with its phone check
+  and its hourly limit.
+
 ## What exists but is NOT tested
 
 Be careful with these. They were written and never exercised.
 
-- Models for refunds, payouts, reviews, reports, search and analytics: the
-  tables exist and are constrained; **no service, route or test uses them**.
+- Models for refunds, payouts, reviews, reports and analytics: the tables
+  exist and are constrained; **no service, route or test uses them**.
+  `product_requests` are written and never read by a route yet.
 - `fee_charges.reversal_ledger_transaction_id` and `reversed_at`: unused.
   Release 1 never charges a fee on a refunded part, so nothing is reversed
   (D-050).
@@ -472,7 +513,7 @@ Be careful with these. They were written and never exercised.
 
 - The web app (Next.js): storefront, cart and checkout screens, seller
   dashboard, admin dashboard.
-- Search (P8), reviews, listing reports (C-30), photos on a problem report,
+- Reviews, listing reports (C-30), photos on a problem report,
   the staff dispatch board and the rest of P11, payments beyond the direct
   payment record (Release 2: Protected prepay, refunds through a provider,
   payouts).
@@ -561,10 +602,10 @@ Be careful with these. They were written and never exercised.
 
 ```text
 $ cd apps/api
-$ uv run pytest               ->  815 passed in 330.72s (0:05:30)
+$ uv run pytest               ->  847 passed in 393.88s (0:06:33)
 $ uv run ruff check .         ->  All checks passed!
-$ uv run ruff format --check . ->  128 files already formatted
-$ uv run mypy markx           ->  Success: no issues found in 85 source files
+$ uv run ruff format --check . ->  134 files already formatted
+$ uv run mypy markx           ->  Success: no issues found in 89 source files
 $ uv run alembic check        ->  No new upgrade operations detected.
 ```
 
@@ -574,10 +615,12 @@ change, the same commands gave 801 passed in 236.20s, a clean lint, 125
 formatted files, 85 typed source files and no migration difference: the
 fourth session's report was accurate. mypy runs in strict mode and the
 application code contains no `type: ignore`. The suite treats warnings as
-errors. The whole suite ran three times in session five (801 at the start,
-814 before the review fix's test was added, 815 at the end); the five files
-touching orders were run again on their own after a last change to
-`buyer_add_to_dispute` (79 passed).
+errors. Whole-suite runs in session five: 801 at the start; 814, then 815
+after the order work (commit `497fcf5`); one run that is **not valid**
+(791 passed, 30 errors in test set-up) because a second test run was
+started against the same test database while it ran: the two truncated
+each other's tables; then 847 with nothing else running, the figure above.
+**Never run two test sessions at once**: they share `markx_test`.
 
 | File | Tests |
 | --- | --- |
@@ -613,6 +656,8 @@ touching orders were run again on their own after a last change to
 | `tests/api/test_tracking.py` | 2 |
 | `tests/api/test_next_best_offer.py` | 5 |
 | `tests/api/test_disputes.py` | 5 |
+| `tests/api/test_search_index.py` | 6 |
+| `tests/api/test_search.py` | 26 |
 | `tests/worker/test_worker.py` | 22 |
 
 No end-to-end test exists, because no web app exists.
@@ -649,10 +694,13 @@ Work in this order. Finish and push each step before starting the next.
    the tracking link or another seller; a refunded part that is ever charged
    a fee or completes later; stock released or committed twice; a dispute
    operation that locks out of the written order.
-2. **Search (P8).** `search_documents` rebuilt by a worker job when an
-   offer's price, stock or status changes, queued through the outbox; then
-   the search route with filters and the ranking of F.7 and D-015. Read the
-   blueprint's P8 criteria first.
+2. **Review search** (`markx/search/`, D-051, D-052): a change path that
+   alters a document without queueing a rebuild (look for Core `update()` /
+   `insert()` on the watched tables), a query that matches too much or too
+   little, a filter that leaks a product a buyer may not see (a draft, an
+   archived product, a suspended seller's offer). Then build the golden set
+   the P8 criteria need: the founder supplies real queries; write them as a
+   test with the expected product, and tune `LETTER_MATCH` against it.
 3. **CI** (`.github/workflows`): the five commands on every push with a
    PostgreSQL 17 service container. Nothing paid.
 4. **The web app (P4)**, starting with the shell at `/am` and `/en`, then the

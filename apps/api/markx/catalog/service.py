@@ -39,6 +39,7 @@ from markx.core.errors import Conflict, NotFound, ValidationFailed
 from markx.core.ethiopic import detect_script, normalize_text
 from markx.core.slugs import slugify
 from markx.offers.models import Offer
+from markx.search import service as search
 
 MAX_CATEGORY_DEPTH = 3
 MAX_VARIANTS_PER_PRODUCT = 60
@@ -476,6 +477,7 @@ def _set_product_text(
             set_={"name": name, "description": description},
         )
     )
+    search.queue_rebuild(db, [product_id])  # a Core statement: the flush listener cannot see it
 
 
 def get_product(db: Session, product_id: uuid.UUID) -> Product:

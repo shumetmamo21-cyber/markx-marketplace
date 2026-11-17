@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from markx.core.db import session_scope
 from markx.offers import service as offers
 from markx.orders import service as orders
+from markx.search import service as search
 from markx.sellers import service as sellers
 from markx.worker.models import ScheduledJob
 
@@ -77,6 +78,8 @@ JOBS: tuple[Job, ...] = (
         timedelta(minutes=5),
         lambda db, now: sellers.activate_due_payout_accounts(db, now=now),
     ),
+    # The safety net behind the queued rebuilds, and the first fill (D-051).
+    Job("search.rebuild_all", timedelta(hours=1), lambda db, now: search.rebuild_all(db)),
 )
 
 

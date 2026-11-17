@@ -125,9 +125,10 @@ def test_one_checkout_becomes_one_order_with_a_seller_order_per_seller(
     )
     assert templates == {"order.placed_for_seller": 2, "order.placed": 1}
     # Every notification has its outbox row, written in the same transaction.
-    assert db.scalar(select(func.count()).select_from(Outbox)) == db.scalar(
-        select(func.count()).select_from(Notification)
-    )
+    # (Search rebuilds share the outbox under their own topic, D-051.)
+    assert db.scalar(
+        select(func.count()).select_from(Outbox).where(Outbox.topic == "notify.push")
+    ) == db.scalar(select(func.count()).select_from(Notification))
     assert buyer.get("/cart").json()["line_count"] == 0  # the cart is spent
     assert buyer.get("/me").json()["unread_notifications"] == 1
 
