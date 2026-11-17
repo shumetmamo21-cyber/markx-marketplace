@@ -677,3 +677,102 @@ def test_no_payment_is_recorded_before_confirmation_or_after_a_return(
     assert intent() == returned
     assert _part(_mine(buyer, order["id"]), "alpha")["paid_method"] is None
     assert db.scalar(select(func.count()).select_from(PaymentAttempt)) == 0
+
+
+# -- one failing order never holds back the others (D-060) ---------------------------------
+
+
+def _both_parts_delivered(bazaar: Bazaar) -> tuple[ApiClient, dict[str, Any], str, str, datetime]:
+    """Alpha handed over by its rider, Beta collected at the counter; returns
+    the moment both problem windows have passed."""
+    buyer, order, alpha_id, code = _dispatched_alpha(bazaar)
+    beta_id = _part(order, "beta")["id"]
+    a = f"/seller/{bazaar.a_id}/orders/{alpha_id}"
+    b = f"/seller/{bazaar.b_id}/orders/{beta_id}"
+    alpha = bazaar.a.post(f"{a}/handover", json={"code": code})
+    assert alpha.status_code == 200, alpha.text
+    assert bazaar.b.post(f"{b}/ready").status_code == 200
+    beta_code = _part(_mine(buyer, order["id"]), "beta")["handover_code"]
+    beta = bazaar.b.post(f"{b}/handover", json={"code": beta_code})
+    assert beta.status_code == 200, beta.text
+    after = max(
+        datetime.fromisoformat(alpha.json()["problem_window_ends_at"]),
+        datetime.fromisoformat(beta.json()["problem_window_ends_at"]),
+    ) + timedelta(minutes=5)
+    return buyer, order, alpha_id, beta_id, after
+
+
+@pytest.mark.parametrize("failure", ["raises", "unbalanced_ledger"])
+def test_one_order_that_cannot_complete_never_blocks_the_others(
+    bazaar: Bazaar, db: DbSession, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """D-060. Alpha's completion fails, either at once or only in a check the
+    database defers to commit (an unbalanced ledger posting). Beta still
+    completes in the same run; Alpha is undone alone, stays delivered with
+    its stock held, and completes on a later run once the fault is gone."""
+    db.add(
+        CommissionRule(
+            scope="category", payment_kind="direct",
+            category_id=uuid.UUID(bazaar.catalog["phones"]), rate_bps=300,
+        )
+    )  # fmt: skip
+    db.commit()
+    _, _, alpha_id, beta_id, after = _both_parts_delivered(bazaar)
+    real_charge_fee = service.ledger.charge_fee
+
+    def faulty_charge_fee(session: DbSession, **kwargs: Any) -> LedgerTransaction:
+        if kwargs["seller_order_id"] != uuid.UUID(alpha_id):
+            return real_charge_fee(session, **kwargs)
+        if failure == "raises":
+            raise RuntimeError("the fee could not be posted")
+        txn = LedgerTransaction(
+            idempotency_key=f"broken:{alpha_id}", kind="fee_charge",
+            reference_type="seller_order", reference_id=kwargs["seller_order_id"],
+            description="debit without its credit",
+        )  # fmt: skip
+        session.add(txn)
+        session.flush()
+        receivable = service.ledger.seller_receivable(session, kwargs["seller_id"])
+        session.add(
+            LedgerEntry(
+                transaction_id=txn.id, account_id=receivable.id, direction="debit",
+                amount_santim=kwargs["fee"].amount, currency="ETB",
+            )
+        )  # fmt: skip
+        session.flush()
+        return txn
+
+    monkeypatch.setattr(service.ledger, "charge_fee", faulty_charge_fee)
+    outcome = next(
+        o for o in run_once(after).jobs if o.name == "orders.complete_after_problem_window"
+    )
+    assert (outcome.ok, outcome.result) == (True, 1)
+
+    db.rollback()
+    statuses = dict(
+        db.execute(
+            select(SellerOrder.id, SellerOrder.status).where(
+                SellerOrder.id.in_([uuid.UUID(alpha_id), uuid.UUID(beta_id)])
+            )
+        ).all()
+    )
+    assert statuses == {uuid.UUID(alpha_id): "delivered", uuid.UUID(beta_id): "completed"}
+    charged = set(db.scalars(select(FeeCharge.seller_order_id)))
+    assert charged == {uuid.UUID(beta_id)}
+    assert db.scalar(select(func.count()).select_from(LedgerTransaction)) == 1
+    assert stock(db, bazaar.a128["id"]) == (5, 2)  # Alpha's two units still held
+    assert_stock_is_consistent(db)
+
+    monkeypatch.setattr(service.ledger, "charge_fee", real_charge_fee)
+    outcome = next(
+        o
+        for o in run_once(after + timedelta(minutes=10)).jobs
+        if o.name == "orders.complete_after_problem_window"
+    )
+    assert (outcome.ok, outcome.result) == (True, 1)
+    db.rollback()
+    assert db.scalar(select(SellerOrder.status).where(SellerOrder.id == uuid.UUID(alpha_id))) == (
+        "completed"
+    )
+    assert stock(db, bazaar.a128["id"]) == (3, 0)
+    assert_stock_is_consistent(db)

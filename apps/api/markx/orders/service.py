@@ -21,13 +21,14 @@ FOR NO KEY UPDATE, never plain FOR UPDATE (D-027). Stock moves only through
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -106,6 +107,8 @@ from markx.trust.models import CaseDecision, CaseStatus, DisputeCase, DisputeMes
 
 MAX_CART_LINES = 30
 EXPIRY_BATCH = 200
+
+logger = logging.getLogger("markx.orders")
 HANDOVER_CODE_PURPOSE = "handover"
 # A tracking link outlives the longest order: fourteen days of hold, delivery,
 # the problem window, and time to read the message (D-048).
@@ -1562,7 +1565,16 @@ def confirm_received(
 
 def complete_after_problem_window(db: Session, *, now: datetime | None = None) -> int:
     """Scheduled job: a delivered seller order whose problem window passed
-    without a report completes (G.6: "the window passed"). Returns how many."""
+    without a report completes (G.6: "the window passed"). Returns how many.
+
+    Each order completes in its own savepoint (D-060), so one that fails (a
+    bug, a stock row out of line, a deadlock) is undone alone, stays
+    `delivered`, is logged with its id and is tried again on the next run,
+    while every other due order completes. The database's commit-time checks
+    (the balanced ledger, the event for every status change) are made to run
+    inside the savepoint too (`SET CONSTRAINTS ALL IMMEDIATE`), because a
+    violation found only at the job's commit would undo every order at once.
+    """
     now = now or _now()
     due = list(
         db.scalars(
@@ -1576,11 +1588,31 @@ def complete_after_problem_window(db: Session, *, now: datetime | None = None) -
             .with_for_update(key_share=True, skip_locked=True)
         )
     )
+    completed = 0
     for seller_order in due:
-        complete_seller_order(
-            db, seller_order, actor_type=ActorType.SYSTEM, actor_user_id=None, now=now
-        )
-    return len(due)
+        seller_order_id = seller_order.id
+        try:
+            with db.begin_nested():
+                complete_seller_order(
+                    db, seller_order, actor_type=ActorType.SYSTEM, actor_user_id=None, now=now
+                )
+                # Every check that is deferred to commit runs here instead,
+                # while this order's work can still be undone alone.
+                db.execute(text("set constraints all immediate"))
+        except Exception:
+            logger.exception(
+                "a seller order could not complete; it stays delivered and is tried again",
+                extra={
+                    "seller_order_id": str(seller_order_id),
+                    "job": "complete_after_problem_window",
+                },
+            )
+        else:
+            completed += 1
+        finally:
+            # All four deferrable checks are declared INITIALLY DEFERRED.
+            db.execute(text("set constraints all deferred"))
+    return completed
 
 
 def cancel_overdue_fulfilment(db: Session, *, now: datetime | None = None) -> int:
