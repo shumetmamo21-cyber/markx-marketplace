@@ -2681,6 +2681,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seller/{seller_id}/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Performance
+         * @description The last `days` days, up to now.
+         */
+        get: operations["performance_api_v1_seller__seller_id__performance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/seller/{seller_id}/photos/{image_id}/withdraw": {
         parameters: {
             query?: never;
@@ -2812,6 +2832,26 @@ export interface paths {
         put?: never;
         /** Submit Application */
         post: operations["submit_application_api_v1_seller__seller_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seller/{seller_id}/weekly-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Weekly Reports
+         * @description Newest week first, exactly as each was sent.
+         */
+        get: operations["weekly_reports_api_v1_seller__seller_id__weekly_reports_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4447,6 +4487,66 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * PerformanceOut
+         * @description Counts and shares (0 to 1, or null with nothing to divide); money in
+         *     santim. "Received" counts the orders placed in the period; the moves
+         *     (delivered, completed, problems) count what happened in it.
+         */
+        PerformanceOut: {
+            /** Active Offers */
+            active_offers: number;
+            /** Completed */
+            completed: number;
+            /** Completed Value Santim */
+            completed_value_santim: number;
+            /** Confirmation Share */
+            confirmation_share: number | null;
+            /** Delivered */
+            delivered: number;
+            /** Delivery Failed */
+            delivery_failed: number;
+            /** Delivery Success Share */
+            delivery_success_share: number | null;
+            /**
+             * From Time
+             * Format: date-time
+             */
+            from_time: string;
+            /** Low Stock Offers */
+            low_stock_offers: number;
+            /** Median Minutes To Confirm */
+            median_minutes_to_confirm: number | null;
+            /** New Reviews */
+            new_reviews: number;
+            /** New Reviews Average */
+            new_reviews_average: number | null;
+            /** Orders Cancelled By Buyer */
+            orders_cancelled_by_buyer: number;
+            /** Orders Confirmed */
+            orders_confirmed: number;
+            /** Orders Declined */
+            orders_declined: number;
+            /** Orders Received */
+            orders_received: number;
+            /** Orders Unanswered */
+            orders_unanswered: number;
+            /** Prices To Confirm */
+            prices_to_confirm: number;
+            /** Problems Reported */
+            problems_reported: number;
+            /** Rating Average */
+            rating_average: number | null;
+            /** Rating Count */
+            rating_count: number;
+            /** Refunded */
+            refunded: number;
+            /**
+             * To Time
+             * Format: date-time
+             */
+            to_time: string;
+        };
         /** PriceChangeOut */
         PriceChangeOut: {
             /**
@@ -6000,6 +6100,25 @@ export interface components {
              * @default false
              */
             shop_visited: boolean;
+        };
+        /** WeeklyReportOut */
+        WeeklyReportOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            figures: components["schemas"]["PerformanceOut"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
         };
         /** ZeroResultOut */
         ZeroResultOut: {
@@ -11496,6 +11615,39 @@ export interface operations {
             };
         };
     };
+    performance_api_v1_seller__seller_id__performance_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerformanceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     withdraw_seller_photo_api_v1_seller__seller_id__photos__image_id__withdraw_post: {
         parameters: {
             query?: never;
@@ -11788,6 +11940,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SellerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    weekly_reports_api_v1_seller__seller_id__weekly_reports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyReportOut"][];
                 };
             };
             /** @description Validation Error */

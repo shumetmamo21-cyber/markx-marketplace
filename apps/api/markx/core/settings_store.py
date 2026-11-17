@@ -169,6 +169,14 @@ _SPECS: tuple[SettingSpec, ...] = (
         100,
         10_000_000_000,
     ),
+    # Seller performance (blueprint S-26; D-069)
+    SettingSpec(
+        "sellers.weekly_report_enabled",
+        True,
+        "bool",
+        "Send every trading store its weekly performance message (S-26) after each "
+        "week ends, Monday to Sunday in Addis Ababa time.",
+    ),
     # Reviews (blueprint D.15, H.4; D-066)
     SettingSpec(
         "reviews.window_days",

@@ -28,7 +28,7 @@ class ProductCardOut(ApiModel):
     in_stock: bool
     price_is_fresh: bool
     # The first ready catalogue picture, small (D.9 "photo"; D-062); null
-    # until the product has one (D-073).
+    # until the product has one (D-074).
     thumb_url: str | None
 
 

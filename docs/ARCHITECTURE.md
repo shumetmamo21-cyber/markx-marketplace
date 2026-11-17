@@ -47,7 +47,12 @@ apps/
       ops/                  self-checks, alerts, reconciliation (D-064)
       admin/                audit-log viewer, settings, staff accounts,
                             dispatch board, business dashboard (D-065)
-      payments/ trust/      the ledger and fees; problem cases (used by orders)
+      reviews/              reviews, replies, moderation, rating totals (D-066)
+      reports/              reports on listings, stores, reviews (D-067)
+      exports/              CSV exports for an accountant (D-068)
+      performance/          seller figures and the weekly message (D-069)
+      payments/ trust/      the ledger and fees; problem cases, reviews and
+                            reports tables (used by orders, reviews, reports)
       analytics/            MODELS ONLY: tables, no behaviour yet
       main.py               the application factory
       registry.py           imports every model for Alembic and tests
@@ -259,10 +264,12 @@ run side by side; PostgreSQL decides who does what. One pass of its loop
 
 Tests drive the worker by calling `run_once(now)` with a clock they control.
 D-034 and D-035 record the guarantees and the one limit. Topics today:
-`notify.push`, `search.rebuild`, `images.render` and `ops.alert`. Jobs: order
+`notify.push`, `search.rebuild`, `images.render`, `ops.alert` and
+`reviews.recount`. Jobs: order
 expiry, completion after the problem window (each order in its own
 savepoint, D-060), overdue holds, stale offers, payout accounts, the hourly
-`search.rebuild_all`, the daily `ops.reconcile` and, last, `ops.watch`.
+`search.rebuild_all`, the hourly `sellers.weekly_report`, the daily
+`reviews.recount_all` and `ops.reconcile` and, last, `ops.watch`.
 
 ## Search
 

@@ -180,7 +180,7 @@ def test_the_catalogue_picture_limit_holds(bazaar: Bazaar, db: DbSession) -> Non
 
 
 def test_the_product_card_shows_the_first_ready_catalogue_picture(bazaar: Bazaar) -> None:
-    """D.9: the card everywhere carries a photo (D-073): the first catalogue
+    """D.9: the card everywhere carries a photo (D-074): the first catalogue
     picture that is ready, never a shop's own photo."""
 
     def card() -> dict[str, Any]:

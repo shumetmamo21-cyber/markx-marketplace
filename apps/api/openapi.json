@@ -4478,6 +4478,167 @@
         "title": "PayoutAccountOut",
         "type": "object"
       },
+      "PerformanceOut": {
+        "description": "Counts and shares (0 to 1, or null with nothing to divide); money in\nsantim. \"Received\" counts the orders placed in the period; the moves\n(delivered, completed, problems) count what happened in it.",
+        "properties": {
+          "active_offers": {
+            "title": "Active Offers",
+            "type": "integer"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "completed_value_santim": {
+            "title": "Completed Value Santim",
+            "type": "integer"
+          },
+          "confirmation_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Share"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "delivery_failed": {
+            "title": "Delivery Failed",
+            "type": "integer"
+          },
+          "delivery_success_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Success Share"
+          },
+          "from_time": {
+            "format": "date-time",
+            "title": "From Time",
+            "type": "string"
+          },
+          "low_stock_offers": {
+            "title": "Low Stock Offers",
+            "type": "integer"
+          },
+          "median_minutes_to_confirm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Minutes To Confirm"
+          },
+          "new_reviews": {
+            "title": "New Reviews",
+            "type": "integer"
+          },
+          "new_reviews_average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Reviews Average"
+          },
+          "orders_cancelled_by_buyer": {
+            "title": "Orders Cancelled By Buyer",
+            "type": "integer"
+          },
+          "orders_confirmed": {
+            "title": "Orders Confirmed",
+            "type": "integer"
+          },
+          "orders_declined": {
+            "title": "Orders Declined",
+            "type": "integer"
+          },
+          "orders_received": {
+            "title": "Orders Received",
+            "type": "integer"
+          },
+          "orders_unanswered": {
+            "title": "Orders Unanswered",
+            "type": "integer"
+          },
+          "prices_to_confirm": {
+            "title": "Prices To Confirm",
+            "type": "integer"
+          },
+          "problems_reported": {
+            "title": "Problems Reported",
+            "type": "integer"
+          },
+          "rating_average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating Average"
+          },
+          "rating_count": {
+            "title": "Rating Count",
+            "type": "integer"
+          },
+          "refunded": {
+            "title": "Refunded",
+            "type": "integer"
+          },
+          "to_time": {
+            "format": "date-time",
+            "title": "To Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_time",
+          "to_time",
+          "orders_received",
+          "orders_confirmed",
+          "orders_declined",
+          "orders_unanswered",
+          "orders_cancelled_by_buyer",
+          "confirmation_share",
+          "median_minutes_to_confirm",
+          "delivered",
+          "delivery_failed",
+          "delivery_success_share",
+          "completed",
+          "completed_value_santim",
+          "problems_reported",
+          "refunded",
+          "new_reviews",
+          "new_reviews_average",
+          "rating_count",
+          "rating_average",
+          "active_offers",
+          "prices_to_confirm",
+          "low_stock_offers"
+        ],
+        "title": "PerformanceOut",
+        "type": "object"
+      },
       "PriceChangeOut": {
         "additionalProperties": false,
         "properties": {
@@ -8784,6 +8945,36 @@
           "reason"
         ],
         "title": "VerificationLevelIn",
+        "type": "object"
+      },
+      "WeeklyReportOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "figures": {
+            "$ref": "#/components/schemas/PerformanceOut"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "week_start": {
+            "format": "date",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "week_start",
+          "created_at",
+          "figures"
+        ],
+        "title": "WeeklyReportOut",
         "type": "object"
       },
       "ZeroResultOut": {
@@ -18130,6 +18321,62 @@
         ]
       }
     },
+    "/api/v1/seller/{seller_id}/performance": {
+      "get": {
+        "description": "The last `days` days, up to now.",
+        "operationId": "performance_api_v1_seller__seller_id__performance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Performance",
+        "tags": [
+          "seller: performance"
+        ]
+      }
+    },
     "/api/v1/seller/{seller_id}/photos/{image_id}/withdraw": {
       "post": {
         "operationId": "withdraw_seller_photo_api_v1_seller__seller_id__photos__image_id__withdraw_post",
@@ -18654,6 +18901,66 @@
         "summary": "Submit Application",
         "tags": [
           "seller"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/weekly-reports": {
+      "get": {
+        "description": "Newest week first, exactly as each was sent.",
+        "operationId": "weekly_reports_api_v1_seller__seller_id__weekly_reports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 52,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WeeklyReportOut"
+                  },
+                  "title": "Response Weekly Reports Api V1 Seller  Seller Id  Weekly Reports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Weekly Reports",
+        "tags": [
+          "seller: performance"
         ]
       }
     },

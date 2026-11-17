@@ -37,6 +37,7 @@ from markx.ops.router import public_router as ops_public_router
 from markx.orders.router import admin_router as orders_admin_router
 from markx.orders.router import router as orders_router
 from markx.orders.router import seller_router as orders_seller_router
+from markx.performance.router import router as performance_router
 from markx.reports.router import admin_router as reports_admin_router
 from markx.reports.router import router as reports_router
 from markx.reviews.router import admin_router as reviews_admin_router
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     api.include_router(reports_router)
     api.include_router(reports_admin_router)
     api.include_router(exports_router)
+    api.include_router(performance_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
         api.include_router(images_media_router)
