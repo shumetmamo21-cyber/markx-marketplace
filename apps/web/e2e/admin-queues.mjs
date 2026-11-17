@@ -142,7 +142,7 @@ function expect(condition, message) {
   watch(staff, 'staff');
   await staffSignIn(staff, '0911000900', process.env.MARKX_DEMO_STAFF_PASSWORD || 'demo-only-staff-password-1', SECRET, /\/en\/admin\/problems$/);
   const items = await menu(staff);
-  expect(items.join('|') === 'Problems|Orders desk|Dispatch board|Dashboard|Seller applications|Invitations|Product proposals|Listing takedowns|Pictures|Reviews|Reports|Search|Audit trail|Exports|Operations|Settings|Staff accounts', `menu: ${items}`);
+  expect(items.join('|') === 'Problems|Orders desk|Dispatch board|Dashboard|Seller applications|Invitations|Product proposals|Products|Catalogue setup|Listing takedowns|Pictures|Reviews|Reports|Search|Audit trail|Exports|Operations|Delivery zones|Settings|Staff accounts', `menu: ${items}`);
   await staff.getByText('Role: Super administrator').waitFor();
   console.log('1 super administrator: lands on problems; menu', items.length, 'queues; role in words');
   const asStaff = caller(staff);
@@ -294,7 +294,14 @@ function expect(condition, message) {
   expect(received.status === 200, `received ${received.status} ${JSON.stringify(received.body)}`);
   const itemId = mine.items[0].id;
   const reviewText = `Good phone, call me on 0911222333 for more (${run})`;
+  // Repeated runs write many reviews from the one demo buyer; the daily limit
+  // (reviews.per_buyer_per_day) is not what this step is about, so staff lift
+  // it for this one review and put it back.
+  const limitKey = 'reviews.per_buyer_per_day';
+  const limit = (await asStaff('GET', '/api/v1/admin/settings')).body.find((x) => x.key === limitKey).value;
+  expect((await asStaff('PUT', `/api/v1/admin/settings/${limitKey}`, { value: 100 })).status === 200, 'lift the daily review limit');
   const reviewed = await asBuyer('POST', `/api/v1/me/orders/${placed.body.id}/items/${itemId}/review`, { product_rating: 4, seller_rating: 5, body: reviewText });
+  expect((await asStaff('PUT', `/api/v1/admin/settings/${limitKey}`, { value: limit })).status === 200, 'restore the daily review limit');
   expect(reviewed.status === 201 || reviewed.status === 200, `review ${reviewed.status} ${JSON.stringify(reviewed.body)}`);
   await staff.goto(`${BASE}/en/admin/reviews`);
   const held = staff.locator('main li', { hasText: `(${run})` });
@@ -427,7 +434,7 @@ function expect(condition, message) {
   watch(curator, 'curator');
   await staffSignIn(curator, curatorPhone, 'demo-only-curator-password-1', created.body.totp_secret, /\/en\/admin\/catalog$/);
   const own = await menu(curator);
-  expect(own.join('|') === 'Product proposals|Listing takedowns|Pictures|Reviews|Reports|Search', `curator menu: ${own}`);
+  expect(own.join('|') === 'Product proposals|Products|Catalogue setup|Listing takedowns|Pictures|Reviews|Reports|Search', `curator menu: ${own}`);
   await curator.getByText('Role: Catalogue curator').waitFor();
   await curator.goto(`${BASE}/en/admin/audit`);
   await curator.getByText('Your role may not open this page.').waitFor();

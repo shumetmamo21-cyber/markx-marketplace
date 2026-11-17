@@ -7,12 +7,28 @@
 // SECRET is the demo staff authenticator secret seed_demo.py printed. A
 // buyer orders, the shop delivers (set up through the API), the buyer reports
 // a problem on the order page, and staff decide it in the admin dashboard.
+//
+// Or give the secret itself (MARKX_DEMO_TOTP_SECRET=SECRET), and the code is
+// computed at the moment staff sign in, so it cannot expire on the way.
+import { createHmac } from 'node:crypto';
 import { createRequire } from 'node:module';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 const BASE = process.env.MARKX_WEB_ORIGIN || 'http://localhost:3000';
-const TOTP = process.env.MARKX_DEMO_TOTP;
-if (!TOTP) throw new Error('set MARKX_DEMO_TOTP to the demo staff authenticator code');
+const SECRET = process.env.MARKX_DEMO_TOTP_SECRET;
+if (!process.env.MARKX_DEMO_TOTP && !SECRET) throw new Error('set MARKX_DEMO_TOTP_SECRET (or MARKX_DEMO_TOTP, the current code)');
+
+/** RFC 6238: the current six-digit code for a base-32 secret. */
+function totp(secret) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const bits = [...secret.replace(/=+$/, '').toUpperCase()].map((c) => alphabet.indexOf(c).toString(2).padStart(5, '0')).join('');
+  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const mac = createHmac('sha1', key).update(counter).digest();
+  const offset = mac[mac.length - 1] & 0xf;
+  return ((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).toString().padStart(6, '0');
+}
 
 async function code(page, phone) {
   const inbox = await page.evaluate(async (p) => (await fetch(`/api/v1/dev/sms-inbox?phone=${p}`)).json(), phone);
@@ -40,8 +56,10 @@ async function signIn(page, phone) {
   const browser = await chromium.launch();
   const errors = [];
   let refusalsExpected = false; // only during the deliberate isolation checks
+  let signingIn = false; // a replayed staff code is refused once, then retried
   const watch = (page, who) => page.on('console', (m) => {
     if (m.type() !== 'error' || /_rsc=|404 \(Not Found\)/.test(m.text())) return;
+    if (signingIn && /401 \(Unauthorized\)/.test(m.text())) return;
     if (refusalsExpected && /40[34] \(/.test(m.text())) return;
     errors.push(`${who}: ${m.text().slice(0, 120)}`);
   });
@@ -92,9 +110,22 @@ async function signIn(page, phone) {
   await staff.waitForURL(/\/en\/admin\/sign-in$/);
   await staff.fill('input[name=phone]', '0911000900');
   await staff.fill('input[name=password]', process.env.MARKX_DEMO_STAFF_PASSWORD || 'demo-only-staff-password-1');
-  await staff.fill('input[name=totp]', TOTP);
-  await staff.getByRole('button', { name: 'Sign in' }).click();
-  await staff.waitForURL(/\/en\/admin\/problems$/);
+  // A code already used in this 30-second step (by another journey just
+  // before) is refused once as a replay; with the secret, the next code is tried.
+  signingIn = true;
+  for (let attempt = 1; ; attempt++) {
+    await staff.fill('input[name=totp]', SECRET ? totp(SECRET) : process.env.MARKX_DEMO_TOTP);
+    await staff.getByRole('button', { name: 'Sign in' }).click();
+    const refusal = staff.locator('form [role=alert]');
+    const outcome = await Promise.race([
+      staff.waitForURL(/\/en\/admin\/problems$/).then(() => 'in'),
+      refusal.waitFor().then(() => 'refused'),
+    ]);
+    if (outcome === 'in') break;
+    if (attempt >= 2 || !SECRET) throw new Error(`staff sign-in refused: ${await refusal.innerText()}`);
+    await staff.waitForTimeout(30_000 - (Date.now() % 30_000) + 1_000);
+  }
+  signingIn = false;
   console.log('2 staff signed in; queue shows', await staff.locator('main li').count(), 'case(s)');
 
   // 3. Open the case and decide it: refunded, goods back at the shop.

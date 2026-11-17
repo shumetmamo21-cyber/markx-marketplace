@@ -14,7 +14,7 @@ domain.
 | --- | --- |
 | API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search, pictures, monitoring, the admin back end, reviews, reports, exports. Not built: Release 2 payments |
 | PostgreSQL | Schema for all of Release 1 (68 tables), three roles |
-| Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the whole seller dashboard from the application to performance (D-075), and a screen for every admin route (D-070, D-071). Not built: product proposals from a seller, closing a shop, a map pin |
+| Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account, the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
 | Containers, CI | Built: a Compose file for a laptop (D-058) and CI on every push. **The reverse proxy and any deployment do not exist** |
 
@@ -108,6 +108,13 @@ on something, the API says so in the response (`can_edit`, `can_reply` on
 reviews, D-072; `can_cancel` and the rest on orders) rather than the page
 repeating the rule. A default the form shows is read from the API's own
 description on the server (the low-stock warning, D-075).
+
+One product form (`src/components/ProductForm.tsx`) serves catalogue staff
+and shops: the chosen category's version-defining attributes become the
+version lines and the others its details. Notifications are worded by
+`src/lib/notifications.ts` from their template, tested against every
+template the API sends. Category trees are flattened for choosers by
+`src/lib/categories.ts`.
 
 ## The layers in every module
 

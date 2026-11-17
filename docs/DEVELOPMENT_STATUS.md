@@ -3,7 +3,11 @@
 **Last updated:** 17 November 2026, tenth engineering session (the web app's
 owner: the buyer's and the seller's screens — reviews and report links
 (D-072), pictures and problem evidence (D-074), the rest of the seller
-dashboard (D-075)). The ninth session built every admin screen (D-069 to
+dashboard (D-075) — and, in a second round, every remaining screen the API
+supports: the buyer's account, the next-best offer, the category page,
+search suggestions, the shop's location, closing and product suggestions,
+the staff's trust actions, delivery zones and catalogue setup (D-076 to
+D-078)). The ninth session built every admin screen (D-069 to
 D-071); a back-end-only continuation in parallel added the seller
 performance figures and the weekly seller message (D-073), merged in this
 session.
@@ -68,8 +72,11 @@ ten** (the web app's owner) built the buyer's and the seller's remaining
 screens: reviews, ratings and report links (D-072), pictures on the product
 card and page, shops' own photos and problem evidence (D-074), and the rest
 of the seller dashboard, from the application to performance (D-075).
-**Not built:** product proposals from a seller and closing a shop on the
-web, the bot, deployment. Nothing is deployed anywhere.
+In a second round it built every remaining screen the API supports (D-077),
+refused closing a store with orders in progress (D-076) and gave the
+settings their Amharic descriptions (D-078). **Not built:** Telegram sign-in
+and the bot (they need the bot the founder creates), deployment. Nothing is
+deployed anywhere.
 
 ## Sessions so far
 
@@ -84,7 +91,7 @@ web, the bot, deployment. Nothing is deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
-| 10 (web owner) | `b2e11ce`, `1920e55`, the merge `d015261`, `ae10c83`, `326ae26` and the documentation commit; see `docs/HANDOFF.md`, Part A.0000 | Reviews and report links for buyers, the shop's replies, `can_edit`/`can_reply` (D-072); thumbnails on the product card (`thumb_url`), the product page gallery, shops' photos, problem evidence (D-074); the rest of the seller dashboard and the application (D-075); `e2e/shop-screens.mjs`, `e2e/seller-dashboard.mjs`. 944 API tests, 29 web unit tests |
+| 10 (web owner) | `b2e11ce`, `1920e55`, the merge `d015261`, `ae10c83`, `326ae26`, `af02d59`, `ffa2720`; second round `822f564`, `751e2b0`, `47e9fec` and the documentation commit; see `docs/HANDOFF.md`, Part A.0000 | Reviews and report links for buyers, the shop's replies, `can_edit`/`can_reply` (D-072); thumbnails on the product card (`thumb_url`), the product page gallery, shops' photos, problem evidence (D-074); the rest of the seller dashboard and the application (D-075); then a store with open orders cannot close (D-076), every remaining screen the API supports (D-077) and the settings in Amharic (D-078); `e2e/shop-screens.mjs`, `e2e/seller-dashboard.mjs`, `e2e/setup-and-account.mjs`. 948 API tests, 33 web unit tests |
 
 ## Blueprint phase tracking
 
@@ -638,8 +645,18 @@ API types are generated from the API's OpenAPI description.
   published and the performance page. Every page at 360 px in both
   languages.
 - **Demo data:** `apps/api/scripts/seed_demo.py` (D-056), laptop only.
-- **Known gaps:** product proposals from a seller, closing a shop and a map
-  pin for the shop (D-075). Variant
+- **The remaining screens** (session ten, second round, D-077): the buyer's
+  account (`/account`: name and language, saved addresses, messages from
+  MarkX in words, data requests, sign out on every device), the next-best
+  offer on a declined or expired part, the category page (`/c/{slug}`),
+  search suggestions; the shop's location with a map link, closing the shop
+  (refused while orders are in progress, D-076), suggesting a product; for
+  staff a shop's level and standing, delivery zones with areas and fees,
+  catalogue setup and the products screens. `e2e/setup-and-account.mjs` (13
+  steps) drives them all. The settings screen shows Amharic descriptions on
+  the Amharic page (D-078).
+- **Known gaps:** Telegram sign-in and linking (`/auth/telegram`,
+  `/me/telegram`) wait for the bot. Variant
   labels ("Black · 128 GB") come from the API in the cart, the seller's
   offers and the shop's price list, built by the same code as the product
   page (`catalog.selectors.variant_labels`).
@@ -730,10 +747,10 @@ Be careful with these. They were written and never exercised.
 
 ## What does not exist
 
-- On the web: product proposals from a seller, closing a shop, a map pin
-  for the shop's location (D-075), and Amharic setting descriptions (the
-  API's English text). Every other buyer, seller and admin route has its
-  screen (D-070 to D-075).
+- On the web: Telegram sign-in and linking (the bot does not exist yet).
+  Every other route a person uses has its screen (D-070 to D-078); the
+  remaining unused routes are the development SMS inbox, the health checks
+  and the file links the API hands out.
 - Photos on reviews, ratings on product cards and in search, payments beyond the direct payment record
   (Release 2: Protected prepay, refunds through a provider, payouts).
 - Ownership transfer between seller members (needs the founder's decision,
@@ -796,8 +813,6 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
-- **Setting descriptions are in English on the Amharic admin page**: they
-  are the API's own text (`settings_store`), shown with `lang="en"` (D-071).
 - **The browser journeys use the demo phones' sign-in codes**, five per phone
   per hour (`auth.otp_per_phone_per_hour`, working as designed). The admin
   journey signs each demo phone in once per run, so about four runs fit in
@@ -813,7 +828,16 @@ Be careful with these. They were written and never exercised.
   (`reviews.hold_after_same_seller`, D-066, working as designed), so
   `shop-screens.mjs` picks the shop the demo buyer reviewed least and stops
   with that reason once all three are at the limit: about six runs per
-  30 days on one database. Re-seed for more.
+  30 days on one database. **The session's demo database has reached that
+  limit**; re-seed a fresh one before running `shop-screens.mjs` again.
+- **A buyer writes at most ten reviews a day** (`reviews.per_buyer_per_day`,
+  working as designed); repeated journey runs reach it with the one demo
+  buyer, so `admin-queues.mjs` lifts it through the staff settings route for
+  its one review and restores it at once.
+- **`setup-and-account.mjs` leaves its traces switched off**: per run one
+  closed demo shop, an archived product and an archived proposal, an
+  inactive "Gadgets" category, an inactive test zone, a demo brand and a
+  test attribute. It switches off what an interrupted earlier run left on.
 - **A staff authenticator code works once** (replay protection, working as
   designed): two staff sign-ins inside the same 30 seconds refuse the
   second. The journeys retry once with the next code.
@@ -875,6 +899,25 @@ Be careful with these. They were written and never exercised.
   launch.
 
 ## Tests executed
+
+**Tenth session, second round** (the remaining screens, D-076 to D-078):
+
+```text
+# the recheck, on ffa2720 before any change
+$ cd apps/api && uv run pytest ->  944 passed in 763.73s (0:12:43)
+$ cd apps/web && npm run lint, typecheck, test, build -> clean; 29 passed; 56 pages
+  GitHub Actions run #57 on ffa2720: success
+
+# on the final tree
+$ cd apps/web && npm run lint, typecheck -> clean; npm test -> 33 passed (7 files)
+$ npm run gen:api -> schema.d.ts unchanged; npm run build -> 66 pages
+$ check_openapi_copy --exact openapi.json and the web copy -> both match the API exactly
+$ node e2e/setup-and-account.mjs -> 13 steps passed, "console errors: none"
+$ node e2e/seller-dashboard.mjs  -> 11 steps passed, "console errors: none"
+$ node e2e/buyer-journey.mjs     ->  6 steps passed, "console errors: none"
+# the full API suite, admin-queues.mjs and staff-journey.mjs on the final
+# tree are recorded in the next commit
+```
 
 **Tenth session** (the web app's owner), against PostgreSQL 17 in Docker,
 one test run at a time:
@@ -1012,7 +1055,7 @@ application code contains no `type: ignore`; the suite treats warnings as
 errors. **Never run two test sessions at once**: they share `markx_test`
 (session five lost one run to that).
 
-Recounted by the tenth session from `pytest --collect-only` (944 tests, 46 files):
+Recounted by the tenth session from `pytest --collect-only` (948 tests, 48 files):
 
 | File | Tests |
 | --- | --- |
@@ -1024,6 +1067,7 @@ Recounted by the tenth session from `pytest --collect-only` (944 tests, 46 files
 | `tests/unit/test_order_rules.py` | 54 |
 | `tests/unit/test_permissions.py` | 144 |
 | `tests/unit/test_phone.py` | 31 |
+| `tests/unit/test_settings_am.py` | 2 |
 | `tests/db/test_checkout_contention.py` | 5 |
 | `tests/db/test_dispute_contention.py` | 2 |
 | `tests/db/test_fulfilment_contention.py` | 4 |
@@ -1053,6 +1097,7 @@ Recounted by the tenth session from `pytest --collect-only` (944 tests, 46 files
 | `tests/api/test_reports.py` | 4 |
 | `tests/api/test_reviews.py` | 9 |
 | `tests/api/test_search.py` | 30 |
+| `tests/api/test_seller_closing.py` | 2 |
 | `tests/api/test_search_evaluation.py` | 6 |
 | `tests/api/test_search_index.py` | 7 |
 | `tests/api/test_seller_documents.py` | 14 |
@@ -1062,7 +1107,7 @@ Recounted by the tenth session from `pytest --collect-only` (944 tests, 46 files
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_tracking.py` | 2 |
 | `tests/worker/test_worker.py` | 22 |
-| **Total** | **944** |
+| **Total** | **948** |
 
 Counted by `uv run pytest --collect-only -q` on the final head.
 
@@ -1100,20 +1145,16 @@ end. Work in this order within each. Finish and push each step first.
    routes: `cd apps/api && uv run python -m scripts.export_openapi
    ../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
    (D-061). Session ten did this; it was current at its last commit.
-3. Every buyer, seller and admin screen the API supports is built (D-070 to
-   D-075), except: **product proposals from a seller** (`POST
-   /seller/{id}/product-proposals`; the form needs the category's attributes
-   and their options for each variant), **closing a shop** (owner only, with
-   a clear confirmation), and a **map pin** for the shop. Each new seller
-   screen gets its line in `seller/[sellerId]/menu.ts` and `menu.test.ts`,
-   its words in both message files, and a step in `e2e/seller-dashboard.mjs`.
-4. Screens the blueprint lists that have no API yet need the back end
-   first: account settings and saved addresses (P4), the category page as
-   its own screen, ratings on the product card (with back-end item 3, as
-   one change to `ProductCardOut`), Amharic setting descriptions (the API
-   would need to carry them).
-5. Run the browser journeys in CI: they need the API, the worker and demo
+3. Every route a person uses has its screen (D-070 to D-078) except
+   Telegram sign-in and linking, which wait for the bot (founder). To check
+   again, compare `apps/api/openapi.json` with the `/api/v1/...` paths in
+   `apps/web/src` (the handoff gives the command). A new screen gets its line
+   in the admin or seller `menu.ts` and `menu.test.ts`, its words in both
+   message files, and a step in one of the browser journeys.
+4. Run the browser journeys in CI: they need the API, the worker and demo
    data in the job (`infra/compose` has the pieces).
+5. With the back end: ratings on the product card and in search (one change
+   to `ProductCardOut`), and the Telegram Mini App shell once the bot exists.
 
 **The back end:**
 

@@ -63,9 +63,24 @@ it now takes down exactly the listing it relists.
 **Final checks:** see `docs/DEVELOPMENT_STATUS.md`, "Tests executed",
 tenth session.
 
-**Still to build on the web:** product proposals from a seller, closing a
-shop, a map pin; and, once the API carries them, account settings and
-saved addresses, ratings on the product card, Amharic setting descriptions.
+**Second round** (the founder: "do the undone tasks one by one, recheck what
+has been built"). The recheck reproduced 944 API tests on `ffa2720` and
+compared every API route with the routes the web app calls. That showed the
+first report was wrong to say every screen the API supports existed: staff
+had no screens for catalogue setup, delivery zones or a shop's level and
+standing, and buyers none for their account, the next-best offer, the
+category page or search suggestions. All built now, one by one, with the
+shop's location, closing and product suggestions (`751e2b0`, D-077). Closing
+a store with orders in progress is now refused (`822f564`, D-076), and the
+settings carry Amharic descriptions (`47e9fec`, D-078). The journey found
+one real fault before it shipped: "add a version" forced a value on a detail
+the other versions leave empty, which the API refuses. The only routes left
+without a screen are Telegram sign-in and linking (they need the bot), the
+development SMS inbox, the health checks and the file links the API hands
+out.
+
+**Still to build on the web:** Telegram sign-in and the Mini App once the
+founder creates the bot; ratings on the product card (with the back end).
 The Amharic text of this session is AI-drafted and needs a native speaker.
 
 **Waiting on the founder:** unchanged — F-01 to F-08 in `docs/DECISIONS.md`.
@@ -383,7 +398,7 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-075; D-043, D-050, D-053 and parts of D-062 to D-067 are
+(D-001 to D-078; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
@@ -395,13 +410,13 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 944 passed, twelve to fourteen minutes
+uv run pytest                  # expect 948 passed, twelve to fourteen minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json
 uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
 cd ../web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
-# expect 29 web unit tests
+# expect 33 web unit tests
 ```
 
 **Never start a second test run while one is going**: both use
@@ -415,8 +430,10 @@ laptop only), `uv run uvicorn markx.main:app --port 8000`, and in
 the buyer's journey; with `MARKX_DEMO_TOTP_SECRET=...` (the secret
 `seed_demo` printed), `node e2e/admin-queues.mjs` replays every admin
 screen, `node e2e/shop-screens.mjs` the buyer's reviews, reports, pictures
-and problem evidence with the shop's side, and `node e2e/seller-dashboard.mjs`
-a new shop from its application to its first offer. Each signs a demo phone
+and problem evidence with the shop's side, `node e2e/seller-dashboard.mjs`
+a new shop from its application to its first offer, and `node
+e2e/setup-and-account.mjs` staff setup, trust actions, the buyer's account,
+proposals and closing; `staff-journey.mjs` takes the secret too. Each signs a demo phone
 in once per run; the API allows five codes per phone per clock hour.
 
 **5. Task (the web app's owner):** first pick up any API additions made
@@ -424,9 +441,10 @@ since the tenth session: `cd apps/api && uv run python -m
 scripts.export_openapi ../web/src/lib/api/openapi.json`, then `cd ../web &&
 npm run gen:api` (D-061; it was current at the tenth session's last commit).
 Then the list in "The exact next task" in `docs/DEVELOPMENT_STATUS.md`.
-**Every buyer, seller and admin screen the API supports is built** (D-070 to
-D-075) except product proposals from a seller, closing a shop and a map
-pin. Any new admin route gets its line in
+**Every route a person uses has its screen** (D-070 to D-078) except
+Telegram sign-in and linking, which wait for the bot. Check it again by
+comparing `apps/api/openapi.json` with the `/api/v1/...` paths in
+`apps/web/src` (leave out `schema.d.ts` and `openapi.json`). Any new admin route gets its line in
 `apps/web/src/app/[lang]/admin/(desk)/menu.ts` and `menu.test.ts` and a step
 in `e2e/admin-queues.mjs`; a seller screen the same in
 `apps/web/src/app/[lang]/seller/[sellerId]/menu.ts` and

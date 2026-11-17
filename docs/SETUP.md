@@ -331,18 +331,20 @@ demo data, so run them on a laptop only:
 
 ```bash
 node e2e/buyer-journey.mjs     # the buyer's whole journey and the shop's side
-MARKX_DEMO_TOTP=123456 node e2e/staff-journey.mjs     # a problem decided by staff
+MARKX_DEMO_TOTP_SECRET=SECRET node e2e/staff-journey.mjs  # a problem decided by staff
 MARKX_DEMO_TOTP_SECRET=SECRET node e2e/admin-queues.mjs  # proposals, invitations,
                                # takedowns, the audit trail, a curator's own menu
 MARKX_DEMO_TOTP_SECRET=SECRET node e2e/shop-screens.mjs  # reviews, reports, pictures,
                                # problem evidence; staff steps need the secret
 MARKX_DEMO_TOTP_SECRET=SECRET node e2e/seller-dashboard.mjs  # a new shop from its
                                # application to its first offer
+MARKX_DEMO_TOTP_SECRET=SECRET node e2e/setup-and-account.mjs  # staff setup, trust
+                               # actions, the buyer's account, proposals, closing
 ```
 
-`staff-journey.mjs` wants the current six-digit code from the demo staff
-authenticator; the others want the authenticator secret that `seed_demo`
-printed and compute the code themselves (a code works once: two staff
+Each wants the authenticator secret that `seed_demo` printed and computes
+the code itself (`staff-journey.mjs` still accepts a current six-digit code
+as `MARKX_DEMO_TOTP`) (a code works once: two staff
 sign-ins inside 30 seconds make the second wait for the next code). The
 journeys run `uv run python -m markx.worker --once` from `apps/api` where a
 step needs the worker (pictures, rating totals). Each prints one line per
