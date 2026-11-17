@@ -905,8 +905,11 @@ $ npm test                    ->  29 passed (5 files: format, labels, messages,
 $ npm run build               ->  56 pages
 $ MARKX_DEMO_TOTP_SECRET=… node e2e/shop-screens.mjs      ->  14 steps passed, "console errors: none"
 $ MARKX_DEMO_TOTP_SECRET=… node e2e/seller-dashboard.mjs  ->  11 steps passed, "console errors: none"
-# admin-queues.mjs (with its fix) and buyer-journey.mjs: rerun after this
-# commit; their result is recorded in the next commit
+$ MARKX_DEMO_TOTP_SECRET=… node e2e/admin-queues.mjs      ->  15 steps passed, "console errors: none"
+$ node e2e/buyer-journey.mjs                               ->  6 steps passed, "console errors: none"
+  (both after this session's last change, on the same demo database; the two
+  Redmi 13C listings earlier runs had left taken down were relisted first by
+  their shops)
 ```
 
 **Ninth session, final run** — on `b2b674e` plus this session's changes, in
