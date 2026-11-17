@@ -60,6 +60,7 @@ anywhere.
 | 4 | `7c492c6`, `6582017`, `10573b4` | The second half of P10: ready, dispatch, the handover code, delivered, completed with `commit_stock` and the fee charge posted to the ledger, failed deliveries and returns, the direct payment record, the overdue-hold job, the staff orders desk's first three routes, the tracking page by secure link. 801 tests |
 | 5 | `497fcf5`, `5ce4340`, `cdf16c5` and a documentation commit | Review fix (a cancelled shipment had no tracking event), the next-best offer (C-26), problems on a delivered order with staff decisions (`disputed`, `refunded`), search (P8 on the API side). 847 tests |
 | 6 | `641a95b` to the head; see `docs/HANDOFF.md` | Review fix (a withdrawn product stayed findable), the founder's provisional approvals (D-053), the search evaluator (D-054), CI, the web app (D-055): the storefront and buyer journey, the seller dashboard, the admin dashboard; demo data (D-056); variant labels in the cart and offer lists. 854 API tests, 9 web unit tests, two browser journeys |
+| 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 
 ## Blueprint phase tracking
 
@@ -67,7 +68,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 
 | Phase | Name | State |
 | --- | --- | --- |
-| P1 | Project foundation | **Mostly done.** API skeleton, database pipeline, core helpers, **the web shell, the CI pipeline (`.github/workflows/ci.yml`) and the typed link between API and web** are done. Container setup, an automated page-weight check and the three technical reports are **not done**; the page weight was measured once (D-055) |
+| P1 | Project foundation | **Mostly done.** API skeleton, database pipeline, core helpers, **the web shell, the CI pipeline (`.github/workflows/ci.yml`) and the typed link between API and web** are done. **Containers for a laptop** (`apps/api/Dockerfile`, `infra/compose/compose.yaml`; API, worker, PostgreSQL; D-058) are done and built in CI; the web app is not in Compose yet. An automated page-weight check and the three technical reports are **not done**; the page weight was measured once (D-055) |
 | P2 | Database and backend foundation | **Mostly done.** Schema, three database roles, error format, request IDs, structured logs, **the worker process with the scheduler and the outbox dispatcher** are done and tested. Backups, alerting to the founder's Telegram and error tracking are **not done**; a job that keeps failing is logged at CRITICAL and nothing reads that log yet |
 | P3 | Authentication and roles | **Mostly done on the API side.** Phone-code sign-in, sessions, staff sign-in, Telegram signature check and the permission tables are done and tested. The real SMS and bot-check adapters, the account page and admin pages are **not done** |
 | P4 | Customer storefront | **Mostly done for Release 1's buyer journey** (D-055): home, search with filters, product page with the offers table, shop page, sign-in, cart, checkout, orders, tracking. **Not done:** images (no image pipeline), the category page as its own screen (search by category stands in), account settings and saved addresses screens, Telegram Mini App shell, server actions so changes work without script, automated browser tests in CI |
@@ -786,8 +787,9 @@ Work in this order. Finish and push each step before starting the next.
    `LETTER_MATCH`, report the real figure.
 5. **Images** (P5): the upload and re-encode pipeline, then photos on
    cards, product pages and problem reports.
-6. **Containers** (`infra/`): Dockerfiles and a Compose file for API,
-   worker, web and PostgreSQL on a laptop. No deployment.
+6. **Containers:** API, worker and PostgreSQL are done (D-058). What is
+   left is the web app's own image and its service in
+   `infra/compose/compose.yaml`, by whoever owns `apps/web`. No deployment.
 
 Rules this session asks the next one to keep (in addition to `AGENTS.md`):
 

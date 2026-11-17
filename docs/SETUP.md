@@ -101,6 +101,38 @@ demo buyer through the real API (D-056). It refuses to run unless
 `MARKX_ENV` is `local`. None of it is real. It prints the demo staff
 sign-in; sign-in codes for the demo phones are in the local SMS inbox.
 
+## 4c. Everything in containers (laptop only)
+
+Instead of steps 1 to 3 and running the API and worker by hand (D-058):
+
+```bash
+docker compose -f infra/compose/compose.yaml up --build
+```
+
+This starts PostgreSQL 17 (creating the three roles and the `markx`
+database the first time), applies the migrations, then runs the API on
+`http://127.0.0.1:8000` and the worker. Every port listens on your own
+machine only, and every password is a laptop default that the API refuses
+on staging or production. `MARKX_PG_PORT` and `MARKX_API_PORT` choose other
+ports when 5432 or 8000 are taken. `docker compose -f
+infra/compose/compose.yaml down` stops it; adding `-v` also deletes its
+database and uploaded files.
+
+The web app is not in the Compose file yet: run it from `apps/web` with
+`npm run dev`, as in section 6. The image holds no test tools, so the demo
+data (section 4b) is loaded from `apps/api` on your machine, pointed at the
+container's database:
+
+```bash
+MARKX_DATABASE_URL=postgresql+psycopg://markx_app:markx_app_dev-only@127.0.0.1:5432/markx \
+  uv run python -m scripts.seed_demo
+```
+
+If Docker Hub refuses pulls ("429 Too Many Requests"), build the image
+from a mirror of the same Python image:
+`docker build --build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.13-slim-bookworm -t markx-api:local apps/api`.
+Nothing here deploys anything.
+
 ## 5. Run the API
 
 ```bash

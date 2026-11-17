@@ -96,3 +96,22 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build
+
+  containers:
+    name: Containers (API image builds, Compose file is valid)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: The Compose file is valid
+        run: docker compose -f infra/compose/compose.yaml config --quiet
+      - name: The API and worker image builds
+        run: docker build -t markx-api:ci apps/api
+      - name: The image runs as an unprivileged user and holds no dev tools
+        run: |
+          test "$(docker run --rm markx-api:ci id -un)" = markx
+          ! docker run --rm markx-api:ci python -c "import pytest"
+      - name: The worker and the migrations load in the image
+        run: |
+          docker run --rm markx-api:ci python -c "import markx.worker.runner, markx.main"
+          docker run --rm markx-api:ci alembic --help > /dev/null

@@ -1,0 +1,76 @@
+# MarkX on a laptop: PostgreSQL 17, migrations, the API and the worker (D-058).
+# Nothing here is deployed or paid for; every port listens on 127.0.0.1 only,
+# and every password is a laptop-only default that the API refuses to accept
+# on staging or production.
+#
+#   docker compose -f infra/compose/compose.yaml up --build
+#
+# Then http://127.0.0.1:8000/api/v1/healthz answers, and the web app
+# (apps/web, `npm run dev`) talks to the API at its default address.
+name: markx
+
+x-api-environment: &api-environment
+  MARKX_ENV: local
+  MARKX_DATABASE_URL: postgresql+psycopg://markx_app:markx_app_dev-only@postgres:5432/markx
+  MARKX_MIGRATION_DATABASE_URL: postgresql+psycopg://markx_migrator:markx_migrator_dev-only@postgres:5432/markx
+  MARKX_PUBLIC_ORIGIN: http://localhost:3000
+  MARKX_COOKIE_SECURE: "false"
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres_dev_only
+      POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres:/markx-bootstrap:ro
+      - ./initdb.sh:/docker-entrypoint-initdb.d/10-markx.sh:ro
+    ports:
+      - 127.0.0.1:${MARKX_PG_PORT:-5432}:5432
+    healthcheck:
+      # Ready only once the MarkX database exists, not merely the server.
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "markx"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  migrate:
+    build: ../../apps/api
+    image: markx-api:local
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: markx-api:local
+    environment: *api-environment
+    volumes:
+      - storage:/var/lib/markx/storage
+    ports:
+      - 127.0.0.1:${MARKX_API_PORT:-8000}:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    image: markx-api:local
+    command: ["python", "-m", "markx.worker"]
+    environment: *api-environment
+    volumes:
+      - storage:/var/lib/markx/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # The worker serves no HTTP; the image's API check does not apply.
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres-data:
+  storage:

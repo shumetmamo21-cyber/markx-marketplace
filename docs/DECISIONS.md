@@ -1118,6 +1118,85 @@ shops, people, numbers and prices are made up and say so; none of it may be
 loaded into staging or production. It prints the demo staff password and
 authenticator secret for that laptop only.
 
+## D-057 Review fixes in search: the typo match uses its index, rebuilds of one product take turns, repeated golden queries count once
+
+**Follows** D-051, D-052, D-054. **Accepted.** Found in the seventh
+session's independent review (a parallel backend session; the web app was
+not touched).
+
+1. **The typo tier scanned every document.** `word_similarity(word,
+   search_text) >= 0.45` cannot use an index, and because it is OR-ed with
+   the word and sound tiers, every search fell back to reading the whole
+   `search_documents` table. It is now written `word <% search_text` with
+   `pg_trgm.word_similarity_threshold` set to `LETTER_MATCH` for the
+   transaction (`set_config(..., true)`), which the existing trigram GIN
+   index answers. Same rule, same threshold (pg_trgm compares with `>=`;
+   checked). Measured once, on a throwaway table of 50,000 **synthetic**
+   rows on a development container: 322 ms before, 41 ms after, for the
+   three-tier condition alone. That is a laptop measurement of the
+   condition, not the P8 timing criterion, which still needs real data at
+   real size. Test: `test_a_typo_match_is_answered_by_the_trigram_index`
+   (fails on the old form).
+2. **Two rebuilds of one product could leave a stale price.** A rebuild
+   that read the offers before a change committed could write after the
+   rebuild queued by that change, keeping the old "from" price until the
+   hourly job (two workers, or the hourly job against the outbox).
+   `rebuild_document` now takes a transaction-scoped advisory lock on the
+   product first (`pg_advisory_xact_lock(0x4D585352, hashtext(id))`), so
+   the second rebuild waits and then reads the committed state. Test:
+   `test_a_rebuild_that_read_older_offers_never_writes_last` forces exactly
+   that interleaving and fails without the lock.
+3. **Repeated golden queries counted towards the 100.** A file of four
+   queries repeated 25 times was called a valid set. Rows whose queries
+   normalise alike run the same search, so they now count once towards
+   validity (`distinct_queries` in the report; each repeat is named in the
+   notes). All rows are still scored. The arithmetic test now uses 100
+   distinct SYNTHETIC queries; a new test shows repeats count once.
+
+Reviewed with no defect found: dispute opening, messages and decisions
+(seller-order lock, buyer and seller scoping, no fee on a refund, payment
+intents cancelled on both refund paths), the next-best offer (buyer-scoped,
+only for declined or expired parts, the failing seller excluded), seller
+isolation (`require_seller`, `_own_seller_order` on every seller order
+action), and the worker's outbox and job locking.
+
+Noted, not changed: `GET /search` writes one `search_queries` row per first
+page and has no rate limit; a flood of searches grows that table. A limit
+or sampling is a product decision for later (blueprint D.8 asks for every
+query to be logged).
+
+## D-058 Containers for a laptop: one API image, a Compose file, nothing deployed
+
+**Follows** blueprint P1 ("container setup") and F. **Accepted.** No cloud
+resource, registry or deployment was created; the founder's AWS was not
+touched.
+
+- **One image for the API and the worker** (`apps/api/Dockerfile`):
+  `python:3.13-slim-bookworm`, dependencies from `uv.lock` exactly
+  (`uv sync --locked --no-dev`; uv 0.11.32 from PyPI), the code and the
+  migrations, run as the unprivileged user `markx`, no test tools inside, a
+  health check on `/api/v1/healthz`. The default command is the API; the
+  worker is `python -m markx.worker`, migrations `alembic upgrade head`. No
+  secret is baked in: configuration is `MARKX_*` at run time. The base image
+  is a build argument (`PYTHON_IMAGE`) so a mirror of the same image can be
+  used when Docker Hub limits pulls.
+- **`infra/compose/compose.yaml`**: PostgreSQL 17 with the built-in C.UTF-8
+  locale; on an empty volume `initdb.sh` runs `infra/postgres/bootstrap.sh`,
+  so the roles are the same as everywhere else; a one-shot `migrate` service
+  (as `markx_migrator`); then the API and the worker (as `markx_app`). Every
+  port is bound to 127.0.0.1. **The web app is left out on purpose**: it was
+  being built by another session at the time, and adding it is a small,
+  separate step for whoever owns `apps/web`.
+- **CI** gains a `containers` job: the Compose file is valid, the image
+  builds, runs as `markx`, holds no pytest, and loads the API, the worker
+  and alembic.
+- **Verified on 17 November 2026** in a development container: the image
+  built; `compose up` brought PostgreSQL to healthy, the migrations exited 0,
+  the API reported `{"status":"ok","database":"up"}`, the worker ran all six
+  jobs, the demo data loaded from the host, and a typo search ("samsnug")
+  found the Samsung Galaxy A16 through the worker-built index. The stack was
+  then removed with its throwaway volumes.
+
 ---
 
 ## Decisions that need the founder
