@@ -1197,6 +1197,72 @@ touched.
   found the Samsung Galaxy A16 through the worker-built index. The stack was
   then removed with its throwaway volumes.
 
+## D-059 Search is throttled per network address
+
+**Follows** blueprint H.2 ("throttles on search"), D.8 and F.3. **Accepted.**
+
+`GET /search` and `GET /search/suggest` count each request against the
+caller's network address in the PostgreSQL rate-limit counters, in one-minute
+windows, before the search runs. Past the limit the API answers 429
+`rate_limited` with `retry_after_seconds`; the refused search is neither run
+nor logged. The limits are settings staff can change:
+`search.requests_per_ip_per_minute` (default 120) and
+`search.suggestions_per_ip_per_minute` (default 300, counted apart, because
+suggestions follow typing). Every first page is still logged (D.8 says
+"every query is logged"), so the throttle is also the bound on what one
+address can write to `search_queries` and to the zero-result report.
+
+Not done, on purpose: no per-session limit for searches (the address limit
+and the edge's bot protection cover it), and no pruning of old
+`search_queries` or `rate_limit_counters` rows, because deleting data needs
+the founder's approval. Both tables grow by at most one row per search, or
+per address and minute. A retention period for both is listed for the
+founder below (F-08).
+
+## D-060 The completion job completes each order on its own
+
+**Follows** G.6, G.7 and F.8 ("a job that keeps failing raises an alert").
+**Accepted.**
+
+`complete_after_problem_window` used to complete every due seller order in
+one transaction, so one order that could not complete (a bug, a stock row
+out of line, a deadlock) undid all of them, run after run. Each order now
+completes in its own savepoint. The database's commit-time checks (the
+balanced ledger and the event for every status change, all four declared
+`INITIALLY DEFERRED`) are run inside that savepoint with `SET CONSTRAINTS
+ALL IMMEDIATE`, then set back to deferred; without it a violation found only
+at the job's commit would still undo every order. A failed order stays
+`delivered`, keeps its stock held, is logged at ERROR with its id, and is
+tried again on the next run. The job's result counts completed orders only.
+
+The two expiry jobs (`expire_unanswered`, `cancel_overdue_fulfilment`) keep
+one transaction for their batch: they release stock for all their orders in
+one ascending offer-id pass, which is the lock order checkout relies on
+(D-027), and splitting it per order would break that order. Tested by
+`test_one_order_that_cannot_complete_never_blocks_the_others`, for an error
+raised at once and for an unbalanced ledger posting found only at commit;
+both fail on the old code, and the second fails without the
+`SET CONSTRAINTS` line.
+
+## D-061 The API description: the back end's copy is exact, the web app's may lag behind additions
+
+**Supersedes** the CI rule of D-055 that the web app's copy must equal the
+API byte for byte. **Accepted**, for as long as the back end and the web app
+are built by separate sessions.
+
+The back end now keeps its own copy, `apps/api/openapi.json`, written by
+`uv run python -m scripts.export_openapi openapi.json`; CI and a test check
+it exactly, so every API change appears in review. The web app's copy
+(`apps/web/src/lib/api/openapi.json`) is checked by
+`scripts/check_openapi_copy.py`: every path, method and schema it contains
+must be unchanged in the API, and so must its top-level sections; routes and
+schemas the API adds are allowed and listed. So the back end can add
+endpoints without editing `apps/web`, and any change that would break the
+web app's generated types still fails CI. The web app's owner regenerates its
+copy (`export_openapi ../web/src/lib/api/openapi.json`, then `npm run
+gen:api`) to use the additions. Changing an existing route or schema still
+needs both sides in one change.
+
 ---
 
 ## Decisions that need the founder
@@ -1339,6 +1405,22 @@ above and this item is removed.
 - **Blocks:** nothing.
 - **Founder's approval required: no.** It is written here so the founder can
   overrule it.
+
+### F-08 How long search logs and rate-limit counters are kept
+
+- **Today:** kept for ever. `search_queries` gains one row per first page of
+  a search (bounded per address by D-059); `rate_limit_counters` gains one
+  row per address and window. Nothing deletes either, because deleting data
+  needs the founder's written approval (`AGENTS.md`).
+- **Recommendation (PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH):** keep
+  search queries 180 days (enough for two seasons of the zero-result
+  report; they hold no name or phone number, but may hold a signed-in
+  buyer's id), and delete rate-limit counters a day after their window ends.
+  A worker job would do both, and its first run would be reported.
+- **Reason:** blueprint H.2 asks that retention periods are set; both tables
+  otherwise grow without limit once real traffic arrives.
+- **Blocks:** nothing before launch.
+- **Founder's approval required: yes**, because it deletes rows.
 
 ---
 

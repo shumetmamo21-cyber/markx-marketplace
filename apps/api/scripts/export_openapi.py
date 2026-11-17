@@ -1,7 +1,11 @@
-"""Write the API's OpenAPI description, for the web app's generated types
-(blueprint F.5). CI regenerates it and fails if the committed copy differs.
+"""Write the API's OpenAPI description (blueprint F.5).
 
-    cd apps/api && uv run python -m scripts.export_openapi ../web/src/lib/api/openapi.json
+The back end keeps its own copy, `apps/api/openapi.json`, which CI checks
+exactly; the web app keeps another, from which it generates its types, and
+CI checks that it is still true (D-061, `scripts/check_openapi_copy.py`).
+
+    cd apps/api && uv run python -m scripts.export_openapi openapi.json
+    cd apps/api && uv run python -m scripts.export_openapi ../web/src/lib/api/openapi.json  # web owner
 """
 
 from __future__ import annotations

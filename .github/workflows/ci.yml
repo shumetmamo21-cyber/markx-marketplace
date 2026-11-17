@@ -63,10 +63,13 @@ jobs:
           uv run alembic check
       - name: Tests (one session; they share one test database)
         run: uv run pytest -q -p no:cacheprovider
-      - name: The web app's copy of the API description is current
-        run: |
-          uv run python -m scripts.export_openapi /tmp/openapi.json
-          diff -u ../web/src/lib/api/openapi.json /tmp/openapi.json
+      # D-061: the back end's own description must match the API exactly, so
+      # every API change is visible in review; the web app's copy may lag
+      # behind additions (another session regenerates it) but never changes.
+      - name: The API description in apps/api is current
+        run: uv run python -m scripts.check_openapi_copy --exact openapi.json
+      - name: The web app's copy of the API description is still true
+        run: uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
 
   web:
     name: Web app (lint, types, unit tests, build)
