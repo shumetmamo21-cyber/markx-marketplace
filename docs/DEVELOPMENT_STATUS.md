@@ -1,5 +1,15 @@
 # Development status
 
+> **Branch note (17 November 2026).** This branch, `claude/markx-third-session-cq58yj`,
+> diverged from `claude/project-scaffold` after `eb52d2f`. While this session
+> built the second half of the order life cycle (`03a879b`), a fourth session
+> built the same milestone, plus the buyer's tracking page, directly on
+> `claude/project-scaffold` (`7c492c6`, `6582017`, `10573b4`). The two
+> implementations were **not merged**: `claude/project-scaffold` is the working
+> branch and holds the fourth session's version. Read this branch's two
+> fulfilment commits as a reviewed alternative; anything in their tests that
+> the trunk lacks can be carried over by the next engineer.
+
 **Last updated:** 16 November 2026, end of the third engineering session.
 **Branch:** `claude/project-scaffold`. The same commits were pushed to
 `claude/markx-third-session-cq58yj`, which the third session's hosting tool
