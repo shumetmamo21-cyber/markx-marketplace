@@ -12,7 +12,7 @@ domain.
 
 | Part | State |
 | --- | --- |
-| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, seller orders up to confirmation. Not built: search, the rest of the order life cycle, payments beyond the intent |
+| API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle except disputes and refunds. Not built: search, disputes, refunds, reviews, the staff desk |
 | PostgreSQL | Schema for all of Release 1 (65 tables), three roles |
 | Web app (`apps/web`) | **Does not exist** |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
@@ -139,7 +139,10 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   hours. Both are pure and unit-tested.
 - `service.py` holds the critical operations: the cart, `build_quote`,
   `place_order`, `seller_respond`, `cancel_by_buyer`,
-  `expire_unanswered_orders`. **A seller order changes status only through
+  `expire_unanswered_orders`, then `mark_ready`, `dispatch`,
+  `confirm_delivery` (the handover code), `report_delivery_failure`,
+  `return_to_seller`, `confirm_receipt`, `complete_delivered_orders` and
+  `record_direct_payment`. **A seller order changes status only through
   `_move`**, which refuses any move that is not an arrow and writes the
   status event in the same transaction. Migration `0007` makes the database
   refuse the same things, so a route cannot get round it.
@@ -153,9 +156,9 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   that seller's lines (`selectors.py`). Phone numbers appear after the
   seller confirms and vanish if the part ends undelivered.
 - Tests: `tests/unit/test_order_rules.py`, `tests/api/test_cart.py`,
-  `tests/api/test_checkout.py`, and `tests/db/test_checkout_contention.py`
-  for the races (100 checkouts of the last unit, and every pair of
-  operations that share locks).
+  `tests/api/test_checkout.py`, `tests/api/test_fulfilment.py`, and
+  `tests/db/test_checkout_contention.py` for the races (100 checkouts of the
+  last unit, and every pair of operations that share locks).
 
 ## Private files
 

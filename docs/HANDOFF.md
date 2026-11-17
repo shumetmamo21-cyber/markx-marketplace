@@ -26,7 +26,7 @@ what the tests actually printed.
 | --- | --- |
 | Repository | `shumetmamo21-cyber/markx-marketplace` |
 | Working branch | `claude/project-scaffold` |
-| Latest code commit | `7079cb5` (cart, checkout and multi-seller orders); this file's own commit is the one after it and holds the documents plus a one-line test expectation. `git log -1` shows the latest |
+| Latest code commit | `03a879b` (the rest of the seller order life cycle); this file's own commit is the one after it and holds documents only. `git log -1` shows the latest |
 | Second branch | `claude/markx-third-session-cq58yj` — an identical copy, same commits |
 | `main` | `617a276`, the initial commit. **Untouched. Nothing was merged into it.** |
 
@@ -37,7 +37,9 @@ on with `claude/project-scaffold`; the other can be ignored or deleted.
 Everything is committed and pushed. The commits of this session, newest first:
 
 ```
-<this file>  Document the third session
+<this file>  Document the fulfilment milestone
+03a879b      Complete the seller order life cycle: dispatch, handover code, completion
+eb52d2f      Document the third session
 7079cb5      Add cart, checkout and multi-seller orders (blueprint P9, P10)
 bd835ef      Add the background worker: scheduled jobs and the outbox dispatcher
 399507e      Hold a staff takedown, and lock offers in id order for bulk changes
@@ -124,6 +126,22 @@ blueprint's diagram, and the database refuses any other move and refuses to
 save a status change that has no entry in the log. A test checks the two agree
 on all 196 combinations.
 
+**Fifth, the rest of the order life cycle.** After the founder asked for the
+next task, the session built what happens after a seller confirms: the seller
+marks the part ready, dispatches it with a rider, and enters the buyer's
+one-time six-digit handover code to mark it delivered. The code is shown only
+to the buyer and only while the goods are on their way; the seller never sees
+it; five wrong codes lock the shipment, and the count survives even though
+each wrong attempt is refused. A failed delivery is reported, retried, or the
+goods are returned and the stock comes back on the shelf. A delivered part
+completes when the buyer confirms receipt or, through the worker, when the
+72-hour problem window passes: that is the moment the held stock actually
+leaves the shop and the fee is charged (zero today, as the blueprint says for
+direct orders in year one). The seller records the direct payment — cash,
+telebirr, bank transfer or ETHQR — as their own word; nothing is ever marked
+paid from a browser redirect. A two-seller order now runs end to end in a
+test, which is the blueprint's first completion criterion for P10.
+
 ## A.3 The concurrency guarantee
 
 The blueprint's own test is: *100 simultaneous purchases of the last unit
@@ -136,7 +154,9 @@ buyers wanting one, two or three units never oversell seven; checkouts raced
 against the seller changing the price and retyping the stock count; and the
 seller's confirm, the seller's decline, the buyer's cancel and the clock's
 expiry all racing for one order, where exactly one wins and the stock is given
-back at most once. None of them deadlocked.
+back at most once; and the buyer's confirmation racing the worker's completion
+of one delivered order, where the stock is committed and the fee charged
+exactly once. None of them deadlocked.
 
 ## A.4 The tests that were actually run
 
@@ -144,28 +164,27 @@ From the `apps/api` folder, against a real PostgreSQL 17.12, with the test
 database rebuilt from empty:
 
 ```
-uv run pytest                  ->  779 passed in 346.54s
+uv run pytest                  ->  790 passed in 228.17s
 uv run ruff check .            ->  All checks passed!
-uv run ruff format --check .   ->  121 files already formatted
+uv run ruff format --check .   ->  122 files already formatted
 uv run mypy markx              ->  Success: no issues found in 84 source files
 uv run alembic check           ->  No new upgrade operations detected.
 ```
 
-That is 779 tests, up from the 647 this session inherited. The one commit
-after `7079cb5` changes documents and one line of a worker test (it now expects
-the order-expiry job among the jobs that ran), so these numbers describe the
-code exactly as it stands now; they were produced after that change.
+That is 790 tests, up from the 647 this session inherited. The one
+commit after `03a879b` changes documents only, so these numbers describe the
+code exactly as it stands now.
 
 | Where | Tests |
 | --- | --- |
 | Pure logic: money, phone numbers, Amharic text, codes, permissions, order rules | 311 |
-| What the database enforces by itself, including stock and checkout under contention | 76 |
+| What the database enforces by itself, including stock and checkout under contention | 77 |
 | Sign-in, anti-forgery, health | 71 |
 | Delivery zones and buyer addresses | 41 |
 | Product catalogue | 36 |
 | Sellers: onboarding, documents, team, staff permissions, isolation | 137 |
 | Offers and inventory | 42 |
-| Cart and checkout | 43 |
+| Cart, checkout and fulfilment | 47 |
 | The worker | 22 |
 
 Three failures were found during the session, all by tests, all fixed before
@@ -181,12 +200,13 @@ anything was pushed, and all written up in `docs/DECISIONS.md`:
 
 Nothing here is hidden or half-claimed.
 
-- **An order stops at "confirmed".** Packing, dispatch, the handover code,
-  "delivered", "completed", the fee charge, failed deliveries, returns,
-  disputes and refunds are not built. A confirmed order therefore holds its
-  stock until it is cancelled. This is the next session's first job, and
-  the blueprint's P10 criterion "a two-seller order completes end to end"
-  cannot be met until it is done.
+- **Disputes and refunds are not built.** A delivered part can be completed
+  but a buyer cannot yet report a problem on it, and staff cannot record a
+  refund. This is the next session's first job.
+- **A shipment locked by five wrong codes stays locked**: the staff action
+  that issues a new code is not built.
+- **A commission rule's cap per order is not applied** at completion; every
+  rate is zero today, so no fee is wrong yet.
 - **There is still no web app.** Everything works and is tested through the
   API; nobody can tap a button yet.
 - **No search, no reviews, no problem reports, no staff orders desk, no
@@ -220,12 +240,12 @@ depended on them, and none was implemented as policy. One was added:
   curator ever lifts a takedown that operations made.
 - **Blocks:** nothing. **Your approval: not needed to carry on.**
 
-And one thing you should know rather than decide: the fourteen-day hold on a
-confirmed order's stock (D-037) is a placeholder whose expiry nothing acts on,
-because the steps after confirmation do not exist yet. The next engineer will
-decide, and record, what the worker does with it. If you have a view —
-release the stock and cancel the order, or only warn staff — say so in the
-brief.
+And one engineering decision you may want to overrule (D-043): once a seller
+confirms, the held stock is **never released by the clock**. It leaves the
+shelf at completion or comes back on cancellation or return. Releasing it
+automatically after fourteen days could let a second buyer take goods that
+are on the road that day. If you would rather staff were warned, or the
+order cancelled, after a set time, say so in the brief.
 
 ## A.7 The boundaries you set, and what was done about them
 
@@ -239,9 +259,9 @@ brief.
 - **Nothing was merged into `main`** and no pull request was opened.
 - **No data was deleted and no history rewritten.** Three new migrations add
   to the schema; none removes anything.
-- **MarkX holds no money.** A payment intent records how the buyer said they
-  would pay the seller directly. Nothing marks a payment as paid, from a
-  browser redirect or otherwise.
+- **MarkX holds no money.** A payment intent records how the buyer pays the
+  seller directly; the seller marks it paid as their own word. Nothing is
+  marked paid from a browser redirect.
 - **No market, competitor, legal or regulatory research was done.**
 
 ---
@@ -269,7 +289,7 @@ before you. Continue the project from its existing state; do not rebuild it.
 - Repository: `shumetmamo21-cyber/markx-marketplace`
 - Working branch: **`claude/project-scaffold`**. Never start from `main`, and
   never merge anything into `main`.
-- The third session's last code commit is `7079cb5`, followed by one
+- The third session's last code commit is `03a879b`, followed by one
   documentation commit. Verify the real remote head yourself before you begin.
 - The branch `claude/markx-third-session-cq58yj` is an identical copy that
   the third session's hosting tool required. Ignore it unless your own tool
@@ -287,7 +307,7 @@ before you. Continue the project from its existing state; do not rebuild it.
 3. `docs/HANDOFF.md` — the third session's report and this brief.
 4. `docs/DEVELOPMENT_STATUS.md` — what exists, what is tested, what is not.
    Start work from "The exact next task" at its end.
-5. `docs/DECISIONS.md` — entries D-001 to D-042 are settled engineering
+5. `docs/DECISIONS.md` — entries D-001 to D-044 are settled engineering
    decisions you may rely on. Entries F-01 to F-07 are questions the founder
    has not answered. **Do not implement an F-recommendation unless the
    founder tells you to in this session.**
@@ -308,9 +328,9 @@ From `apps/api`:
 
 ```bash
 uv sync
-uv run pytest                  # expect 779 passed, about five minutes
+uv run pytest                  # expect 790 passed, about six minutes
 uv run ruff check .            # expect: All checks passed!
-uv run ruff format --check .   # expect: 121 files already formatted
+uv run ruff format --check .   # expect: 122 files already formatted
 uv run mypy markx              # expect: no issues in 84 source files
 uv run alembic upgrade head
 uv run alembic check           # expect: No new upgrade operations detected.
@@ -318,7 +338,7 @@ uv run alembic check           # expect: No new upgrade operations detected.
 
 Report the real numbers, whatever they are. If a command fails for an
 environment reason, diagnose it and say exactly why. Do not hide a failure, do
-not weaken a test to make it pass, and do not claim the 779 figure until
+not weaken a test to make it pass, and do not claim the 790 figure until
 you have seen it yourself. Fix any genuine regression before starting new work.
 
 **4. Task two — review what the third session built**
@@ -334,8 +354,10 @@ tests. Look for:
   the body or the query string instead of the path? Can a browser influence a
   price, a fee or a total by any field?
 - **Correctness.** Can a seller order reach a status without its event? Can
-  stock be released twice, or held without a reservation row? Is every
-  refusal in `place_order` made before any row is written?
+  stock be released or committed twice, or held without a reservation row?
+  Is every refusal in `place_order` made before any row is written? Can the
+  handover code be learned by anyone but the buyer, or the attempt count be
+  reset? Can a payment be recorded twice?
 - **Concurrency.** The written lock order is cart, sellers, offers, seller
   orders, stock. Find any operation that departs from it. Decision D-027
   records the deadlock that forced `FOR NO KEY UPDATE`; D-033 the one that
@@ -348,52 +370,29 @@ Fix what is genuinely wrong, with a test that fails before the fix and passes
 after it. Record anything you decide in `docs/DECISIONS.md`. If the review
 finds nothing, say so plainly and move on; that is a valid result.
 
-**5. Task three — the second half of the order life cycle (P10)**
+**5. Task three — problem reports and refunds (P10's last piece)**
 
-This is the session's main milestone. An order today stops at `confirmed`.
-Build the rest, in `markx/orders/service.py`, with every status change going
-through `_move` (the database refuses anything else; see D-038):
+This is the session's main milestone. Read blueprint D.17, G.6, G.7 and J.5.
+Build, in `markx/orders/service.py` and a new `markx/trust/service.py`, with
+every status change going through `_move`:
 
-- `confirmed -> ready` by the seller; the shipment becomes `ready`, with a
-  `tracking_events` row (J.10). The staff dispatch board for partner
-  couriers belongs to P11: for now the seller marks ready and dispatches.
-- `ready -> out_for_delivery` by the seller or staff; `ready -> delivered`
-  directly for shop collection, with the code.
-- **The handover code** (C-15, D-011): derived from the server secret, the
-  shipment id and `shipments.code_version` with `derive_numeric_code` in
-  `markx/core/security.py`, so nothing in the database reveals it. The buyer
-  sees it on their order page; the seller or rider enters it.
-  `confirm_delivery` compares it in constant time, counts attempts up to
-  `MAX_HANDOVER_ATTEMPTS` and then refuses further tries until staff reissue
-  (raise `code_version`), marks `delivered` and starts the problem window
-  (`orders.problem_window_hours`).
-- `out_for_delivery -> delivery_failed` with a reason; retry; `returned`,
-  which releases the reservation.
-- `complete_seller_order`: after the problem window by the worker, or at
-  once when the buyer confirms. **This is where
-  `markx.offers.service.commit_stock` is finally called**: the reservation
-  becomes `committed`, `on_hand` falls, and a `fee_charges` row is written
-  from the lines' `commission_bps` (zero today). Do not write new stock SQL.
-- The seller records a direct payment: the `payment_intents` row to
-  `succeeded` with the method and time (D.12). In Release 1 this is the
-  seller's word, recorded as such; never from a browser redirect.
-- Decide, and record in `docs/DECISIONS.md`, what the worker does when a
-  confirmed order's 14-day fulfilment hold on its stock expires (D-037
-  leaves this open on purpose). Ask the founder if their brief says nothing.
-- Every new seller route goes under `/seller/{seller_id}/...` with
-  `require_seller(SellerCapability.HANDLE_ORDERS)`; the isolation sweep in
-  `tests/api/test_seller_isolation.py` then covers it automatically. Every
-  new buyer route is found together with the buyer's id.
-- Tests: a two-seller order end to end, placed to completed (P10 criterion
-  1); a wrong handover code `MAX_HANDOVER_ATTEMPTS` times locks the shipment
-  and a right one after that is refused; `commit_stock` reduces on-hand and
-  the movement trail replays to the exact stock
-  (`tests/bazaar.py::assert_stock_is_consistent` does that check); a
-  contention test for every new operation that takes two locks (delivery
-  against cancellation, completion against a dispute, the worker's completion
-  against the buyer's).
-
-Then commit, push, and update the documents.
+- `open_dispute`: the buyer, on a delivered part, inside the problem window
+  (`delivered -> disputed`), with a problem type and text; a `dispute_cases`
+  row; the worker's `complete_delivered_orders` must leave a disputed part
+  alone (it already selects `delivered` only; add a test).
+- `resolve_dispute`: support or operations staff (C.4), to `completed` with
+  no money back, or to `refunded` with a `refunds` row recorded as "the
+  seller returned it" and the fee charge reversed (`fee_charges.reversed_at`).
+  MarkX moves no money in Release 1 (J.5).
+- Dispute messages between the buyer, the seller and staff.
+- The staff route that issues a new handover code (raise
+  `shipments.code_version`; the old code stops working), and a staff list
+  of shipments locked by wrong codes.
+- Carry `commission_rules.cap_santim` onto the order line and apply it at
+  completion (D-044).
+- Tests: a dispute inside and outside the window; a disputed part is not
+  completed by the worker; every staff role over every new `/admin` route; the
+  fee reversal; a contention test of dispute against completion.
 
 **6. Task four — the tracking page, then the next-best offer**
 
@@ -479,16 +478,16 @@ you own engineering quality.
 | P7 Seller listings and inventory | Done on the API side and tested. Seller Telegram bot missing. A staff takedown now holds |
 | P8 Search | Not started. The tables exist |
 | **P9 Cart and checkout** | **Done on the API side and tested**, all five criteria. Web screens missing |
-| **P10 Multi-seller orders** | **First half done and tested**: placement, confirm, decline, expiry, cancellation, the state machine in the database. **Not done:** everything after confirmation, the tracking page, the next-best offer, the bot |
+| **P10 Multi-seller orders** | **Done and tested except disputes and refunds**: placement, confirm, decline, expiry, cancellation, ready, dispatch, the handover code, delivered, failed delivery and return, completion with the fee charge, direct payment recorded. **Not done:** disputes, refunds, the tracking page, the next-best offer, the bot |
 | P11 onwards | Not started |
 
-**Numbers:** 779 tests pass. 65 database tables. Seven migrations,
+**Numbers:** 790 tests pass. 65 database tables. Seven migrations,
 `0001` to `0007`. 84 application source files, all strictly typed.
 
 **Written, tested, and called by nothing yet** — the next session's raw
-material: `commit_stock`, `derive_numeric_code`, `shipments.code_version`,
-`MAX_HANDOVER_ATTEMPTS`, the `tracking_events` and `fee_charges` tables, and
-the reservation's fulfilment expiry.
+material: the `dispute_cases`, `dispute_messages` and `refunds` tables,
+`fee_charges.reversed_at`, `shipments.code_version` (nothing raises it yet),
+and `commission_rules.cap_santim`.
 
 **Traps already paid for, so nobody pays twice:** a plain `FOR UPDATE` on an
 offer deadlocks against a stock movement's foreign key (D-027); PostgreSQL's

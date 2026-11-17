@@ -423,7 +423,7 @@ recently confirmed price.
 each writes its movement. The hold is the blueprint's conditional update. The
 `inventory_reservations` table needs an order item for every row, so
 checkout writes those rows, one beside each hold (done in session three,
-D-037). `commit_stock` is still called by nothing: completion is not built.
+D-037). `commit_stock` runs at completion (D-044).
 
 ## D-031 Branches
 
@@ -592,13 +592,8 @@ the engineer. **Accepted.**
   how the buyer said they would pay; MarkX holds no money.
 - **After confirmation** the reservation's expiry is pushed to
   `orders.fulfilment_hold_days` (14) ahead, so the stock stays held while the
-  order is packed and delivered. **Nothing acts on that expiry yet**, because
-  nothing after confirmation is built. The next session decides, when it
-  builds completion, whether an expired fulfilment hold is released by the
-  worker (and the order cancelled), or merely flagged to staff. Both are
-  defensible; the blueprint's "the worker releases expired reservations"
-  (G.9) suggests the former, but releasing stock under a confirmed order the
-  seller may be delivering that day is not obviously right.
+  order is packed and delivered. What happens when that passes is decided in
+  D-043: nothing automatic.
 
 ## D-038 The life cycle is a database fact; the parent's status is derived
 
@@ -679,6 +674,68 @@ true because no rule was created, not because the code assumes it. No route
 writes `commission_rules` yet (P11, finance staff); a rule can only be
 inserted by hand. The fee is charged when the seller order completes, which
 is not built.
+
+## D-043 A confirmed order's stock is never released by the clock
+
+**Answers** the question D-037 left open. **Accepted.** Engineering, not
+policy: the founder may overrule it.
+
+Once a seller confirms, the held stock leaves the shelf only by completion
+(`commit_stock`) or returns only by the buyer's cancellation, the seller's
+return of undeliverable goods, or a staff decision (not built). No job
+releases it when the 14-day fulfilment hold (`orders.fulfilment_hold_days`)
+passes. Reason: a hold that expires under an order the seller may be
+delivering that very day would let a second buyer take goods already on the
+road, which is worse than a slow seller sitting on a unit. The reservation's
+`expires_at` after confirmation is therefore the date by which the seller
+should have delivered, for a staff list of overdue orders (P11), not a
+trigger. The blueprint's "the worker releases expired reservations" (G.9) is
+applied to unanswered orders only (D-039).
+
+## D-044 Fulfilment: who moves a seller order after confirmation, and how
+
+**Follows** blueprint G.6, G.7, J.9, J.10, C-15, D.12 and D-011, with the
+details the blueprint leaves to the engineer. **Accepted.**
+
+- **Ready, dispatch, handover, failure and return are the seller's moves**,
+  by a member whose role handles orders (C.3), through
+  `/seller/{seller_id}/orders/{id}/ready|dispatch|deliver|delivery-failed|return`.
+  Riders have no account in Release 1, so the seller enters the code on the
+  rider's behalf; the dispatch records the rider's name and phone, which the
+  buyer sees after confirmation (D.14). A collection order is never
+  dispatched: it is handed over at the shop from `ready`. The staff dispatch
+  board for partner couriers belongs to P11.
+- **The handover code** is `derive_numeric_code("handover", shipment id,
+  code_version)`: six digits derived from the server secret, so the database
+  holds nothing that reveals it (D-011). The buyer's order page shows it
+  only while the part is `ready` or `out_for_delivery`; the seller's view
+  never includes it. It is compared in constant time. A wrong code counts
+  even though the request fails: the service commits the attempt count and
+  the audit entry, then raises (the same pattern as a wrong login code).
+  After `MAX_HANDOVER_ATTEMPTS` (5) the shipment is locked, right code or
+  wrong, until staff raise `code_version` to issue a new code; that staff
+  route is not built (P11).
+- **Delivered starts the problem window** (`orders.problem_window_hours`, 72).
+  The buyer may confirm receipt early; otherwise the worker's
+  `orders.complete_delivered` job (every five minutes) completes the part when
+  the window passes. Both lock the seller order first, so exactly one of them
+  completes it; a test races them.
+- **Completion** commits every held reservation (`commit_stock`; the
+  reservation becomes `committed`), writes the `fee_charges` row from the
+  rate each line carried (`Money.portion_bps`, half-up per line, summed) and
+  stores the same figure on the seller order. **Known limit:** a commission
+  rule's `cap_santim` is not applied, because the line copies only the rate.
+  Every rate is zero today, so no fee is wrong; carry the cap onto the line
+  when fee rules get their admin routes (P11) and before any non-zero rule is
+  created.
+- **A return releases the stock** (`release_stock`) and cancels the payment
+  intent; a failed delivery does neither, because a retry is expected.
+- **Direct payment** is recorded by the seller, once, between `confirmed` and
+  `completed` inclusive, with the method the buyer used: the intent becomes
+  `succeeded` with the time, a `payment_attempts` row records who said so,
+  and the audit log keeps the amount and reference. It is the seller's word
+  and is labelled as such in `raw_result`. Nothing is ever marked paid from
+  a browser redirect (there is no redirect to mark anything from).
 
 ---
 

@@ -7,9 +7,9 @@ last confirmed.
 > **Status: back end in progress.** Sign-in, the catalogue, seller onboarding,
 > seller offers with stock, the background worker, the cart and checkout are
 > built and tested as an API: a buyer can place an order that fans out to each
-> seller, and each seller confirms or declines its part. What happens after
-> confirmation (dispatch, handover, completion, payment) is not built. There
-> is no web app, and nothing is deployed.
+> seller, and each seller takes its part from confirmation through dispatch,
+> the handover code and completion. Disputes, refunds, reviews and search are
+> not built. There is no web app, and nothing is deployed.
 > See [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) for exactly what
 > exists.
 
