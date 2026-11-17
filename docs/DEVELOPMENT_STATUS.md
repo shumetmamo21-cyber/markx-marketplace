@@ -4,8 +4,10 @@
 owner, resuming: every admin screen the API supports — proposals,
 invitations, takedowns, the audit trail, the dashboard, the dispatch board,
 operations, reviews, reports, settings, staff accounts, exports and
-pictures; D-069 to D-071). The eighth session before it worked on the
-back end only (D-061).
+pictures; D-069 to D-071), then reviews and report links (D-072). The
+eighth session before it worked on the back end only (D-061), and a
+back-end-only continuation then added the seller performance page and the
+weekly seller message (D-073).
 **Branch:** `claude/project-scaffold`. `main` holds the initial commit only
 and nothing has been merged into it.
 **Latest commit:** see `git log -1`; the handoff (`docs/HANDOFF.md`) names it.
@@ -59,8 +61,11 @@ problem photos** (D-062), **encrypted backups with a restore drill in CI**
 (D-063), **self-monitoring with alerts and a daily reconciliation** (D-064)
 and **the rest of the admin back end**: the audit-log viewer, switches and
 risk limits, staff accounts, the dispatch board and the business dashboard
-(D-065), then **reviews and ratings** (D-066) and **reports on listings,
-stores and reviews** (D-067). Their web screens do not exist yet. **Not built:** seller onboarding and "add an offer"
+(D-065), then **reviews and ratings** (D-066), **reports on listings,
+stores and reviews** (D-067), **data exports for an accountant** (D-068)
+and **the seller performance page with its weekly message** (D-073).
+Session nine built the admin screens for them (D-070 to D-072); the
+seller's performance screens do not exist yet. **Not built:** seller onboarding and "add an offer"
 screens, images, reviews, the bot, deployment. Nothing is deployed
 anywhere.
 
@@ -75,7 +80,7 @@ anywhere.
 | 5 | `497fcf5`, `5ce4340`, `cdf16c5` and a documentation commit | Review fix (a cancelled shipment had no tracking event), the next-best offer (C-26), problems on a delivered order with staff decisions (`disputed`, `refunded`), search (P8 on the API side). 847 tests |
 | 6 | `641a95b` to the head; see `docs/HANDOFF.md` | Review fix (a withdrawn product stayed findable), the founder's provisional approvals (D-053), the search evaluator (D-054), CI, the web app (D-055): the storefront and buyer journey, the seller dashboard, the admin dashboard; demo data (D-056); variant labels in the cart and offer lists. 854 API tests, 9 web unit tests, two browser journeys |
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
-| 8 (back end only) | `2e4944c` to `b2b674e`; see `docs/HANDOFF.md`, Part A.0 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), and listing reports, migration `0011` (D-067). **`apps/web` not touched** |
+| 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
 
 ## Blueprint phase tracking
@@ -94,7 +99,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P8 | Search and product discovery | **Mostly done on the API side.** Search documents kept fresh through the outbox with an hourly rebuild (D-051); normalisation, letter merging and skeleton keys; prefix, sound and trigram matching; filters and sorting; suggestions and "did you mean"; the product-request form; the query log, the zero-result report and the synonym tool (D-052). **Throttled per address** (D-059). **Not done:** the two completion criteria (a golden set of 100 real queries, and timings at real size), "total cost to the door" as a sort, rating and delivery-speed filters, edge caching and pages readable by search engines (they need the web app) |
 | P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Not done:** the web screens, the legal disclosure wording (a founder input), and guest checkout as such: a visitor's cart survives signing in, but the order is placed by a signed-in account (see D-036) |
 | P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. The next-best offer after a decline or an expiry (D-049). Problems on a delivered order: `delivered -> disputed` by the buyer in the window, `disputed -> completed | refunded` by staff, Release 1 form with no money moved (D-050). Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`, `tests/api/test_disputes.py`). **Photos on a problem report** (D-062) and **reviews of completed items with the seller's reply** (D-066) exist on the API. **Not done:** photos on reviews, the bot, the web screens. Criteria 3 and 5 need the bot and real buyers |
-| P11 | Admin operations | **Mostly done on the API side.** The orders desk, problem cases and decisions, seller review, search tools (earlier sessions); **the audit-log viewer, switches and risk limits, staff accounts, the dispatch board, the business dashboard, picture moderation and the operations status** (D-062, D-064, D-065). **Review moderation (AD-12) and the reports queue (AD-16)** too (D-066, D-067). **Not done:** data export, the weekly seller message, the runbooks, and the web screens for this session's routes |
+| P11 | Admin operations | **Mostly done on the API side.** The orders desk, problem cases and decisions, seller review, search tools (earlier sessions); **the audit-log viewer, switches and risk limits, staff accounts, the dispatch board, the business dashboard, picture moderation and the operations status** (D-062, D-064, D-065). **Review moderation (AD-12) and the reports queue (AD-16)** too (D-066, D-067). **Data exports for an accountant** (D-068) and **seller performance figures with the weekly message** (D-073). Session nine built their admin screens (D-070 to D-072). **Not done:** the runbooks, seller statements (Release 2), and the seller's performance screens |
 | P12–P16 | Everything else | **Not started** (tables exist; no behaviour) |
 
 ## What is built and tested
@@ -658,6 +663,14 @@ All of it under `apps/api` and `infra/`; `apps/web` was not modified.
   store or review they can see; one open report per person and target;
   the staff queue; resolution as actioned or dismissed with a note, for
   every report on a target at once; reporters told the outcome.
+- **Data exports** (D-068, `markx/exports/`): four CSV files for an
+  accountant (fees, ledger, seller orders without buyer data, seller
+  balances), whole Addis Ababa days, exact amounts, formula-safe,
+  audit-logged; super administrator and finance only.
+- **Seller performance** (D-073, `markx/performance/`): the performance page
+  in numbers for every store member, and the weekly message: an hourly job
+  stores each trading store's figures for the last Monday-to-Sunday week
+  once and tells its members.
 
 ## What exists but is NOT tested
 
@@ -670,8 +683,9 @@ Be careful with these. They were written and never exercised.
   Release 1 never charges a fee on a refunded part, so nothing is reversed
   (D-050).
 - `refunds`, `payouts`, provider webhooks: tables only (Release 2).
-- `offer_price_tiers`, `seller_metrics_daily`, `stores.logo_key`,
-  `order_items.image_key`: tables or columns with no behaviour.
+- `stores.logo_key`, `order_items.image_key`: columns with no behaviour.
+  (Earlier versions of this list named `offer_price_tiers` and
+  `seller_metrics_daily`; neither table exists in the schema. D-073.)
 - `TelegramAlertSender` is tested against a stand-in for Telegram's API,
   never against Telegram itself (no bot or group exists yet).
 - `commission_rules`: read by checkout, never written by any route.
@@ -772,9 +786,9 @@ Be careful with these. They were written and never exercised.
   `confirm_delivery` in a larger transaction would commit that larger
   transaction too; today's callers do not.
 - **The web app's copy of the API description lags behind the back end**
-  by 80 additions (pictures, problem photos, operations, admin tools,
-  reviews, reports). This
-  is allowed by D-061 and harmless until the web app uses them; its owner
+  by 4 additions (the seller performance page and the weekly reports,
+  D-073); session nine regenerated it for everything before. This is
+  allowed by D-061 and harmless until the web app uses them; its owner
   regenerates the copy and the types.
 - **Product cards and pages carry no picture and no rating yet.** Both are
   served by their own routes (`/catalog/products/{slug}/images` and
@@ -846,16 +860,18 @@ session's work was re-applied on top of it and every check above was run
 again there.
 
 ```text
-$ cd apps/api                  (eighth session, final run, head `2c89323`)
-$ uv run pytest               ->  923 passed in 623.20s (0:10:23)
+$ cd apps/api                  (the back end's latest run: head `891ac71`, on
+                               top of session nine's commits up to `b2e11ce`)
+$ uv run pytest               ->  943 passed in 705.61s (0:11:45)
 $ uv run ruff check .         ->  All checks passed!
-$ uv run ruff format --check . ->  171 files already formatted
-$ uv run mypy markx           ->  Success: no issues found in 115 source files
+$ uv run ruff format --check . ->  181 files already formatted
+$ uv run mypy markx           ->  Success: no issues found in 122 source files
 $ uv run alembic check        ->  No new upgrade operations detected.
 $ uv run python -m scripts.check_openapi_copy --exact openapi.json
                               ->  openapi.json matches the API exactly.
 $ uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
-                              ->  true for everything it has; 80 additions it lacks
+                              ->  true for everything it has; 4 additions it lacks
+                                  (the performance page and weekly reports)
 $ infra/backup/drill.sh markx ->  DRILL PASSED (67 tables, 353 rows, demo data; at 0009)
 $ docker build apps/api; docker compose -f infra/compose/compose.yaml up
                               ->  (at 0009) migrations, API and worker healthy, a picture
@@ -896,6 +912,20 @@ Recounted by the ninth session from `pytest --collect-only` (935 tests, 45 files
 
 | File | Tests |
 | --- | --- |
+| `tests/unit/test_codes.py` | 7 |
+| `tests/unit/test_ethiopic.py` | 35 |
+| `tests/unit/test_images.py` | 9 |
+| `tests/unit/test_money.py` | 40 |
+| `tests/unit/test_openapi_copy.py` | 6 |
+| `tests/unit/test_order_rules.py` | 54 |
+| `tests/unit/test_permissions.py` | 144 |
+| `tests/unit/test_phone.py` | 31 |
+| `tests/db/test_checkout_contention.py` | 5 |
+| `tests/db/test_dispute_contention.py` | 2 |
+| `tests/db/test_fulfilment_contention.py` | 4 |
+| `tests/db/test_inventory.py` | 14 |
+| `tests/db/test_migrations.py` | 8 |
+| `tests/db/test_protection.py` | 49 |
 | `tests/api/test_addresses.py` | 17 |
 | `tests/api/test_admin_takedowns.py` | 8 |
 | `tests/api/test_admin_tools.py` | 6 |
@@ -914,34 +944,21 @@ Recounted by the ninth session from `pytest --collect-only` (935 tests, 45 files
 | `tests/api/test_next_best_offer.py` | 5 |
 | `tests/api/test_offers.py` | 42 |
 | `tests/api/test_ops.py` | 8 |
+| `tests/api/test_performance.py` | 4 |
 | `tests/api/test_pictures.py` | 14 |
 | `tests/api/test_reports.py` | 4 |
-| `tests/api/test_reviews.py` | 7 |
+| `tests/api/test_reviews.py` | 9 |
 | `tests/api/test_search.py` | 30 |
 | `tests/api/test_search_evaluation.py` | 6 |
 | `tests/api/test_search_index.py` | 7 |
 | `tests/api/test_seller_documents.py` | 14 |
-| `tests/api/test_seller_isolation.py` | 63 |
+| `tests/api/test_seller_isolation.py` | 65 |
 | `tests/api/test_seller_onboarding.py` | 38 |
 | `tests/api/test_seller_staff_permissions.py` | 23 |
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_tracking.py` | 2 |
-| `tests/db/test_checkout_contention.py` | 5 |
-| `tests/db/test_dispute_contention.py` | 2 |
-| `tests/db/test_fulfilment_contention.py` | 4 |
-| `tests/db/test_inventory.py` | 14 |
-| `tests/db/test_migrations.py` | 8 |
-| `tests/db/test_protection.py` | 49 |
-| `tests/unit/test_codes.py` | 7 |
-| `tests/unit/test_ethiopic.py` | 35 |
-| `tests/unit/test_images.py` | 9 |
-| `tests/unit/test_money.py` | 40 |
-| `tests/unit/test_openapi_copy.py` | 6 |
-| `tests/unit/test_order_rules.py` | 54 |
-| `tests/unit/test_permissions.py` | 144 |
-| `tests/unit/test_phone.py` | 31 |
 | `tests/worker/test_worker.py` | 22 |
-| **Total** | **923** |
+| **Total** | **943** |
 
 Counted by `uv run pytest --collect-only -q` on the final head.
 
@@ -960,8 +977,9 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0009` | `20261117_0958_operations_alerts.py` | `ops_alerts`: one open alert per key (D-064) |
 | `0010` | `20261117_1056_reviews_and_rating_summaries.py` | `reviews`: the `held` state, the moderation record, length limits; `rating_summaries` (D-066) |
 | `0011` | `20261117_1116_listing_reports.py` | `reports`: a note, the reason list, one open report per person and target, closing CHECKs (D-067) |
+| `0012` | `20261117_1158_seller_weekly_reports.py` | `seller_weekly_reports`: one row per store and week, starting on a Monday (D-073) |
 
-The schema has 68 tables (65 before `0008`; `0010` added `rating_summaries`). P9 and P10 needed no new table and no migration at
+The schema has 69 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
@@ -977,16 +995,18 @@ end. Work in this order within each. Finish and push each step first.
 2. Regenerate the API copy and types whenever the back end has added
    routes: `cd apps/api && uv run python -m scripts.export_openapi
    ../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
-   (D-061). Session nine did this; it was current at its last commit.
+   (D-061). Session nine did this; since then the back end added the
+   performance page and the weekly reports (D-073).
 3. The admin screens are done (D-070, D-071). What remains for staff:
    problem photos in the orders desk (D-062), and translated setting
    descriptions (they are the API's English text today). Any new admin
    route gets its screen in `menu.ts` with its capability, a line in
    `menu.test.ts`, its words in both message files, and a step in
    `e2e/admin-queues.mjs`.
-3b. Reviews on the product and store pages, "rate this purchase" for the
-   buyer, the seller's replies, and a report link on every listing, store
-   and review (D-066, D-067).
+3b. The seller's performance page and its past weekly reports (D-073):
+   `GET /seller/{seller_id}/performance` and `/weekly-reports`. (Review,
+   report and feedback screens are already being built by the web app's
+   owner; the back end leaves them alone.)
 4. Pictures on the product page and in the seller's offers (upload and
    withdraw real photos), and problem photos on the buyer's and seller's
    order pages (D-062). Folding a thumbnail into the product card is a
@@ -998,8 +1018,10 @@ end. Work in this order within each. Finish and push each step first.
 
 1. F-08 once the founder answers: a retention job for search logs and
    rate-limit counters.
-2. Data export for finance (C.4) and the weekly seller message (P11).
-3. Photos on reviews (C-18), following the problem-photo pipeline (D-062).
+2. Photos on reviews (C-18), following the problem-photo pipeline (D-062).
+3. Ratings in search ranking and filters (D.8), and the seller rating in
+   the product page's offer ranking, as one change with the web app
+   (D-061).
 4. The real adapters, each behind its existing interface, once the founder
    decides where things live (F-01): object storage for pictures and
    documents, SMS, Telegram push.
