@@ -7,7 +7,7 @@ import { LanguageSwitch } from "./LanguageSwitch";
 import { SearchForm } from "./SearchForm";
 import { Wordmark } from "./Wordmark";
 
-export function SiteHeader({ lang, t, query }: { lang: Locale; t: Messages; query?: string }) {
+export function SiteHeader({ lang, t, query, signedIn = false }: { lang: Locale; t: Messages; query?: string; signedIn?: boolean }) {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-paper/95 backdrop-blur">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:bg-white focus:p-2">
@@ -31,8 +31,13 @@ export function SiteHeader({ lang, t, query }: { lang: Locale; t: Messages; quer
           <Link href={`/${lang}/cart`} className="inline-flex min-h-12 items-center px-3 font-semibold hover:underline">
             {t.nav.cart}
           </Link>
+          {signedIn ? (
+            <Link href={`/${lang}/orders`} className="inline-flex min-h-12 items-center px-3 font-semibold hover:underline">
+              {t.nav.orders}
+            </Link>
+          ) : null}
           <Link href={`/${lang}/sign-in`} className="inline-flex min-h-12 items-center px-3 font-semibold hover:underline">
-            {t.nav.signIn}
+            {signedIn ? t.nav.account : t.nav.signIn}
           </Link>
           <Suspense fallback={null}>
             <LanguageSwitch lang={lang} label={t.nav.language} title={t.nav.languageLabel} />

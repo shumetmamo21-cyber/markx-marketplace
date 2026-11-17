@@ -23,3 +23,9 @@ export function fill(message: string, values: Record<string, string | number>): 
     key in values ? String(values[key]) : match,
   );
 }
+
+/** The API's error code in words, in the page's language; a generic line for
+ * codes without a message, never the raw code. */
+export function apiErrorText(t: Messages, code: string): string {
+  return code in t.apiErrors ? t.apiErrors[code as keyof Messages["apiErrors"]] : t.apiErrors.unknown;
+}

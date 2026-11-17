@@ -26,3 +26,12 @@ describe("messages", () => {
     }
   });
 });
+
+describe("API errors", () => {
+  it("are words in the page's language, never the raw code", async () => {
+    const { apiErrorText } = await import("./i18n");
+    expect(apiErrorText(en, "too_many_open_orders")).toMatch(/open orders/);
+    expect(apiErrorText(am, "too_many_open_orders")).not.toMatch(/[a-z_]{6,}/);
+    expect(apiErrorText(en, "something_new_from_the_api")).toBe(en.apiErrors.unknown);
+  });
+});
