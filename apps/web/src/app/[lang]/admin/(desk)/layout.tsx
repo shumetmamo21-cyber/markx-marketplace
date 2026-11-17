@@ -7,8 +7,11 @@ import { LanguageSwitch } from "@/components/LanguageSwitch";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Wordmark } from "@/components/Wordmark";
 import { fill, isLocale } from "@/lib/i18n";
+import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 import { getMe } from "@/lib/session";
+
+import { adminMenu } from "./menu";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
@@ -21,13 +24,7 @@ export default async function AdminLayout({ children, params }: LayoutProps<"/[l
   const me = await getMe();
   if (!me || me.session_kind !== "staff" || !me.staff) redirect(`/${lang}/admin/sign-in`);
   const t = await getMessages(lang);
-  const can = new Set(me.staff.capabilities);
-  const items = [
-    can.has("handle_cases") && { href: `/${lang}/admin/problems`, label: t.admin.navProblems },
-    can.has("find_orders") && { href: `/${lang}/admin/orders`, label: t.admin.navOrders },
-    can.has("review_sellers") && { href: `/${lang}/admin/sellers`, label: t.admin.navSellers },
-    can.has("tune_search") && { href: `/${lang}/admin/search`, label: t.admin.navSearch },
-  ].filter((item): item is { href: string; label: string } => Boolean(item));
+  const items = adminMenu(lang, me.staff.capabilities, t);
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[14rem_1fr]">
       <aside className="border-b border-line bg-ink text-paper md:min-h-dvh md:border-b-0">
@@ -46,7 +43,7 @@ export default async function AdminLayout({ children, params }: LayoutProps<"/[l
           ))}
         </nav>
         <div className="hidden space-y-2 p-4 text-sm md:block">
-          <p className="opacity-80">{fill(t.admin.role, { role: me.staff.role })}</p>
+          <p className="opacity-80">{fill(t.admin.role, { role: codeLabel(t, "staffRole", me.staff.role) })}</p>
         </div>
       </aside>
       <main id="main" className="min-w-0 space-y-4 p-4 md:p-8">

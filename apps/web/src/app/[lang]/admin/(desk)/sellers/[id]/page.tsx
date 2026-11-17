@@ -4,6 +4,7 @@ import { DocumentReview, SellerDecision } from "@/components/admin/StaffActions"
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
+import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 
 // One application: legal details, documents opened through five-minute
@@ -21,7 +22,7 @@ export default async function SellerReviewPage({ params }: PageProps<"/[lang]/ad
     <div className="space-y-5">
       <header className="space-y-1">
         <h1 className="text-2xl font-extrabold">{seller.legal.trade_name}</h1>
-        <p className="text-slate">{seller.status} · {seller.review_state}{seller.submitted_at ? ` · ${fill(a.submitted, { time: formatDateTime(seller.submitted_at, lang) })}` : ""}</p>
+        <p className="text-slate">{codeLabel(t, "sellerStatus", seller.status)} · {codeLabel(t, "reviewState", seller.review_state)}{seller.submitted_at ? ` · ${fill(a.submitted, { time: formatDateTime(seller.submitted_at, lang) })}` : ""}</p>
       </header>
       <section className="space-y-1 rounded-card border border-line bg-white p-4 text-sm">
         <h2 className="mb-1 font-bold">{a.legal}</h2>
@@ -37,7 +38,7 @@ export default async function SellerReviewPage({ params }: PageProps<"/[lang]/ad
           {seller.documents.map((document) => (
             <li key={document.id} className="space-y-2 rounded-card border border-line bg-white p-4">
               <p className="font-semibold">{document.doc_type}</p>
-              <p className="text-sm text-slate">{fill(a.docStatus, { status: document.review_status })}{document.review_note ? ` · ${document.review_note}` : ""}</p>
+              <p className="text-sm text-slate">{fill(a.docStatus, { status: codeLabel(t, "documentStatus", document.review_status) })}{document.review_note ? ` · ${document.review_note}` : ""}</p>
               <DocumentReview sellerId={seller.id} documentId={document.id} t={text} />
             </li>
           ))}

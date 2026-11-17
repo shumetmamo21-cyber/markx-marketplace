@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/v1/admin/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Log
+         * @description Newest first. Page with `before` set to the last id received. `action`
+         *     ending in a dot matches every action under it ("seller.").
+         */
+        get: operations["audit_log_api_v1_admin_audit_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/catalog/attributes": {
         parameters: {
             query?: never;
@@ -102,6 +123,26 @@ export interface paths {
         /** Attach Attribute */
         put: operations["attach_attribute_api_v1_admin_catalog_categories__category_id__attributes__attribute_id__put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/catalog/images/{image_id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Image
+         * @description Take a catalogue picture or a seller's photo down, with a reason (AD-03).
+         */
+        post: operations["remove_image_api_v1_admin_catalog_images__image_id__remove_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -211,6 +252,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/catalog/products/{product_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Staff Product Images
+         * @description Every picture of a product in every state, for moderation (AD-03).
+         */
+        get: operations["staff_product_images_api_v1_admin_catalog_products__product_id__images_get"];
+        put?: never;
+        /**
+         * Add Catalogue Image
+         * @description Accepted for processing: the picture is `processing` until the worker
+         *     has rendered it, then `ready`.
+         */
+        post: operations["add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/catalog/products/{product_id}/merge": {
         parameters: {
             query?: never;
@@ -292,6 +358,23 @@ export interface paths {
         post?: never;
         /** Remove Restricted Term */
         delete: operations["remove_restricted_term_api_v1_admin_catalog_restricted_terms__term_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard */
+        get: operations["dashboard_api_v1_admin_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -383,6 +466,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dispatch-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dispatch Board
+         * @description Parts waiting to leave a shop by rider or courier, oldest first (AD-05).
+         */
+        get: operations["dispatch_board_api_v1_admin_dispatch_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/exports/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export
+         * @description Whole days in Addis Ababa time, at most 366. UTF-8 with a byte-order
+         *     mark; amounts in exact birr and in santim. Every export is audit-logged.
+         */
+        get: operations["export_api_v1_admin_exports__kind__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/offers/held": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Held Offers
+         * @description Listings under a staff takedown, newest first, with the reason given.
+         */
+        get: operations["list_held_offers_api_v1_admin_offers_held_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/offers/{offer_id}/remove": {
         parameters: {
             query?: never;
@@ -420,6 +564,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ops/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent Alerts */
+        get: operations["recent_alerts_api_v1_admin_ops_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ops Status
+         * @description What is wrong now, and the machinery behind it.
+         */
+        get: operations["ops_status_api_v1_admin_ops_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/problems": {
         parameters: {
             query?: never;
@@ -451,6 +632,26 @@ export interface paths {
         put?: never;
         /** Staff Dispatch Seller Order */
         post: operations["staff_dispatch_seller_order_api_v1_admin_orders_seller_orders__seller_order_id__dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/seller-orders/{seller_order_id}/problem/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Staff Problem Photos
+         * @description The evidence both sides added, each with a link for this member of staff.
+         */
+        get: operations["staff_problem_photos_api_v1_admin_orders_seller_orders__seller_order_id__problem_photos_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -512,6 +713,88 @@ export interface paths {
         get: operations["staff_read_order_api_v1_admin_orders__code__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report Queue
+         * @description Open reports oldest first (page with `before` = the last id: the next
+         *     ones after it); closed ones newest first (AD-16).
+         */
+        get: operations["report_queue_api_v1_admin_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reports/{report_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Report
+         * @description `actioned` or `dismissed`, with a note; by default every open report on
+         *     the same target. Returns the reports it closed.
+         */
+        post: operations["resolve_report_api_v1_admin_reports__report_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Queue
+         * @description Held reviews by default: what a pattern check stopped (AD-12).
+         */
+        get: operations["review_queue_api_v1_admin_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reviews/{review_id}/moderate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Moderate Review
+         * @description Publish or hide, with a written reason; audit-logged.
+         */
+        post: operations["moderate_review_api_v1_admin_reviews__review_id__moderate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -795,6 +1078,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Settings
+         * @description Every switch and limit with its default and current value, and whether
+         *     this member of staff may change it: the super administrator any, and
+         *     operations the risk limits (C.4).
+         */
+        get: operations["settings_api_v1_admin_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/settings/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change Setting
+         * @description Audit-logged with the value before and after.
+         */
+        put: operations["change_setting_api_v1_admin_settings__key__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Staff */
+        get: operations["list_staff_api_v1_admin_staff_get"];
+        put?: never;
+        /** Create Staff */
+        post: operations["create_staff_api_v1_admin_staff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/staff/{staff_id}/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Staff Active
+         * @description Deactivating takes effect on the member's next request.
+         */
+        post: operations["set_staff_active_api_v1_admin_staff__staff_id__active_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/staff/{staff_id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Staff Role
+         * @description Ends the member's staff sessions: a new role needs a new sign-in.
+         */
+        post: operations["change_staff_role_api_v1_admin_staff__staff_id__role_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/otp/request": {
         parameters: {
             query?: never;
@@ -1024,6 +1407,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/products/{slug}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Images
+         * @description Ready pictures only. Catalogue pictures in their order, then real
+         *     photos from stores that may publish, each with its store.
+         */
+        get: operations["product_images_api_v1_catalog_products__slug__images_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/products/{slug}/offers": {
         parameters: {
             query?: never;
@@ -1036,6 +1440,27 @@ export interface paths {
          * @description Every seller's live offer for a product, ranked for the buyer's zone.
          */
         get: operations["product_offers_api_v1_catalog_products__slug__offers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/products/{slug}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Reviews
+         * @description Published reviews, newest first; page with `before` set to the last id.
+         *     The summary is the product's rating totals.
+         */
+        get: operations["product_reviews_api_v1_catalog_products__slug__reviews_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1070,6 +1495,23 @@ export interface paths {
         };
         /** Store Price List */
         get: operations["store_price_list_api_v1_catalog_stores__slug__offers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/stores/{slug}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Store Reviews */
+        get: operations["store_reviews_api_v1_catalog_stores__slug__reviews_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1190,6 +1632,28 @@ export interface paths {
          * @description Used by uptime monitors. Reports the API and the database.
          */
         get: operations["healthz_api_v1_healthz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/healthz/worker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Worker Health
+         * @description 503 when no scheduled job has started for five minutes: the worker is
+         *     down or stuck (F.12; P2: "an outage alerts the founder"). Point the
+         *     outside uptime monitor here as well as at `/healthz`.
+         */
+        get: operations["worker_health_api_v1_healthz_worker_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1337,6 +1801,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/orders/{order_id}/items/{item_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write Review
+         * @description Rate the product and the seller of one item of a completed order (C-18).
+         */
+        post: operations["write_review_api_v1_me_orders__order_id__items__item_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/alternatives": {
         parameters: {
             query?: never;
@@ -1434,6 +1918,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/problem/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Problem Photos */
+        get: operations["my_problem_photos_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_get"];
+        put?: never;
+        /**
+         * Add My Problem Photo
+         * @description The buyer's photo evidence on their own open problem (C-16).
+         */
+        post: operations["add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Reviews */
+        get: operations["my_reviews_api_v1_me_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/reviews/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reviewable
+         * @description Items of completed orders waiting for a review, while the window is open.
+         */
+        get: operations["reviewable_api_v1_me_reviews_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Review
+         * @description Until the seller replies or the window closes.
+         */
+        put: operations["edit_review_api_v1_me_reviews__review_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/telegram": {
         parameters: {
             query?: never;
@@ -1451,6 +2013,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/media/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Media
+         * @description Rendered product pictures, served by the API on a laptop and in tests
+         *     only. A real server serves them from the CDN's cookieless domain (F.6).
+         */
+        get: operations["media_api_v1_media__key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/problem-photos/{photo_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Problem Photo
+         * @description The photo behind a signed link. The link alone is not enough: the same
+         *     person it was issued to must be signed in, and still be allowed.
+         */
+        get: operations["read_problem_photo_api_v1_problem_photos__photo_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/product-requests": {
         parameters: {
             query?: never;
@@ -1462,6 +2066,27 @@ export interface paths {
         put?: never;
         /** Request A Product */
         post: operations["request_a_product_api_v1_product_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report
+         * @description Flag a product, an offer, a store or a review (C-30). Signed in or not;
+         *     limited per network address, and per person when signed in.
+         */
+        post: operations["report_api_v1_reports_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1941,6 +2566,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Seller Problem Photos */
+        get: operations["seller_problem_photos_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_get"];
+        put?: never;
+        /**
+         * Add Seller Problem Photo
+         * @description The seller's evidence on a reported problem, while it is open.
+         */
+        post: operations["add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/reply": {
         parameters: {
             query?: never;
@@ -2035,6 +2681,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seller/{seller_id}/photos/{image_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Seller Photo */
+        post: operations["withdraw_seller_photo_api_v1_seller__seller_id__photos__image_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/seller/{seller_id}/product-proposals": {
         parameters: {
             query?: never;
@@ -2050,6 +2713,70 @@ export interface paths {
          *     nobody until catalogue staff approve it or merge it into an existing one.
          */
         post: operations["propose_product_api_v1_seller__seller_id__product_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seller/{seller_id}/products/{product_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Seller Photos
+         * @description This store's own photos of one product, in every state.
+         */
+        get: operations["seller_photos_api_v1_seller__seller_id__products__product_id__photos_get"];
+        put?: never;
+        /**
+         * Add Seller Photo
+         * @description A real photo of a product this store has an offer for (D.5, S-06).
+         */
+        post: operations["add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seller/{seller_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Seller Reviews
+         * @description This store's reviews, published or hidden by staff, newest first.
+         */
+        get: operations["seller_reviews_api_v1_seller__seller_id__reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seller/{seller_id}/reviews/{review_id}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply To Review
+         * @description One reply, which the store may reword (S-16). A store cannot remove a review.
+         */
+        post: operations["reply_to_review_api_v1_seller__seller_id__reviews__review_id__reply_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2173,6 +2900,40 @@ export interface components {
              * Format: uuid
              */
             zone_id: string;
+        };
+        /** AlertOut */
+        AlertOut: {
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Occurrences */
+            occurrences: number;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Severity */
+            severity: string;
+            /** Source */
+            source: string;
+            /** Summary */
+            summary: string;
         };
         /** AliasIn */
         AliasIn: {
@@ -2390,6 +3151,60 @@ export interface components {
             /** Unit */
             unit: string | null;
         };
+        /** AuditEntryOut */
+        AuditEntryOut: {
+            /** Action */
+            action: string;
+            /** Actor Type */
+            actor_type: string;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /** After */
+            after: unknown | null;
+            /** Before */
+            before: unknown | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Request Id */
+            request_id: string | null;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+        };
+        /** Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post */
+        Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post: {
+            /** File */
+            file: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post */
+        Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post */
+        Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post */
+        Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post: {
+            /** File */
+            file: string;
+        };
         /** Body_upload_document_api_v1_seller__seller_id__documents_post */
         Body_upload_document_api_v1_seller__seller_id__documents_post: {
             doc_type: components["schemas"]["DocumentType"];
@@ -2416,6 +3231,56 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /**
+         * BusinessDashboardOut
+         * @description AD-14. Money in santim; shares between 0 and 1, or null with nothing
+         *     to divide.
+         */
+        BusinessDashboardOut: {
+            /** Answered Share */
+            answered_share: number | null;
+            /** Completed Value Santim */
+            completed_value_santim: number;
+            /** Days */
+            days: number;
+            /** Delivery Success Share */
+            delivery_success_share: number | null;
+            /** Fees Santim */
+            fees_santim: number;
+            /** Fresh Price Share */
+            fresh_price_share: number | null;
+            /**
+             * From Time
+             * Format: date-time
+             */
+            from_time: string;
+            funnel: components["schemas"]["FunnelOut"];
+            /** Live Offers */
+            live_offers: number;
+            /** Median Minutes To Confirm */
+            median_minutes_to_confirm: number | null;
+            /** Offers Per Product */
+            offers_per_product: number | null;
+            /** Orders */
+            orders: number;
+            /** Problems Open */
+            problems_open: number;
+            /** Problems Opened */
+            problems_opened: number;
+            /** Products With Offers */
+            products_with_offers: number;
+            /** Seller Orders */
+            seller_orders: number;
+            /** Seller Orders By Status */
+            seller_orders_by_status: {
+                [key: string]: number;
+            };
+            /**
+             * To Time
+             * Format: date-time
+             */
+            to_time: string;
         };
         /** BuyerContactOut */
         BuyerContactOut: {
@@ -2813,6 +3678,33 @@ export interface components {
             /** Rider Phone */
             rider_phone?: string | null;
         };
+        /** DispatchRowOut */
+        DispatchRowOut: {
+            /** Late */
+            late: boolean;
+            /** Mode */
+            mode: string;
+            /** Order Code */
+            order_code: string;
+            /** Promised By */
+            promised_by: string | null;
+            /**
+             * Seller Order Id
+             * Format: uuid
+             */
+            seller_order_id: string;
+            /** Status */
+            status: string;
+            /** Store Slug */
+            store_slug: string;
+            /**
+             * Waiting Since
+             * Format: date-time
+             */
+            waiting_since: string;
+            /** Zone Code */
+            zone_code: string;
+        };
         /** DocumentLinkOut */
         DocumentLinkOut: {
             /**
@@ -2874,6 +3766,17 @@ export interface components {
             /** May Apply */
             may_apply: boolean;
         };
+        /** FunnelOut */
+        FunnelOut: {
+            /** Carts Filled */
+            carts_filled: number;
+            /** Orders */
+            orders: number;
+            /** Searches */
+            searches: number;
+            /** Zero Result Searches */
+            zero_result_searches: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2883,6 +3786,91 @@ export interface components {
         HandoverIn: {
             /** Code */
             code: string;
+        };
+        /**
+         * HeldOfferOut
+         * @description An offer staff took down and have not released (D-032).
+         */
+        HeldOfferOut: {
+            /** Condition */
+            condition: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Price Santim */
+            price_santim: number;
+            /** Product Name */
+            product_name: string;
+            /** Product Slug */
+            product_slug: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Removed By Staff At
+             * Format: date-time
+             */
+            removed_by_staff_at: string;
+            /**
+             * Seller Id
+             * Format: uuid
+             */
+            seller_id: string;
+            /** Status */
+            status: string;
+            /** Store Name */
+            store_name: string;
+            /** Store Slug */
+            store_slug: string;
+            /** Variant Label */
+            variant_label: string;
+        };
+        /**
+         * ImageOut
+         * @description A picture with its pipeline state, for staff and for the seller who
+         *     uploaded it. `thumb_url` and `main_url` are set once it is `ready`.
+         */
+        ImageOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Main Bytes */
+            main_bytes: number | null;
+            /** Main Url */
+            main_url: string | null;
+            /** Position */
+            position: number;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Removed Reason */
+            removed_reason: string | null;
+            /** Seller Id */
+            seller_id: string | null;
+            /** Status */
+            status: string;
+            /** Thumb Bytes */
+            thumb_bytes: number | null;
+            /** Thumb Url */
+            thumb_url: string | null;
+            /** Width */
+            width: number;
         };
         /** InvitationIn */
         InvitationIn: {
@@ -2918,6 +3906,26 @@ export interface components {
             used_at: string | null;
             /** Used By Seller Id */
             used_by_seller_id: string | null;
+        };
+        /** JobOut */
+        JobOut: {
+            /** Consecutive Failures */
+            consecutive_failures: number;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Result */
+            last_result: number | null;
+            /** Last Started At */
+            last_started_at: string | null;
+            /** Last Succeeded At */
+            last_succeeded_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Next Run At
+             * Format: date-time
+             */
+            next_run_at: string;
         };
         /** LegalOut */
         LegalOut: {
@@ -3023,6 +4031,16 @@ export interface components {
              */
             into_product_id: string;
         };
+        /** ModerateReviewIn */
+        ModerateReviewIn: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "publish" | "hide";
+            /** Reason */
+            reason: string;
+        };
         /** ModerationIn */
         ModerationIn: {
             /** Reason */
@@ -3045,6 +4063,76 @@ export interface components {
             reason: string;
             /** Reserved After */
             reserved_after: number;
+        };
+        /**
+         * MyReviewOut
+         * @description A review with its state, for its buyer, its seller and staff. The
+         *     seller never sees the order code.
+         */
+        MyReviewOut: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Held Reason */
+            held_reason: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Moderation Reason */
+            moderation_reason: string | null;
+            /** Order Code */
+            order_code: string | null;
+            /** Order Id */
+            order_id: string | null;
+            /**
+             * Order Item Id
+             * Format: uuid
+             */
+            order_item_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Rating */
+            product_rating: number;
+            /** Seller Rating */
+            seller_rating: number;
+            /** Seller Replied At */
+            seller_replied_at: string | null;
+            /** Seller Reply */
+            seller_reply: string | null;
+            /** Status */
+            status: string;
+            /** Store Slug */
+            store_slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Variant Label */
+            variant_label: string;
+        };
+        /**
+         * NewStaffOut
+         * @description The authenticator secret is shown here once and never again: the new
+         *     member scans `provisioning_uri` into their authenticator app.
+         */
+        NewStaffOut: {
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            staff: components["schemas"]["StaffAccountOut"];
+            /** Totp Secret */
+            totp_secret: string;
         };
         /** NotificationOut */
         NotificationOut: {
@@ -3176,6 +4264,19 @@ export interface components {
             /** Store Slug */
             store_slug: string;
         };
+        /**
+         * OpsStatusOut
+         * @description Open alerts (critical first), every scheduled job, and the outbox
+         *     messages that are not done, by topic and status.
+         */
+        OpsStatusOut: {
+            /** Jobs */
+            jobs: components["schemas"]["JobOut"][];
+            /** Open Alerts */
+            open_alerts: components["schemas"]["AlertOut"][];
+            /** Outbox */
+            outbox: components["schemas"]["OutboxCountOut"][];
+        };
         /** OptionIn */
         OptionIn: {
             /** Code */
@@ -3284,6 +4385,15 @@ export interface components {
             language: string;
             /** Phone */
             phone: string;
+        };
+        /** OutboxCountOut */
+        OutboxCountOut: {
+            /** Count */
+            count: number;
+            /** Status */
+            status: string;
+            /** Topic */
+            topic: string;
         };
         /** PaymentRecordIn */
         PaymentRecordIn: {
@@ -3457,6 +4567,36 @@ export interface components {
             status: string;
         };
         /**
+         * ProblemPhotoOut
+         * @description An evidence photo, with a link that works for five minutes and only
+         *     for the person it was issued to.
+         */
+        ProblemPhotoOut: {
+            /** Author Type */
+            author_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Url */
+            url: string;
+            /**
+             * Url Expires At
+             * Format: date-time
+             */
+            url_expires_at: string;
+            /** Width */
+            width: number;
+        };
+        /**
          * ProductCardOut
          * @description The product card used everywhere (blueprint D.9).
          */
@@ -3486,6 +4626,19 @@ export interface components {
             seller_count: number;
             /** Slug */
             slug: string;
+        };
+        /**
+         * ProductImagesOut
+         * @description A product page's pictures: catalogue pictures first, then each store's
+         *     real photos, tagged with the store (D.5).
+         */
+        ProductImagesOut: {
+            /** Catalogue */
+            catalogue: components["schemas"]["PublicImageOut"][];
+            /** Product Slug */
+            product_slug: string;
+            /** Real Photos */
+            real_photos: components["schemas"]["RealPhotoOut"][];
         };
         /** ProductIn */
         ProductIn: {
@@ -3589,6 +4742,14 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** ProductReviewsOut */
+        ProductReviewsOut: {
+            /** Product Slug */
+            product_slug: string;
+            /** Reviews */
+            reviews: components["schemas"]["PublicReviewOut"][];
+            summary: components["schemas"]["RatingSummaryOut"];
+        };
         /** ProductTextIn */
         ProductTextIn: {
             /**
@@ -3624,6 +4785,53 @@ export interface components {
             slug: string;
             /** Status */
             status: string;
+        };
+        /** PublicImageOut */
+        PublicImageOut: {
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Main Url */
+            main_url: string | null;
+            /** Thumb Url */
+            thumb_url: string | null;
+            /** Width */
+            width: number;
+        };
+        /**
+         * PublicReviewOut
+         * @description A published review as anyone sees it: from a verified buyer, never
+         *     with their name or phone number.
+         */
+        PublicReviewOut: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Product Rating */
+            product_rating: number;
+            /** Seller Rating */
+            seller_rating: number;
+            /** Seller Replied At */
+            seller_replied_at: string | null;
+            /** Seller Reply */
+            seller_reply: string | null;
+            /** Store Slug */
+            store_slug: string;
+            /** Variant Label */
+            variant_label: string;
         };
         /**
          * PublicStoreOut
@@ -3810,6 +5018,88 @@ export interface components {
             /** Promised Hours */
             promised_hours: number;
         };
+        /**
+         * RatingSummaryOut
+         * @description `average` has two decimals, or is null with no review; `stars` counts
+         *     the reviews that gave each number of stars, "1" to "5".
+         */
+        RatingSummaryOut: {
+            /** Average */
+            average: number | null;
+            /** Count */
+            count: number;
+            /** Stars */
+            stars: {
+                [key: string]: number;
+            };
+        };
+        /** RealPhotoOut */
+        RealPhotoOut: {
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Main Url */
+            main_url: string | null;
+            /** Store Slug */
+            store_slug: string;
+            /** Thumb Url */
+            thumb_url: string | null;
+            /** Width */
+            width: number;
+        };
+        /** RemoveImageIn */
+        RemoveImageIn: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * ReportIn
+         * @description What is reported, and why. A store is named by its id or its link
+         *     name (`store_slug`, as on its page); everything else by its id.
+         */
+        ReportIn: {
+            /** Note */
+            note?: string | null;
+            reason: components["schemas"]["ReportReason"];
+            /** Store Slug */
+            store_slug?: string | null;
+            /** Target Id */
+            target_id?: string | null;
+            target_type: components["schemas"]["ReportTarget"];
+        };
+        /**
+         * ReportOut
+         * @description The reporter learns only that the report was received.
+         */
+        ReportOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ReportReason
+         * @description Why someone flags a listing, store or review (C-30; D-067).
+         * @enum {string}
+         */
+        ReportReason: "counterfeit" | "prohibited" | "wrong_information" | "offensive" | "fraud" | "spam" | "other";
+        /**
+         * ReportTarget
+         * @enum {string}
+         */
+        ReportTarget: "product" | "offer" | "store" | "review";
         /** ResolveProblemIn */
         ResolveProblemIn: {
             /**
@@ -3824,6 +5114,21 @@ export interface components {
             goods_returned: boolean;
             /** Reason */
             reason: string;
+        };
+        /** ResolveReportIn */
+        ResolveReportIn: {
+            /**
+             * All On Target
+             * @default true
+             */
+            all_on_target: boolean;
+            /** Note */
+            note: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "actioned" | "dismissed";
         };
         /** RestrictedTermIn */
         RestrictedTermIn: {
@@ -3846,6 +5151,54 @@ export interface components {
             reason: string;
             /** Term */
             term: string;
+        };
+        /** ReviewIn */
+        ReviewIn: {
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /** Product Rating */
+            product_rating: number;
+            /** Seller Rating */
+            seller_rating: number;
+        };
+        /** ReviewReplyIn */
+        ReviewReplyIn: {
+            /** Body */
+            body: string;
+        };
+        /** ReviewableItemOut */
+        ReviewableItemOut: {
+            /** Order Code */
+            order_code: string;
+            /**
+             * Order Id
+             * Format: uuid
+             */
+            order_id: string;
+            /**
+             * Order Item Id
+             * Format: uuid
+             */
+            order_item_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Review Until
+             * Format: date-time
+             */
+            review_until: string;
+            /** Store Slug */
+            store_slug: string;
+            /** Title */
+            title: string;
+            /** Variant Label */
+            variant_label: string;
         };
         /** SearchOut */
         SearchOut: {
@@ -4234,6 +5587,28 @@ export interface components {
             /** Session Token */
             session_token?: string | null;
         };
+        /** SettingIn */
+        SettingIn: {
+            /** Value */
+            value: boolean | number | string;
+        };
+        /** SettingOut */
+        SettingOut: {
+            /** Default */
+            default: boolean | number | string;
+            /** Description */
+            description: string;
+            /** Is Overridden */
+            is_overridden: boolean;
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** May Change */
+            may_change: boolean;
+            /** Value */
+            value: boolean | number | string;
+        };
         /**
          * ShipmentOut
          * @description The delivery of one seller order (J.10). The handover code is never here.
@@ -4268,6 +5643,51 @@ export interface components {
             name: string;
             /** Value */
             value: unknown;
+        };
+        /** StaffAccountOut */
+        StaffAccountOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Locked Until */
+            locked_until: string | null;
+            /** Name */
+            name: string | null;
+            /** Phone Last4 */
+            phone_last4: string;
+            /** Role */
+            role: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** StaffActiveIn */
+        StaffActiveIn: {
+            /** Active */
+            active: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /** StaffCreateIn */
+        StaffCreateIn: {
+            /** Name */
+            name: string;
+            /** Password */
+            password: string;
+            /** Phone */
+            phone: string;
+            role: components["schemas"]["StaffRole"];
         };
         /** StaffOut */
         StaffOut: {
@@ -4339,6 +5759,55 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** StaffReportOut */
+        StaffReportOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Excerpt */
+            excerpt: string | null;
+            /** From Signed In Person */
+            from_signed_in_person: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /** Open Reports On Target */
+            open_reports_on_target: number;
+            /** Product Slug */
+            product_slug: string | null;
+            /** Reason */
+            reason: string;
+            /** Resolution Note */
+            resolution_note: string | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Status */
+            status: string;
+            /** Store Slug */
+            store_slug: string | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+        };
+        /**
+         * StaffRole
+         * @enum {string}
+         */
+        StaffRole: "super_admin" | "operations" | "support" | "catalogue" | "finance";
+        /** StaffRoleIn */
+        StaffRoleIn: {
+            role: components["schemas"]["StaffRole"];
+        };
         /** StaffSignInIn */
         StaffSignInIn: {
             /** Password */
@@ -4394,6 +5863,14 @@ export interface components {
             telegram_channel: string | null;
             /** Working Hours */
             working_hours: string;
+        };
+        /** StoreReviewsOut */
+        StoreReviewsOut: {
+            /** Reviews */
+            reviews: components["schemas"]["PublicReviewOut"][];
+            /** Store Slug */
+            store_slug: string;
+            summary: components["schemas"]["RatingSummaryOut"];
         };
         /** StoreUpdateIn */
         StoreUpdateIn: {
@@ -4598,6 +6075,44 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    audit_log_api_v1_admin_audit_log_get: {
+        parameters: {
+            query?: {
+                action?: string | null;
+                target_type?: string | null;
+                target_id?: string | null;
+                actor_user_id?: string | null;
+                since?: string | null;
+                until?: string | null;
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEntryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     all_attributes_api_v1_admin_catalog_attributes_get: {
         parameters: {
             query?: {
@@ -4865,6 +6380,41 @@ export interface operations {
             };
         };
     };
+    remove_image_api_v1_admin_catalog_images__image_id__remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveImageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_products_api_v1_admin_catalog_products_get: {
         parameters: {
             query?: {
@@ -5097,6 +6647,72 @@ export interface operations {
             };
         };
     };
+    staff_product_images_api_v1_admin_catalog_products__product_id__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     merge_api_v1_admin_catalog_products__product_id__merge_post: {
         parameters: {
             query?: never;
@@ -5273,6 +6889,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_api_v1_admin_dashboard_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessDashboardOut"];
                 };
             };
             /** @description Validation Error */
@@ -5479,6 +7126,104 @@ export interface operations {
             };
         };
     };
+    dispatch_board_api_v1_admin_dispatch_board_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispatchRowOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_v1_admin_exports__kind__get: {
+        parameters: {
+            query: {
+                first_day: string;
+                last_day: string;
+            };
+            header?: never;
+            path: {
+                kind: "fees" | "ledger" | "seller-orders" | "seller-balances";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_held_offers_api_v1_admin_offers_held_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+                limit?: number;
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldOfferOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     staff_remove_offer_api_v1_admin_offers__offer_id__remove_post: {
         parameters: {
             query?: never;
@@ -5549,6 +7294,57 @@ export interface operations {
             };
         };
     };
+    recent_alerts_api_v1_admin_ops_alerts_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_status_api_v1_admin_ops_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsStatusOut"];
+                };
+            };
+        };
+    };
     staff_open_problems_api_v1_admin_orders_problems_get: {
         parameters: {
             query?: {
@@ -5604,6 +7400,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    staff_problem_photos_api_v1_admin_orders_seller_orders__seller_order_id__problem_photos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seller_order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemPhotoOut"][];
                 };
             };
             /** @description Validation Error */
@@ -5711,6 +7538,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_queue_api_v1_admin_reports_get: {
+        parameters: {
+            query?: {
+                status?: string;
+                target_type?: string | null;
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffReportOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_report_api_v1_admin_reports__report_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffReportOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_queue_api_v1_admin_reviews_get: {
+        parameters: {
+            query?: {
+                status?: string;
+                before?: string | null;
+                limit?: number;
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moderate_review_api_v1_admin_reviews__review_id__moderate_post: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerateReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewOut"];
                 };
             };
             /** @description Validation Error */
@@ -6314,6 +8281,184 @@ export interface operations {
             };
         };
     };
+    settings_api_v1_admin_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingOut"][];
+                };
+            };
+        };
+    };
+    change_setting_api_v1_admin_settings__key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_staff_api_v1_admin_staff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAccountOut"][];
+                };
+            };
+        };
+    };
+    create_staff_api_v1_admin_staff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewStaffOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_staff_active_api_v1_admin_staff__staff_id__active_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffActiveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAccountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_staff_role_api_v1_admin_staff__staff_id__role_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                staff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffRoleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffAccountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     request_otp_api_v1_auth_otp_request_post: {
         parameters: {
             query?: never;
@@ -6767,6 +8912,37 @@ export interface operations {
             };
         };
     };
+    product_images_api_v1_catalog_products__slug__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductImagesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     product_offers_api_v1_catalog_products__slug__offers_get: {
         parameters: {
             query?: {
@@ -6788,6 +8964,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductOffersOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    product_reviews_api_v1_catalog_products__slug__reviews_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+                limit?: number;
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductReviewsOut"];
                 };
             };
             /** @description Validation Error */
@@ -6853,6 +9064,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PriceListItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_reviews_api_v1_catalog_stores__slug__reviews_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+                limit?: number;
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreReviewsOut"];
                 };
             };
             /** @description Validation Error */
@@ -7020,6 +9266,26 @@ export interface operations {
         };
     };
     healthz_api_v1_healthz_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    worker_health_api_v1_healthz_worker_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7335,6 +9601,44 @@ export interface operations {
             };
         };
     };
+    write_review_api_v1_me_orders__order_id__items__item_id__review_post: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                order_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     my_seller_order_alternatives_api_v1_me_orders__order_id__seller_orders__seller_order_id__alternatives_get: {
         parameters: {
             query?: never;
@@ -7515,6 +9819,173 @@ export interface operations {
             };
         };
     };
+    my_problem_photos_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: string;
+                seller_order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemPhotoOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: string;
+                seller_order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemPhotoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_reviews_api_v1_me_reviews_get: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reviewable_api_v1_me_reviews_pending_get: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewableItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_review_api_v1_me_reviews__review_id__put: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     link_telegram_api_v1_me_telegram_post: {
         parameters: {
             query?: never;
@@ -7548,6 +10019,71 @@ export interface operations {
             };
         };
     };
+    media_api_v1_media__key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_problem_photo_api_v1_problem_photos__photo_id__content_get: {
+        parameters: {
+            query: {
+                expires: number;
+                signature: string;
+            };
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     request_a_product_api_v1_product_requests_post: {
         parameters: {
             query?: never;
@@ -7568,6 +10104,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_api_v1_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportOut"];
                 };
             };
             /** @description Validation Error */
@@ -8677,6 +11246,74 @@ export interface operations {
             };
         };
     };
+    seller_problem_photos_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seller_order_id: string;
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemPhotoOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seller_order_id: string;
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemPhotoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reply_to_seller_order_problem_api_v1_seller__seller_id__orders__seller_order_id__problem_reply_post: {
         parameters: {
             query?: {
@@ -8853,6 +11490,38 @@ export interface operations {
             };
         };
     };
+    withdraw_seller_photo_api_v1_seller__seller_id__photos__image_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     propose_product_api_v1_seller__seller_id__product_proposals_post: {
         parameters: {
             query?: never;
@@ -8875,6 +11544,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seller_photos_api_v1_seller__seller_id__products__product_id__photos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seller_reviews_api_v1_seller__seller_id__reviews_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+                limit?: number;
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_to_review_api_v1_seller__seller_id__reviews__review_id__reply_post: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                review_id: string;
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewReplyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviewOut"];
                 };
             };
             /** @description Validation Error */

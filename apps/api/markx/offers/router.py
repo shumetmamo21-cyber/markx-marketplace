@@ -27,6 +27,7 @@ from markx.offers.schemas import (
     CheckInIn,
     CheckInOut,
     DashboardOut,
+    HeldOfferOut,
     ModerationIn,
     OfferIn,
     OfferStatusOut,
@@ -233,6 +234,19 @@ def store_price_list(
 
 
 # -- staff -----------------------------------------------------------------------
+
+
+@admin_router.get("/held", response_model=list[HeldOfferOut])
+def list_held_offers(
+    _: ListingModerator,
+    db: Db,
+    before: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    lang: LangQuery = "am",
+) -> list[HeldOfferOut]:
+    """Listings under a staff takedown, newest first, with the reason given."""
+    rows = selectors.held_offers(db, lang, before=before, limit=limit)
+    return [HeldOfferOut.model_validate(row) for row in rows]
 
 
 @admin_router.post("/{offer_id}/remove", response_model=OfferStatusOut)

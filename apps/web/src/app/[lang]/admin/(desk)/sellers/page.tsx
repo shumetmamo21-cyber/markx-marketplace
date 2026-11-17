@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
+import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 
 // Applications waiting for review (AD-01), oldest first as the API sends them.
@@ -26,7 +27,7 @@ export default async function SellerQueuePage({ params }: PageProps<"/[lang]/adm
           <li key={row.id}>
             <Link href={`/${lang}/admin/sellers/${row.id}`} className="block space-y-1 rounded-card border border-line bg-white p-4 hover:border-ink">
               <p className="font-bold">{row.trade_name} <span className="font-normal text-slate">· {row.legal_name}</span></p>
-              <p className="text-sm text-slate">{row.review_state}{row.submitted_at ? ` · ${fill(t.admin.submitted, { time: formatDateTime(row.submitted_at, lang) })}` : ""}</p>
+              <p className="text-sm text-slate">{codeLabel(t, "reviewState", row.review_state)}{row.submitted_at ? ` · ${fill(t.admin.submitted, { time: formatDateTime(row.submitted_at, lang) })}` : ""}</p>
             </Link>
           </li>
         ))}

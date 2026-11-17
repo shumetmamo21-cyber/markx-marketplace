@@ -223,3 +223,73 @@ export function RemoveSynonymButton({ id, t }: { id: string; t: T }) {
     </button>
   );
 }
+
+// -- catalogue curation (AD-02) --------------------------------------------------
+
+export function ProposalDecision({ productId, approved, t }: { productId: string; approved: { id: string; name: string }[]; t: T }) {
+  const a = t.admin;
+  const path = { params: { path: { product_id: productId } } };
+  return (
+    <div className="grid gap-6 lg:grid-cols-3">
+      <StaffForm t={t} label={a.approveProduct} onSubmit={() => browserApi.POST("/api/v1/admin/catalog/products/{product_id}/approve", path)}>
+        {null}
+      </StaffForm>
+      <StaffForm t={t} label={a.archiveProduct} onSubmit={(form) => browserApi.POST("/api/v1/admin/catalog/products/{product_id}/archive", { ...path, body: { note: text(form, "note") || null } })}>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.archiveNote}</span><input name="note" maxLength={500} className={field} /></label>
+      </StaffForm>
+      {approved.length > 0 ? (
+        <StaffForm t={t} label={a.mergeProduct} onSubmit={(form) => browserApi.POST("/api/v1/admin/catalog/products/{product_id}/merge", { ...path, body: { into_product_id: text(form, "into") } })}>
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold">{a.mergeInto}</span>
+            <select name="into" required defaultValue="" className={field}>
+              <option value="" disabled>{a.chooseProduct}</option>
+              {approved.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+            </select>
+          </label>
+        </StaffForm>
+      ) : null}
+    </div>
+  );
+}
+
+// -- invitations (D.3, D-019) ------------------------------------------------------
+
+export function InviteForm({ t }: { t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.invite} onSubmit={(form) => browserApi.POST("/api/v1/admin/sellers/invitations", { body: { phone: text(form, "phone"), note: text(form, "note") || null } })}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="space-y-1"><span className="block text-sm font-semibold">{a.invitePhone}</span><input name="phone" type="tel" required minLength={9} maxLength={24} className={field} /></label>
+        <label className="space-y-1"><span className="block text-sm font-semibold">{a.inviteNote}</span><input name="note" maxLength={300} className={field} /></label>
+      </div>
+    </StaffForm>
+  );
+}
+
+export function RevokeInvitationForm({ id, t }: { id: string; t: T }) {
+  return (
+    <StaffForm t={t} label={t.admin.revoke} onSubmit={() => browserApi.DELETE("/api/v1/admin/sellers/invitations/{invitation_id}", { params: { path: { invitation_id: id } } })}>
+      {null}
+    </StaffForm>
+  );
+}
+
+// -- listing takedowns (AD-03, D-032) ----------------------------------------------
+
+export function TakeDownForm({ offerId, t }: { offerId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.takeDown} onSubmit={(form) => browserApi.POST("/api/v1/admin/offers/{offer_id}/remove", { params: { path: { offer_id: offerId } }, body: { reason: text(form, "reason") } })}>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.takeDownReason}</span><input name="reason" required minLength={3} maxLength={1000} className={field} /></label>
+    </StaffForm>
+  );
+}
+
+export function LiftHoldForm({ offerId, t }: { offerId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.liftHold} onSubmit={(form) => browserApi.POST("/api/v1/admin/offers/{offer_id}/restore", { params: { path: { offer_id: offerId } }, body: { reason: text(form, "reason") } })}>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.liftReason}</span><input name="reason" required minLength={3} maxLength={1000} className={field} /></label>
+    </StaffForm>
+  );
+}

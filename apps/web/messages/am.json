@@ -460,6 +460,96 @@
     "expansion": "ደግሞ ፈልግ",
     "addSynonym": "ጨምር",
     "remove": "አስወግድ",
-    "noSynonyms": "እስካሁን ተመሳሳይ ቃላት የሉም።"
+    "noSynonyms": "እስካሁን ተመሳሳይ ቃላት የሉም።",
+    "navCatalog": "የቀረቡ ምርቶች",
+    "navInvitations": "ግብዣዎች",
+    "navListings": "የተነሱ ዝርዝሮች",
+    "navAudit": "የኦዲት መዝገብ",
+    "noAccess": "ሚናዎ እዚህ ገና የሥራ ወረፋ የለውም።",
+    "catalogTitle": "በሻጮች የቀረቡ ምርቶች",
+    "noProposals": "ለግምገማ የሚጠብቅ ምርት የለም።",
+    "proposedBySeller": "በሻጭ የቀረበ",
+    "proposedByStaff": "በሰራተኛ የተጨመረ",
+    "approveProduct": "አጽድቅና አትም",
+    "archiveProduct": "ውድቅ አድርግ",
+    "archiveNote": "ምክንያቱ (ሻጩ ያየዋል)",
+    "mergeInto": "ይህንን የጸደቀ ምርት ይደግማል",
+    "chooseProduct": "ምርት ይምረጡ",
+    "mergeProduct": "ከእሱ ጋር አዋህድ",
+    "invitationsTitle": "ለመሸጥ የተላኩ ግብዣዎች",
+    "invitePhone": "የሚጋበዘው ስልክ ቁጥር",
+    "inviteNote": "ማስታወሻ (ሰራተኞች ብቻ ያዩታል)",
+    "invite": "ግብዣውን ላክ",
+    "noInvitations": "ገና ግብዣ የለም።",
+    "expires": "የሚያበቃው {time}",
+    "used": "ጥቅም ላይ የዋለው {time}",
+    "revoked": "የተሰረዘው {time}",
+    "revoke": "ሰርዝ",
+    "listingsTitle": "የተነሱ ዝርዝሮች",
+    "heldTitle": "የተነሱ",
+    "noHeld": "የተነሳ ዝርዝር የለም።",
+    "takenDown": "የተነሳው {time}",
+    "heldReason": "ምክንያት፦ {reason}",
+    "liftHold": "እገዳውን አንሳ",
+    "liftReason": "ለምን ሊመለስ ይችላል",
+    "findListingTitle": "ዝርዝር አንሳ",
+    "productSlug": "የምርቱ የአድራሻ ስም",
+    "showOffers": "ቅናሾቹን አሳይ",
+    "noOffers": "በዚህ ምርት ላይ የቀጥታ ቅናሽ የለም።",
+    "productNotFound": "ይህ የአድራሻ ስም ያለው የጸደቀ ምርት የለም።",
+    "takeDown": "አንሳ",
+    "takeDownReason": "ምክንያቱ (ሻጩ ይነገረዋል)",
+    "price": "ዋጋ፦ {price}",
+    "auditTitle": "የኦዲት መዝገብ",
+    "filterTargetType": "የመዝገቡ ዓይነት",
+    "filterTargetId": "የመዝገቡ መለያ",
+    "filterAction": "ድርጊት (ለሙሉ ቡድን በነጥብ ይጨርሱ)",
+    "filter": "አጣራ",
+    "noAudit": "የሚዛመድ የለም።",
+    "older": "የቆዩ መዝገቦች",
+    "actorSystem": "የማርክኤክስ ሥርዓት",
+    "before": "በፊት",
+    "after": "በኋላ",
+    "auditLead": "እያንዳንዱ የተመዘገበ ድርጊት — በሰራተኞች፣ በተጠቃሚዎችና በሥርዓቱ — አዲሱ መጀመሪያ። እዚህ ምንም ሊቀየር አይችልም።",
+    "notAllowed": "ሚናዎ ይህንን ገጽ እንዲከፍት አይፈቀድለትም።"
+  },
+  "labels": {
+    "staffRole": {
+      "super_admin": "ዋና አስተዳዳሪ",
+      "operations": "ኦፕሬሽንስ",
+      "support": "ድጋፍ",
+      "catalogue": "የካታሎግ አስተባባሪ",
+      "finance": "ፋይናንስ"
+    },
+    "reviewState": {
+      "draft": "ረቂቅ",
+      "pending": "ግምገማ በመጠባበቅ ላይ",
+      "needs_documents": "ሰነዶች ተጠይቀዋል",
+      "approved": "ጸድቋል",
+      "rejected": "ውድቅ ሆኗል"
+    },
+    "sellerStatus": {
+      "applied": "አመልክቷል",
+      "active": "ንቁ",
+      "suspended": "ታግዷል",
+      "closed": "ተዘግቷል"
+    },
+    "documentStatus": {
+      "pending": "ገና አልተፈተሸም",
+      "accepted": "ተቀባይነት አግኝቷል",
+      "rejected": "ውድቅ ሆኗል"
+    },
+    "productStatus": {
+      "draft": "ረቂቅ",
+      "pending_review": "ግምገማ በመጠባበቅ ላይ",
+      "approved": "ጸድቋል",
+      "merged": "ተዋህዷል",
+      "archived": "ተቀምጧል"
+    },
+    "actorType": {
+      "staff": "ሰራተኛ",
+      "user": "ተጠቃሚ",
+      "system": "ሥርዓት"
+    }
   }
 }

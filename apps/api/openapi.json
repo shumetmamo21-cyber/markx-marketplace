@@ -2747,6 +2747,86 @@
         "title": "HandoverIn",
         "type": "object"
       },
+      "HeldOfferOut": {
+        "additionalProperties": false,
+        "description": "An offer staff took down and have not released (D-032).",
+        "properties": {
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "price_santim": {
+            "title": "Price Santim",
+            "type": "integer"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "removed_by_staff_at": {
+            "format": "date-time",
+            "title": "Removed By Staff At",
+            "type": "string"
+          },
+          "seller_id": {
+            "format": "uuid",
+            "title": "Seller Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "store_name": {
+            "title": "Store Name",
+            "type": "string"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "seller_id",
+          "store_slug",
+          "store_name",
+          "product_slug",
+          "product_name",
+          "variant_label",
+          "condition",
+          "price_santim",
+          "status",
+          "removed_by_staff_at",
+          "reason"
+        ],
+        "title": "HeldOfferOut",
+        "type": "object"
+      },
       "ImageOut": {
         "description": "A picture with its pipeline state, for staff and for the seller who\nuploaded it. `thumb_url` and `main_url` are set once it is `ready`.",
         "properties": {
@@ -10701,6 +10781,84 @@
         "summary": "Export",
         "tags": [
           "admin: exports"
+        ]
+      }
+    },
+    "/api/v1/admin/offers/held": {
+      "get": {
+        "description": "Listings under a staff takedown, newest first, with the reason given.",
+        "operationId": "list_held_offers_api_v1_admin_offers_held_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HeldOfferOut"
+                  },
+                  "title": "Response List Held Offers Api V1 Admin Offers Held Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Held Offers",
+        "tags": [
+          "admin: offers"
         ]
       }
     },

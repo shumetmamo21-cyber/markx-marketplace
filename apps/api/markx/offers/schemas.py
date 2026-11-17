@@ -163,3 +163,20 @@ class OfferStatusOut(ApiModel):
     id: uuid.UUID
     seller_id: uuid.UUID
     status: str
+
+
+class HeldOfferOut(ApiModel):
+    """An offer staff took down and have not released (D-032)."""
+
+    id: uuid.UUID
+    seller_id: uuid.UUID
+    store_slug: str
+    store_name: str
+    product_slug: str
+    product_name: str
+    variant_label: str
+    condition: str
+    price_santim: int
+    status: str
+    removed_by_staff_at: datetime
+    reason: str | None

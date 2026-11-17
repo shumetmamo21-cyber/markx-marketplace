@@ -460,6 +460,96 @@
     "expansion": "Also search for",
     "addSynonym": "Add",
     "remove": "Remove",
-    "noSynonyms": "No synonyms yet."
+    "noSynonyms": "No synonyms yet.",
+    "navCatalog": "Product proposals",
+    "navInvitations": "Invitations",
+    "navListings": "Listing takedowns",
+    "navAudit": "Audit trail",
+    "noAccess": "Your role has no work queue here yet.",
+    "catalogTitle": "Products proposed by sellers",
+    "noProposals": "No product is waiting for review.",
+    "proposedBySeller": "Proposed by a seller",
+    "proposedByStaff": "Added by staff",
+    "approveProduct": "Approve and publish",
+    "archiveProduct": "Turn it down",
+    "archiveNote": "Why (the seller sees this)",
+    "mergeInto": "It duplicates this approved product",
+    "chooseProduct": "Choose a product",
+    "mergeProduct": "Merge into it",
+    "invitationsTitle": "Invitations to sell",
+    "invitePhone": "Phone number to invite",
+    "inviteNote": "Note (only staff see it)",
+    "invite": "Send the invitation",
+    "noInvitations": "No invitation yet.",
+    "expires": "Expires {time}",
+    "used": "Used {time}",
+    "revoked": "Withdrawn {time}",
+    "revoke": "Withdraw",
+    "listingsTitle": "Listing takedowns",
+    "heldTitle": "Taken down",
+    "noHeld": "No listing is taken down.",
+    "takenDown": "Taken down {time}",
+    "heldReason": "Reason: {reason}",
+    "liftHold": "Lift the takedown",
+    "liftReason": "Why it may return",
+    "findListingTitle": "Take a listing down",
+    "productSlug": "Product link name (from its address)",
+    "showOffers": "Show its offers",
+    "noOffers": "No live offer on that product.",
+    "productNotFound": "No approved product has that link name.",
+    "takeDown": "Take down",
+    "takeDownReason": "Why (the seller is told)",
+    "price": "Price: {price}",
+    "auditTitle": "Audit trail",
+    "filterTargetType": "Kind of record",
+    "filterTargetId": "Record id",
+    "filterAction": "Action (end with a dot for a whole group)",
+    "filter": "Filter",
+    "noAudit": "Nothing matches.",
+    "older": "Older entries",
+    "actorSystem": "MarkX system",
+    "before": "Before",
+    "after": "After",
+    "auditLead": "Every recorded action, by staff, people and the system, newest first. Nothing here can be changed.",
+    "notAllowed": "Your role may not open this page."
+  },
+  "labels": {
+    "staffRole": {
+      "super_admin": "Super administrator",
+      "operations": "Operations",
+      "support": "Support",
+      "catalogue": "Catalogue curator",
+      "finance": "Finance"
+    },
+    "reviewState": {
+      "draft": "Draft",
+      "pending": "Waiting for review",
+      "needs_documents": "Documents requested",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "sellerStatus": {
+      "applied": "Applied",
+      "active": "Active",
+      "suspended": "Suspended",
+      "closed": "Closed"
+    },
+    "documentStatus": {
+      "pending": "Not yet checked",
+      "accepted": "Accepted",
+      "rejected": "Rejected"
+    },
+    "productStatus": {
+      "draft": "Draft",
+      "pending_review": "Waiting for review",
+      "approved": "Approved",
+      "merged": "Merged",
+      "archived": "Archived"
+    },
+    "actorType": {
+      "staff": "Staff",
+      "user": "User",
+      "system": "System"
+    }
   }
 }

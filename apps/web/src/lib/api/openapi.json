@@ -188,6 +188,76 @@
         "title": "AddressOut",
         "type": "object"
       },
+      "AlertOut": {
+        "properties": {
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "occurrences": {
+            "title": "Occurrences",
+            "type": "integer"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "source",
+          "severity",
+          "summary",
+          "details",
+          "first_seen_at",
+          "last_seen_at",
+          "occurrences",
+          "resolved_at"
+        ],
+        "title": "AlertOut",
+        "type": "object"
+      },
       "AliasIn": {
         "additionalProperties": false,
         "properties": {
@@ -784,6 +854,154 @@
         "title": "AttributeOut",
         "type": "object"
       },
+      "AuditEntryOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_type": {
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "after": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "actor_type",
+          "actor_user_id",
+          "action",
+          "target_type",
+          "target_id",
+          "before",
+          "after",
+          "request_id"
+        ],
+        "title": "AuditEntryOut",
+        "type": "object"
+      },
+      "Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "position": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post",
+        "type": "object"
+      },
+      "Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post",
+        "type": "object"
+      },
+      "Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post",
+        "type": "object"
+      },
+      "Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post",
+        "type": "object"
+      },
       "Body_upload_document_api_v1_seller__seller_id__documents_post": {
         "properties": {
           "doc_type": {
@@ -867,6 +1085,144 @@
           "name"
         ],
         "title": "BrandOut",
+        "type": "object"
+      },
+      "BusinessDashboardOut": {
+        "description": "AD-14. Money in santim; shares between 0 and 1, or null with nothing\nto divide.",
+        "properties": {
+          "answered_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered Share"
+          },
+          "completed_value_santim": {
+            "title": "Completed Value Santim",
+            "type": "integer"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "delivery_success_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Success Share"
+          },
+          "fees_santim": {
+            "title": "Fees Santim",
+            "type": "integer"
+          },
+          "fresh_price_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fresh Price Share"
+          },
+          "from_time": {
+            "format": "date-time",
+            "title": "From Time",
+            "type": "string"
+          },
+          "funnel": {
+            "$ref": "#/components/schemas/FunnelOut"
+          },
+          "live_offers": {
+            "title": "Live Offers",
+            "type": "integer"
+          },
+          "median_minutes_to_confirm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Minutes To Confirm"
+          },
+          "offers_per_product": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offers Per Product"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "problems_open": {
+            "title": "Problems Open",
+            "type": "integer"
+          },
+          "problems_opened": {
+            "title": "Problems Opened",
+            "type": "integer"
+          },
+          "products_with_offers": {
+            "title": "Products With Offers",
+            "type": "integer"
+          },
+          "seller_orders": {
+            "title": "Seller Orders",
+            "type": "integer"
+          },
+          "seller_orders_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Seller Orders By Status",
+            "type": "object"
+          },
+          "to_time": {
+            "format": "date-time",
+            "title": "To Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "days",
+          "from_time",
+          "to_time",
+          "orders",
+          "seller_orders",
+          "seller_orders_by_status",
+          "completed_value_santim",
+          "fees_santim",
+          "median_minutes_to_confirm",
+          "answered_share",
+          "delivery_success_share",
+          "problems_opened",
+          "problems_open",
+          "live_offers",
+          "products_with_offers",
+          "offers_per_product",
+          "fresh_price_share",
+          "funnel"
+        ],
+        "title": "BusinessDashboardOut",
         "type": "object"
       },
       "BuyerContactOut": {
@@ -2115,6 +2471,69 @@
         "title": "DispatchIn",
         "type": "object"
       },
+      "DispatchRowOut": {
+        "properties": {
+          "late": {
+            "title": "Late",
+            "type": "boolean"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "order_code": {
+            "title": "Order Code",
+            "type": "string"
+          },
+          "promised_by": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promised By"
+          },
+          "seller_order_id": {
+            "format": "uuid",
+            "title": "Seller Order Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "waiting_since": {
+            "format": "date-time",
+            "title": "Waiting Since",
+            "type": "string"
+          },
+          "zone_code": {
+            "title": "Zone Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seller_order_id",
+          "order_code",
+          "store_slug",
+          "zone_code",
+          "mode",
+          "status",
+          "waiting_since",
+          "promised_by",
+          "late"
+        ],
+        "title": "DispatchRowOut",
+        "type": "object"
+      },
       "DocumentLinkOut": {
         "additionalProperties": false,
         "properties": {
@@ -2272,6 +2691,34 @@
         "title": "EligibilityOut",
         "type": "object"
       },
+      "FunnelOut": {
+        "properties": {
+          "carts_filled": {
+            "title": "Carts Filled",
+            "type": "integer"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "searches": {
+            "title": "Searches",
+            "type": "integer"
+          },
+          "zero_result_searches": {
+            "title": "Zero Result Searches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "searches",
+          "zero_result_searches",
+          "carts_filled",
+          "orders"
+        ],
+        "title": "FunnelOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2298,6 +2745,223 @@
           "code"
         ],
         "title": "HandoverIn",
+        "type": "object"
+      },
+      "HeldOfferOut": {
+        "additionalProperties": false,
+        "description": "An offer staff took down and have not released (D-032).",
+        "properties": {
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "price_santim": {
+            "title": "Price Santim",
+            "type": "integer"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "removed_by_staff_at": {
+            "format": "date-time",
+            "title": "Removed By Staff At",
+            "type": "string"
+          },
+          "seller_id": {
+            "format": "uuid",
+            "title": "Seller Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "store_name": {
+            "title": "Store Name",
+            "type": "string"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "seller_id",
+          "store_slug",
+          "store_name",
+          "product_slug",
+          "product_name",
+          "variant_label",
+          "condition",
+          "price_santim",
+          "status",
+          "removed_by_staff_at",
+          "reason"
+        ],
+        "title": "HeldOfferOut",
+        "type": "object"
+      },
+      "ImageOut": {
+        "description": "A picture with its pipeline state, for staff and for the seller who\nuploaded it. `thumb_url` and `main_url` are set once it is `ready`.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "main_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Bytes"
+          },
+          "main_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Url"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "removed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed Reason"
+          },
+          "seller_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thumb_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Bytes"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "product_id",
+          "kind",
+          "seller_id",
+          "status",
+          "position",
+          "width",
+          "height",
+          "thumb_bytes",
+          "main_bytes",
+          "failure_reason",
+          "removed_reason",
+          "created_at",
+          "thumb_url",
+          "main_url"
+        ],
+        "title": "ImageOut",
         "type": "object"
       },
       "InvitationIn": {
@@ -2409,6 +3073,80 @@
           "revoked_at"
         ],
         "title": "InvitationOut",
+        "type": "object"
+      },
+      "JobOut": {
+        "properties": {
+          "consecutive_failures": {
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Result"
+          },
+          "last_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At"
+          },
+          "last_succeeded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Succeeded At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "title": "Next Run At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "next_run_at",
+          "last_started_at",
+          "last_succeeded_at",
+          "last_result",
+          "consecutive_failures",
+          "last_error"
+        ],
+        "title": "JobOut",
         "type": "object"
       },
       "LegalOut": {
@@ -2761,6 +3499,30 @@
         "title": "MergeIn",
         "type": "object"
       },
+      "ModerateReviewIn": {
+        "properties": {
+          "action": {
+            "enum": [
+              "publish",
+              "hide"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "ModerateReviewIn",
+        "type": "object"
+      },
       "ModerationIn": {
         "additionalProperties": false,
         "properties": {
@@ -2815,6 +3577,177 @@
           "created_at"
         ],
         "title": "MovementOut",
+        "type": "object"
+      },
+      "MyReviewOut": {
+        "description": "A review with its state, for its buyer, its seller and staff. The\nseller never sees the order code.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "held_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "moderation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moderation Reason"
+          },
+          "order_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Code"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
+          },
+          "order_item_id": {
+            "format": "uuid",
+            "title": "Order Item Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_rating": {
+            "title": "Product Rating",
+            "type": "integer"
+          },
+          "seller_rating": {
+            "title": "Seller Rating",
+            "type": "integer"
+          },
+          "seller_replied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Replied At"
+          },
+          "seller_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Reply"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_code",
+          "order_item_id",
+          "product_id",
+          "title",
+          "variant_label",
+          "store_slug",
+          "product_rating",
+          "seller_rating",
+          "body",
+          "status",
+          "held_reason",
+          "moderation_reason",
+          "seller_reply",
+          "seller_replied_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MyReviewOut",
+        "type": "object"
+      },
+      "NewStaffOut": {
+        "description": "The authenticator secret is shown here once and never again: the new\nmember scans `provisioning_uri` into their authenticator app.",
+        "properties": {
+          "provisioning_uri": {
+            "title": "Provisioning Uri",
+            "type": "string"
+          },
+          "staff": {
+            "$ref": "#/components/schemas/StaffAccountOut"
+          },
+          "totp_secret": {
+            "title": "Totp Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "staff",
+          "totp_secret",
+          "provisioning_uri"
+        ],
+        "title": "NewStaffOut",
         "type": "object"
       },
       "NotificationOut": {
@@ -3106,6 +4039,39 @@
         "title": "OpenProblemOut",
         "type": "object"
       },
+      "OpsStatusOut": {
+        "description": "Open alerts (critical first), every scheduled job, and the outbox\nmessages that are not done, by topic and status.",
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "open_alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Open Alerts",
+            "type": "array"
+          },
+          "outbox": {
+            "items": {
+              "$ref": "#/components/schemas/OutboxCountOut"
+            },
+            "title": "Outbox",
+            "type": "array"
+          }
+        },
+        "required": [
+          "open_alerts",
+          "jobs",
+          "outbox"
+        ],
+        "title": "OpsStatusOut",
+        "type": "object"
+      },
       "OptionIn": {
         "additionalProperties": false,
         "properties": {
@@ -3371,6 +4337,29 @@
           "code"
         ],
         "title": "OtpVerifyIn",
+        "type": "object"
+      },
+      "OutboxCountOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "status",
+          "count"
+        ],
+        "title": "OutboxCountOut",
         "type": "object"
       },
       "PaymentRecordIn": {
@@ -3783,6 +4772,53 @@
         "title": "ProblemOut",
         "type": "object"
       },
+      "ProblemPhotoOut": {
+        "description": "An evidence photo, with a link that works for five minutes and only\nfor the person it was issued to.",
+        "properties": {
+          "author_type": {
+            "title": "Author Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "url_expires_at": {
+            "format": "date-time",
+            "title": "Url Expires At",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "author_type",
+          "width",
+          "height",
+          "created_at",
+          "url",
+          "url_expires_at"
+        ],
+        "title": "ProblemPhotoOut",
+        "type": "object"
+      },
       "ProductCardOut": {
         "additionalProperties": false,
         "description": "The product card used everywhere (blueprint D.9).",
@@ -3861,6 +4897,36 @@
           "price_is_fresh"
         ],
         "title": "ProductCardOut",
+        "type": "object"
+      },
+      "ProductImagesOut": {
+        "description": "A product page's pictures: catalogue pictures first, then each store's\nreal photos, tagged with the store (D.5).",
+        "properties": {
+          "catalogue": {
+            "items": {
+              "$ref": "#/components/schemas/PublicImageOut"
+            },
+            "title": "Catalogue",
+            "type": "array"
+          },
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "real_photos": {
+            "items": {
+              "$ref": "#/components/schemas/RealPhotoOut"
+            },
+            "title": "Real Photos",
+            "type": "array"
+          }
+        },
+        "required": [
+          "product_slug",
+          "catalogue",
+          "real_photos"
+        ],
+        "title": "ProductImagesOut",
         "type": "object"
       },
       "ProductIn": {
@@ -4178,6 +5244,31 @@
         "title": "ProductRequestOut",
         "type": "object"
       },
+      "ProductReviewsOut": {
+        "properties": {
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewOut"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RatingSummaryOut"
+          }
+        },
+        "required": [
+          "product_slug",
+          "summary",
+          "reviews"
+        ],
+        "title": "ProductReviewsOut",
+        "type": "object"
+      },
       "ProductTextIn": {
         "additionalProperties": false,
         "properties": {
@@ -4267,6 +5358,125 @@
           "status"
         ],
         "title": "ProposalOut",
+        "type": "object"
+      },
+      "PublicImageOut": {
+        "properties": {
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "main_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Url"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height",
+          "thumb_url",
+          "main_url"
+        ],
+        "title": "PublicImageOut",
+        "type": "object"
+      },
+      "PublicReviewOut": {
+        "description": "A published review as anyone sees it: from a verified buyer, never\nwith their name or phone number.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "product_rating": {
+            "title": "Product Rating",
+            "type": "integer"
+          },
+          "seller_rating": {
+            "title": "Seller Rating",
+            "type": "integer"
+          },
+          "seller_replied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Replied At"
+          },
+          "seller_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Reply"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "product_rating",
+          "seller_rating",
+          "body",
+          "variant_label",
+          "store_slug",
+          "created_at",
+          "seller_reply",
+          "seller_replied_at"
+        ],
+        "title": "PublicReviewOut",
         "type": "object"
       },
       "PublicStoreOut": {
@@ -4757,6 +5967,212 @@
         "title": "RateOut",
         "type": "object"
       },
+      "RatingSummaryOut": {
+        "description": "`average` has two decimals, or is null with no review; `stars` counts\nthe reviews that gave each number of stars, \"1\" to \"5\".",
+        "properties": {
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "stars": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Stars",
+            "type": "object"
+          }
+        },
+        "required": [
+          "count",
+          "average",
+          "stars"
+        ],
+        "title": "RatingSummaryOut",
+        "type": "object"
+      },
+      "RealPhotoOut": {
+        "properties": {
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "main_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Url"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height",
+          "thumb_url",
+          "main_url",
+          "store_slug"
+        ],
+        "title": "RealPhotoOut",
+        "type": "object"
+      },
+      "RemoveImageIn": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RemoveImageIn",
+        "type": "object"
+      },
+      "ReportIn": {
+        "description": "What is reported, and why. A store is named by its id or its link\nname (`store_slug`, as on its page); everything else by its id.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReportReason"
+          },
+          "store_slug": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Slug"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/ReportTarget"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ReportIn",
+        "type": "object"
+      },
+      "ReportOut": {
+        "description": "The reporter learns only that the report was received.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at"
+        ],
+        "title": "ReportOut",
+        "type": "object"
+      },
+      "ReportReason": {
+        "description": "Why someone flags a listing, store or review (C-30; D-067).",
+        "enum": [
+          "counterfeit",
+          "prohibited",
+          "wrong_information",
+          "offensive",
+          "fraud",
+          "spam",
+          "other"
+        ],
+        "title": "ReportReason",
+        "type": "string"
+      },
+      "ReportTarget": {
+        "enum": [
+          "product",
+          "offer",
+          "store",
+          "review"
+        ],
+        "title": "ReportTarget",
+        "type": "string"
+      },
       "ResolveProblemIn": {
         "additionalProperties": false,
         "properties": {
@@ -4785,6 +6201,35 @@
           "reason"
         ],
         "title": "ResolveProblemIn",
+        "type": "object"
+      },
+      "ResolveReportIn": {
+        "properties": {
+          "all_on_target": {
+            "default": true,
+            "title": "All On Target",
+            "type": "boolean"
+          },
+          "note": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Note",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "actioned",
+              "dismissed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "note"
+        ],
+        "title": "ResolveReportIn",
         "type": "object"
       },
       "RestrictedTermIn": {
@@ -4832,6 +6277,101 @@
           "reason"
         ],
         "title": "RestrictedTermOut",
+        "type": "object"
+      },
+      "ReviewIn": {
+        "properties": {
+          "body": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Body",
+            "type": "string"
+          },
+          "product_rating": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Product Rating",
+            "type": "integer"
+          },
+          "seller_rating": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Seller Rating",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_rating",
+          "seller_rating"
+        ],
+        "title": "ReviewIn",
+        "type": "object"
+      },
+      "ReviewReplyIn": {
+        "properties": {
+          "body": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "ReviewReplyIn",
+        "type": "object"
+      },
+      "ReviewableItemOut": {
+        "properties": {
+          "order_code": {
+            "title": "Order Code",
+            "type": "string"
+          },
+          "order_id": {
+            "format": "uuid",
+            "title": "Order Id",
+            "type": "string"
+          },
+          "order_item_id": {
+            "format": "uuid",
+            "title": "Order Item Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "review_until": {
+            "format": "date-time",
+            "title": "Review Until",
+            "type": "string"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "order_code",
+          "order_item_id",
+          "product_id",
+          "title",
+          "variant_label",
+          "store_slug",
+          "review_until"
+        ],
+        "title": "ReviewableItemOut",
         "type": "object"
       },
       "SearchOut": {
@@ -5933,6 +7473,92 @@
         "title": "SessionOut",
         "type": "object"
       },
+      "SettingIn": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "SettingIn",
+        "type": "object"
+      },
+      "SettingOut": {
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Default"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "is_overridden": {
+            "title": "Is Overridden",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "may_change": {
+            "title": "May Change",
+            "type": "boolean"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "description",
+          "default",
+          "value",
+          "is_overridden",
+          "may_change"
+        ],
+        "title": "SettingOut",
+        "type": "object"
+      },
       "ShipmentOut": {
         "additionalProperties": false,
         "description": "The delivery of one seller order (J.10). The handover code is never here.",
@@ -6061,6 +7687,125 @@
           "display"
         ],
         "title": "SpecOut",
+        "type": "object"
+      },
+      "StaffAccountOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "locked_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked Until"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "phone_last4": {
+            "title": "Phone Last4",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "phone_last4",
+          "role",
+          "is_active",
+          "locked_until",
+          "created_at"
+        ],
+        "title": "StaffAccountOut",
+        "type": "object"
+      },
+      "StaffActiveIn": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "active",
+          "reason"
+        ],
+        "title": "StaffActiveIn",
+        "type": "object"
+      },
+      "StaffCreateIn": {
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 200,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          },
+          "phone": {
+            "maxLength": 24,
+            "minLength": 9,
+            "title": "Phone",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/StaffRole"
+          }
+        },
+        "required": [
+          "phone",
+          "name",
+          "role",
+          "password"
+        ],
+        "title": "StaffCreateIn",
         "type": "object"
       },
       "StaffOut": {
@@ -6290,6 +8035,153 @@
         "title": "StaffProductRow",
         "type": "object"
       },
+      "StaffReportOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "from_signed_in_person": {
+            "title": "From Signed In Person",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "open_reports_on_target": {
+            "title": "Open Reports On Target",
+            "type": "integer"
+          },
+          "product_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Slug"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "store_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Slug"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_type",
+          "target_id",
+          "product_slug",
+          "store_slug",
+          "excerpt",
+          "reason",
+          "note",
+          "from_signed_in_person",
+          "status",
+          "open_reports_on_target",
+          "created_at",
+          "resolution_note",
+          "resolved_at"
+        ],
+        "title": "StaffReportOut",
+        "type": "object"
+      },
+      "StaffRole": {
+        "enum": [
+          "super_admin",
+          "operations",
+          "support",
+          "catalogue",
+          "finance"
+        ],
+        "title": "StaffRole",
+        "type": "string"
+      },
+      "StaffRoleIn": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/StaffRole"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "StaffRoleIn",
+        "type": "object"
+      },
       "StaffSignInIn": {
         "additionalProperties": false,
         "properties": {
@@ -6468,6 +8360,31 @@
           "telegram_channel"
         ],
         "title": "StoreOut",
+        "type": "object"
+      },
+      "StoreReviewsOut": {
+        "properties": {
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewOut"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RatingSummaryOut"
+          }
+        },
+        "required": [
+          "store_slug",
+          "summary",
+          "reviews"
+        ],
+        "title": "StoreReviewsOut",
         "type": "object"
       },
       "StoreUpdateIn": {
@@ -7066,6 +8983,177 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/audit-log": {
+      "get": {
+        "description": "Newest first. Page with `before` set to the last id received. `action`\nending in a dot matches every action under it (\"seller.\").",
+        "operationId": "audit_log_api_v1_admin_audit_log_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "pattern": "^[a-z_]+(\\.[a-z_]+)*\\.?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "pattern": "^[a-z_]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEntryOut"
+                  },
+                  "title": "Response Audit Log Api V1 Admin Audit Log Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Audit Log",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/attributes": {
       "get": {
         "operationId": "all_attributes_api_v1_admin_catalog_attributes_get",
@@ -7456,6 +9544,60 @@
         ]
       }
     },
+    "/api/v1/admin/catalog/images/{image_id}/remove": {
+      "post": {
+        "description": "Take a catalogue picture or a seller's photo down, with a reason (AD-03).",
+        "operationId": "remove_image_api_v1_admin_catalog_images__image_id__remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveImageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Image",
+        "tags": [
+          "admin: pictures"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/products": {
       "get": {
         "operationId": "list_products_api_v1_admin_catalog_products_get",
@@ -7840,6 +9982,106 @@
         ]
       }
     },
+    "/api/v1/admin/catalog/products/{product_id}/images": {
+      "get": {
+        "description": "Every picture of a product in every state, for moderation (AD-03).",
+        "operationId": "staff_product_images_api_v1_admin_catalog_products__product_id__images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImageOut"
+                  },
+                  "title": "Response Staff Product Images Api V1 Admin Catalog Products  Product Id  Images Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Staff Product Images",
+        "tags": [
+          "admin: pictures"
+        ]
+      },
+      "post": {
+        "description": "Accepted for processing: the picture is `processing` until the worker\nhas rendered it, then `ready`.",
+        "operationId": "add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_catalogue_image_api_v1_admin_catalog_products__product_id__images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Catalogue Image",
+        "tags": [
+          "admin: pictures"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/products/{product_id}/merge": {
       "post": {
         "operationId": "merge_api_v1_admin_catalog_products__product_id__merge_post",
@@ -8103,6 +10345,51 @@
         "summary": "Remove Restricted Term",
         "tags": [
           "admin: catalog"
+        ]
+      }
+    },
+    "/api/v1/admin/dashboard": {
+      "get": {
+        "operationId": "dashboard_api_v1_admin_dashboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 366,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessDashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard",
+        "tags": [
+          "admin: operations"
         ]
       }
     },
@@ -8382,6 +10669,199 @@
         ]
       }
     },
+    "/api/v1/admin/dispatch-board": {
+      "get": {
+        "description": "Parts waiting to leave a shop by rider or courier, oldest first (AD-05).",
+        "operationId": "dispatch_board_api_v1_admin_dispatch_board_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispatchRowOut"
+                  },
+                  "title": "Response Dispatch Board Api V1 Admin Dispatch Board Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dispatch Board",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/api/v1/admin/exports/{kind}": {
+      "get": {
+        "description": "Whole days in Addis Ababa time, at most 366. UTF-8 with a byte-order\nmark; amounts in exact birr and in santim. Every export is audit-logged.",
+        "operationId": "export_api_v1_admin_exports__kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "fees",
+                "ledger",
+                "seller-orders",
+                "seller-balances"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "first_day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "First Day",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "last_day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Last Day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "The CSV file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export",
+        "tags": [
+          "admin: exports"
+        ]
+      }
+    },
+    "/api/v1/admin/offers/held": {
+      "get": {
+        "description": "Listings under a staff takedown, newest first, with the reason given.",
+        "operationId": "list_held_offers_api_v1_admin_offers_held_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HeldOfferOut"
+                  },
+                  "title": "Response List Held Offers Api V1 Admin Offers Held Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Held Offers",
+        "tags": [
+          "admin: offers"
+        ]
+      }
+    },
     "/api/v1/admin/offers/{offer_id}/remove": {
       "post": {
         "operationId": "staff_remove_offer_api_v1_admin_offers__offer_id__remove_post",
@@ -8486,6 +10966,77 @@
         "summary": "Staff Restore Offer",
         "tags": [
           "admin: offers"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/alerts": {
+      "get": {
+        "operationId": "recent_alerts_api_v1_admin_ops_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlertOut"
+                  },
+                  "title": "Response Recent Alerts Api V1 Admin Ops Alerts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recent Alerts",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/status": {
+      "get": {
+        "description": "What is wrong now, and the machinery behind it.",
+        "operationId": "ops_status_api_v1_admin_ops_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ops Status",
+        "tags": [
+          "admin: operations"
         ]
       }
     },
@@ -8600,6 +11151,54 @@
         "summary": "Staff Dispatch Seller Order",
         "tags": [
           "admin: orders"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/seller-orders/{seller_order_id}/problem/photos": {
+      "get": {
+        "description": "The evidence both sides added, each with a link for this member of staff.",
+        "operationId": "staff_problem_photos_api_v1_admin_orders_seller_orders__seller_order_id__problem_photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProblemPhotoOut"
+                  },
+                  "title": "Response Staff Problem Photos Api V1 Admin Orders Seller Orders  Seller Order Id  Problem Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Staff Problem Photos",
+        "tags": [
+          "admin: pictures"
         ]
       }
     },
@@ -8785,6 +11384,313 @@
         "summary": "Staff Read Order",
         "tags": [
           "admin: orders"
+        ]
+      }
+    },
+    "/api/v1/admin/reports": {
+      "get": {
+        "description": "Open reports oldest first (page with `before` = the last id: the next\nones after it); closed ones newest first (AD-16).",
+        "operationId": "report_queue_api_v1_admin_reports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "pattern": "^(open|actioned|dismissed)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(product|offer|store|review)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StaffReportOut"
+                  },
+                  "title": "Response Report Queue Api V1 Admin Reports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Queue",
+        "tags": [
+          "admin: reports"
+        ]
+      }
+    },
+    "/api/v1/admin/reports/{report_id}/resolve": {
+      "post": {
+        "description": "`actioned` or `dismissed`, with a note; by default every open report on\nthe same target. Returns the reports it closed.",
+        "operationId": "resolve_report_api_v1_admin_reports__report_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveReportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StaffReportOut"
+                  },
+                  "title": "Response Resolve Report Api V1 Admin Reports  Report Id  Resolve Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Report",
+        "tags": [
+          "admin: reports"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews": {
+      "get": {
+        "description": "Held reviews by default: what a pattern check stopped (AD-12).",
+        "operationId": "review_queue_api_v1_admin_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "held",
+              "pattern": "^(held|published|hidden)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyReviewOut"
+                  },
+                  "title": "Response Review Queue Api V1 Admin Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Queue",
+        "tags": [
+          "admin: reviews"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{review_id}/moderate": {
+      "post": {
+        "description": "Publish or hide, with a written reason; audit-logged.",
+        "operationId": "moderate_review_api_v1_admin_reviews__review_id__moderate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerateReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Moderate Review",
+        "tags": [
+          "admin: reviews"
         ]
       }
     },
@@ -9738,6 +12644,259 @@
         ]
       }
     },
+    "/api/v1/admin/settings": {
+      "get": {
+        "description": "Every switch and limit with its default and current value, and whether\nthis member of staff may change it: the super administrator any, and\noperations the risk limits (C.4).",
+        "operationId": "settings_api_v1_admin_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SettingOut"
+                  },
+                  "title": "Response Settings Api V1 Admin Settings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Settings",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/{key}": {
+      "put": {
+        "description": "Audit-logged with the value before and after.",
+        "operationId": "change_setting_api_v1_admin_settings__key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "maxLength": 80,
+              "pattern": "^[a-z_]+\\.[a-z_]+$",
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Setting",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/api/v1/admin/staff": {
+      "get": {
+        "operationId": "list_staff_api_v1_admin_staff_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StaffAccountOut"
+                  },
+                  "title": "Response List Staff Api V1 Admin Staff Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Staff",
+        "tags": [
+          "admin: operations"
+        ]
+      },
+      "post": {
+        "operationId": "create_staff_api_v1_admin_staff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewStaffOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Staff",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/api/v1/admin/staff/{staff_id}/active": {
+      "post": {
+        "description": "Deactivating takes effect on the member's next request.",
+        "operationId": "set_staff_active_api_v1_admin_staff__staff_id__active_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "staff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Staff Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffActiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffAccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Staff Active",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/api/v1/admin/staff/{staff_id}/role": {
+      "post": {
+        "description": "Ends the member's staff sessions: a new role needs a new sign-in.",
+        "operationId": "change_staff_role_api_v1_admin_staff__staff_id__role_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "staff_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Staff Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffRoleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffAccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Staff Role",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
     "/api/v1/auth/otp/request": {
       "post": {
         "operationId": "request_otp_api_v1_auth_otp_request_post",
@@ -10397,6 +13556,51 @@
         ]
       }
     },
+    "/api/v1/catalog/products/{slug}/images": {
+      "get": {
+        "description": "Ready pictures only. Catalogue pictures in their order, then real\nphotos from stores that may publish, each with its store.",
+        "operationId": "product_images_api_v1_catalog_products__slug__images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductImagesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Images",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/products/{slug}/offers": {
       "get": {
         "description": "Every seller's live offer for a product, ranked for the buyer's zone.",
@@ -10469,6 +13673,91 @@
           }
         },
         "summary": "Product Offers",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/{slug}/reviews": {
+      "get": {
+        "description": "Published reviews, newest first; page with `before` set to the last id.\nThe summary is the product's rating totals.",
+        "operationId": "product_reviews_api_v1_catalog_products__slug__reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductReviewsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Reviews",
         "tags": [
           "catalog"
         ]
@@ -10580,6 +13869,90 @@
           }
         },
         "summary": "Store Price List",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/stores/{slug}/reviews": {
+      "get": {
+        "operationId": "store_reviews_api_v1_catalog_stores__slug__reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreReviewsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Store Reviews",
         "tags": [
           "catalog"
         ]
@@ -10834,6 +14207,26 @@
           }
         },
         "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/healthz/worker": {
+      "get": {
+        "description": "503 when no scheduled job has started for five minutes: the worker is\ndown or stuck (F.12; P2: \"an outage alerts the founder\"). Point the\noutside uptime monitor here as well as at `/healthz`.",
+        "operationId": "worker_health_api_v1_healthz_worker_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Worker Health",
         "tags": [
           "health"
         ]
@@ -11247,6 +14640,81 @@
         ]
       }
     },
+    "/api/v1/me/orders/{order_id}/items/{item_id}/review": {
+      "post": {
+        "description": "Rate the product and the seller of one item of a completed order (C-18).",
+        "operationId": "write_review_api_v1_me_orders__order_id__items__item_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Review",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
     "/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/alternatives": {
       "get": {
         "description": "The next-best offer for each line of a part the seller declined or let\nexpire (C-26).",
@@ -11593,6 +15061,287 @@
         ]
       }
     },
+    "/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/problem/photos": {
+      "get": {
+        "operationId": "my_problem_photos_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProblemPhotoOut"
+                  },
+                  "title": "Response My Problem Photos Api V1 Me Orders  Order Id  Seller Orders  Seller Order Id  Problem Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Problem Photos",
+        "tags": [
+          "orders"
+        ]
+      },
+      "post": {
+        "description": "The buyer's photo evidence on their own open problem (C-16).",
+        "operationId": "add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_my_problem_photo_api_v1_me_orders__order_id__seller_orders__seller_order_id__problem_photos_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemPhotoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add My Problem Photo",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/me/reviews": {
+      "get": {
+        "operationId": "my_reviews_api_v1_me_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyReviewOut"
+                  },
+                  "title": "Response My Reviews Api V1 Me Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Reviews",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/me/reviews/pending": {
+      "get": {
+        "description": "Items of completed orders waiting for a review, while the window is open.",
+        "operationId": "reviewable_api_v1_me_reviews_pending_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewableItemOut"
+                  },
+                  "title": "Response Reviewable Api V1 Me Reviews Pending Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reviewable",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/me/reviews/{review_id}": {
+      "put": {
+        "description": "Until the seller replies or the window closes.",
+        "operationId": "edit_review_api_v1_me_reviews__review_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Review",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
     "/api/v1/me/telegram": {
       "post": {
         "operationId": "link_telegram_api_v1_me_telegram_post",
@@ -11634,6 +15383,110 @@
         ]
       }
     },
+    "/api/v1/media/{key}": {
+      "get": {
+        "description": "Rendered product pictures, served by the API on a laptop and in tests\nonly. A real server serves them from the CDN's cookieless domain (F.6).",
+        "operationId": "media_api_v1_media__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Media",
+        "tags": [
+          "dev"
+        ]
+      }
+    },
+    "/api/v1/problem-photos/{photo_id}/content": {
+      "get": {
+        "description": "The photo behind a signed link. The link alone is not enough: the same\nperson it was issued to must be signed in, and still be allowed.",
+        "operationId": "read_problem_photo_api_v1_problem_photos__photo_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Photo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expires",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Expires",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "signature",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 20,
+              "title": "Signature",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Problem Photo",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/v1/product-requests": {
       "post": {
         "operationId": "request_a_product_api_v1_product_requests_post",
@@ -11672,6 +15525,48 @@
         "summary": "Request A Product",
         "tags": [
           "search"
+        ]
+      }
+    },
+    "/api/v1/reports": {
+      "post": {
+        "description": "Flag a product, an offer, a store or a review (C-30). Signed in or not;\nlimited per network address, and per person when signed in.",
+        "operationId": "report_api_v1_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report",
+        "tags": [
+          "reports"
         ]
       }
     },
@@ -13779,6 +17674,125 @@
         ]
       }
     },
+    "/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/photos": {
+      "get": {
+        "operationId": "seller_problem_photos_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProblemPhotoOut"
+                  },
+                  "title": "Response Seller Problem Photos Api V1 Seller  Seller Id  Orders  Seller Order Id  Problem Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seller Problem Photos",
+        "tags": [
+          "seller: pictures"
+        ]
+      },
+      "post": {
+        "description": "The seller's evidence on a reported problem, while it is open.",
+        "operationId": "add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemPhotoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Seller Problem Photo",
+        "tags": [
+          "seller: pictures"
+        ]
+      }
+    },
     "/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/reply": {
       "post": {
         "description": "The seller's answer to a problem the buyer reported (S-16).",
@@ -14094,6 +18108,59 @@
         ]
       }
     },
+    "/api/v1/seller/{seller_id}/photos/{image_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_seller_photo_api_v1_seller__seller_id__photos__image_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Seller Photo",
+        "tags": [
+          "seller: pictures"
+        ]
+      }
+    },
     "/api/v1/seller/{seller_id}/product-proposals": {
       "post": {
         "description": "A seller proposes a product missing from the catalogue. It is shown to\nnobody until catalogue staff approve it or merge it into an existing one.",
@@ -14145,6 +18212,289 @@
         "summary": "Propose Product",
         "tags": [
           "seller: offers"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/products/{product_id}/photos": {
+      "get": {
+        "description": "This store's own photos of one product, in every state.",
+        "operationId": "seller_photos_api_v1_seller__seller_id__products__product_id__photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImageOut"
+                  },
+                  "title": "Response Seller Photos Api V1 Seller  Seller Id  Products  Product Id  Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seller Photos",
+        "tags": [
+          "seller: pictures"
+        ]
+      },
+      "post": {
+        "description": "A real photo of a product this store has an offer for (D.5, S-06).",
+        "operationId": "add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_seller_photo_api_v1_seller__seller_id__products__product_id__photos_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Seller Photo",
+        "tags": [
+          "seller: pictures"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/reviews": {
+      "get": {
+        "description": "This store's reviews, published or hidden by staff, newest first.",
+        "operationId": "seller_reviews_api_v1_seller__seller_id__reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyReviewOut"
+                  },
+                  "title": "Response Seller Reviews Api V1 Seller  Seller Id  Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seller Reviews",
+        "tags": [
+          "seller: reviews"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/reviews/{review_id}/reply": {
+      "post": {
+        "description": "One reply, which the store may reword (S-16). A store cannot remove a review.",
+        "operationId": "reply_to_review_api_v1_seller__seller_id__reviews__review_id__reply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewReplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reply To Review",
+        "tags": [
+          "seller: reviews"
         ]
       }
     },

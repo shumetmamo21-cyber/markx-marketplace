@@ -1565,6 +1565,52 @@ deadlines use), at most 366 days:
 - **Not done:** seller statements (S-14, AD-11) are Release 2; payouts and
   refunds have no rows to export in Release 1.
 
+## D-069 The takedown queue: every listing under a staff hold, with its reason
+
+**Follows** blueprint D.18 (AD-03), C.4 and D-032. **Accepted.**
+
+`GET /admin/offers/held` lists the offers under a staff takedown, newest
+takedown first, for `moderate_listings` (super administrator, operations,
+catalogue). Each row has the store, the product and version in the asked
+language, the condition, the price, when it was taken down and the reason
+staff gave (read from the latest `offer.staff_remove` audit entry). A
+seller's own removal is not in it. Paging by cursor (`before`, the last id of
+a page); a cursor that is not a held offer (lifted since, or never one) ends
+the list instead of starting it again, so a client cannot loop. It is where
+`POST /admin/offers/{id}/restore` is used.
+
+The ninth session's own audit-log route was dropped before it was pushed:
+D-065's `GET /admin/audit-log` already does that job and is the one the web
+app uses.
+
+## D-070 The admin dashboard shows each role only its own queues, in words
+
+**Follows** blueprint I.4 ("queues first"), C.4 and D-055. **Accepted.**
+
+- **One menu table** (`apps/web/src/app/[lang]/admin/(desk)/menu.ts`): each
+  queue with the capability that opens it, the same capability the API
+  checks. The admin home sends a person to the first queue their role may
+  open. Before this it always sent them to Problems, which catalogue and
+  finance staff may not open. A role with no queue sees a sentence saying
+  so; a page opened by its address that the API refuses says so too, instead
+  of showing an empty list.
+- **Codes in words.** Staff roles, seller statuses, review states, document
+  and product statuses and actor types are shown through `codeLabel` and the
+  `labels` group of both message files; a code the app does not know yet is
+  shown as it is rather than hidden. A unit test lists every code the API
+  defines and fails if one has no words in either language.
+- **New screens**, each behind its capability: product proposals
+  (`curate_catalogue`: approve, turn down with a note, or merge into an
+  approved product), invitations (`review_sellers`: invite a phone number,
+  withdraw an open invitation), listing takedowns (`moderate_listings`: find
+  a product's live offers by its link name, take one down with a reason,
+  lift a hold) and the audit trail (`read_audit_log`, over D-065's route:
+  filters by kind of record, record, action or action family, and an
+  "older entries" cursor). The web app holds no rule: each form sends the
+  person's choice and shows the API's refusal in words.
+- The Amharic text was drafted by an AI, like the rest; it needs the
+  native-speaker review the blueprint already requires (I.3).
+
 ---
 
 ## Decisions that need the founder

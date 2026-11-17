@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from markx.audit.models import AuditLog
 from markx.catalog.models import Product, ProductStatus, ProductTranslation, ProductVariant
 from markx.catalog.selectors import resolve_merged, variant_labels
 from markx.core import settings_store
@@ -386,3 +387,64 @@ def store_price_list(
         row["variant_label"] = labels.get(variant.id, "")
         out.append(row)
     return out
+
+
+def held_offers(
+    db: Session, language: str, *, before: uuid.UUID | None, limit: int
+) -> list[dict[str, Any]]:
+    """Offers under a staff takedown (D-032), newest takedown first, with the
+    reason staff gave, for the moderation queue where a hold is lifted."""
+    query = (
+        select(Offer, ProductVariant, Product, Store)
+        .join(ProductVariant, ProductVariant.id == Offer.variant_id)
+        .join(Product, Product.id == ProductVariant.product_id)
+        .join(Store, Store.seller_id == Offer.seller_id)
+        .where(Offer.removed_by_staff_at.is_not(None))
+        .order_by(Offer.removed_by_staff_at.desc(), Offer.id.desc())
+        .limit(limit)
+    )
+    if before is not None:
+        held_at = db.scalar(select(Offer.removed_by_staff_at).where(Offer.id == before))
+        if held_at is None:
+            # A cursor that is not a held offer (lifted since, or never one)
+            # ends the list rather than starting it again.
+            return []
+        query = query.where(
+            (Offer.removed_by_staff_at < held_at)
+            | ((Offer.removed_by_staff_at == held_at) & (Offer.id < before))
+        )
+    rows = db.execute(query).all()
+    products = {product.id: product for _, _, product, _ in rows}
+    names = _product_names(db, set(products), language)
+    labels = variant_labels(db, products.values(), language)
+    reasons: dict[str, str] = {}
+    if rows:
+        for target_id, after in db.execute(
+            select(AuditLog.target_id, AuditLog.after)
+            .where(
+                AuditLog.action == "offer.staff_remove",
+                AuditLog.target_type == "offer",
+                AuditLog.target_id.in_([str(offer.id) for offer, *_ in rows]),
+            )
+            .order_by(AuditLog.id)
+        ).all():
+            # The latest takedown's reason wins.
+            if isinstance(after, dict) and isinstance(after.get("reason"), str):
+                reasons[target_id] = after["reason"]
+    return [
+        {
+            "id": offer.id,
+            "seller_id": offer.seller_id,
+            "store_slug": store.slug,
+            "store_name": store.name,
+            "product_slug": product.slug,
+            "product_name": names.get(product.id, ""),
+            "variant_label": labels.get(variant.id, ""),
+            "condition": offer.condition,
+            "price_santim": offer.price_santim,
+            "status": offer.status,
+            "removed_by_staff_at": offer.removed_by_staff_at,
+            "reason": reasons.get(str(offer.id)),
+        }
+        for offer, variant, product, store in rows
+    ]
