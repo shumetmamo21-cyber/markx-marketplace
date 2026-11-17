@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { OrderActions } from "@/components/OrderActions";
+import { ReviewForm } from "@/components/ReviewForm";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
@@ -17,9 +19,15 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
   if (!(await getMe())) redirect(`/${lang}/sign-in?next=/${lang}/orders/${id}`);
   const t = await getMessages(lang);
   const api = await serverApi();
-  const { data: order, response } = await api.GET("/api/v1/me/orders/{order_id}", { params: { path: { order_id: id }, query: { lang } } });
+  const [{ data: order, response }, pending] = await Promise.all([
+    api.GET("/api/v1/me/orders/{order_id}", { params: { path: { order_id: id }, query: { lang } } }),
+    api.GET("/api/v1/me/reviews/pending", { params: { query: { lang } } }),
+  ]);
   if (response.status === 404 || response.status === 422 || !order) notFound();
   const o = t.orders;
+  // Items the API says are waiting for a review (completed, window open).
+  const toRate = new Set((pending.data ?? []).filter((item) => item.order_id === order.id).map((item) => item.order_item_id));
+  const reviewText = { reviews: t.reviews, apiErrors: t.apiErrors };
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -69,6 +77,12 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
               <li className="flex justify-between gap-3 text-slate"><span>{o.deliveryFee}</span><span className="price">{formatPrice(part.delivery_fee_santim, lang)}</span></li>
               <li className="flex justify-between gap-3 font-semibold"><span>{o.partTotal}</span><span className="price">{formatPrice(part.total_santim, lang)}</span></li>
             </ul>
+            {part.items.filter((item) => toRate.has(item.id)).map((item) => (
+              <details key={item.id} className="mt-3 rounded-card border border-adey p-3">
+                <summary className="flex min-h-12 cursor-pointer items-center font-semibold">{t.reviews.rate}: {item.title}</summary>
+                <ReviewForm target={{ kind: "write", orderId: order.id, itemId: item.id }} t={reviewText} />
+              </details>
+            ))}
             {part.payment_method ? (
               <p className="mt-1 text-sm text-slate">
                 {fill(o.payment, { method: t.checkout[`pay_${part.payment_method}` as "pay_cash"] ?? part.payment_method })}
@@ -108,6 +122,8 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
           />
         </section>
       ))}
+
+      <p><Link href={`/${lang}/reviews`} className="inline-flex min-h-12 items-center font-semibold underline">{t.reviews.mine}</Link></p>
 
       {order.tracking_path ? (
         <section className="space-y-1 text-sm">

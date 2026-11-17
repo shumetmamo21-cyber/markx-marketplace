@@ -21,7 +21,10 @@ export default async function OrdersPage({ params }: PageProps<"/[lang]/orders">
   const orders = data ?? [];
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <h1 className="text-2xl font-extrabold">{t.orders.title}</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-2xl font-extrabold">{t.orders.title}</h1>
+        <Link href={`/${lang}/reviews`} className="inline-flex min-h-12 items-center font-semibold underline">{t.reviews.pendingTitle}</Link>
+      </div>
       {orders.length === 0 ? <p>{t.orders.empty}</p> : null}
       <ul className="space-y-3">
         {orders.map((order) => (

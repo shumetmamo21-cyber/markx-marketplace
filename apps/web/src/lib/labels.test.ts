@@ -25,6 +25,7 @@ const CODES = {
   reportReason: ["counterfeit", "prohibited", "wrong_information", "offensive", "fraud", "spam", "other"],
   imageKind: ["catalogue", "seller_real_photo"],
   imageStatus: ["processing", "ready", "failed", "removed"],
+  author: ["buyer", "seller", "staff"],
 } as const;
 
 describe("code labels", () => {

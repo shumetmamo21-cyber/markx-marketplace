@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addisDay, formatPrice, formatShare, timeAgo } from "./format";
+import { addisDay, formatPrice, formatRating, formatShare, timeAgo } from "./format";
 import { fill } from "./i18n";
 
 describe("formatPrice", () => {
@@ -62,5 +62,14 @@ describe("addisDay", () => {
     expect(addisDay(new Date("2026-11-17T12:00:00Z"))).toBe("2026-11-17");
     expect(addisDay(new Date("2026-11-17T21:30:00Z"))).toBe("2026-11-18");
     expect(addisDay(new Date("2026-12-31T20:59:00Z"))).toBe("2026-12-31");
+  });
+});
+
+describe("formatRating", () => {
+  it("shows the API's average to one place", () => {
+    expect(formatRating(4.25)).toBe("4.3");
+    expect(formatRating(4.24)).toBe("4.2");
+    expect(formatRating(5)).toBe("5.0");
+    expect(formatRating(1)).toBe("1.0");
   });
 });

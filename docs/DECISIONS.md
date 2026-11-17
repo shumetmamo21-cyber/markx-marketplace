@@ -1648,6 +1648,37 @@ capability the API checks (`menu.ts`, tested per role in `menu.test.ts`):
   setting the boundary. The upload form shows only to roles that curate the
   catalogue; the API checks again.
 
+## D-072 Reviews and reports on the web: the API says who may act on a review
+
+**Follows** blueprint C-18, C-30, S-16, D.15, I.4, D-066 and D-067.
+**Accepted.** One change to an existing schema, made on both sides at once
+(D-061): `MyReviewOut` gains `can_edit` and `can_reply`.
+
+- **Two new fields.** The buyer may change a review that is not hidden, has
+  no reply and whose window is open; the store may reply to a published one.
+  The API computed neither, so the web app would have had to copy the
+  service's rules to decide when to show a form. Now `can_edit` is true only
+  for the buyer reading their own review under those rules, and `can_reply`
+  only for the store reading a published review; staff see both false. The
+  service still checks everything on the call. Two tests fix the flags
+  against the service's refusals (`review_answered`, `review_not_published`,
+  `review_window_closed`).
+- **Screens.** The product and shop pages show the API's totals and published
+  reviews, ten at a time (`?reviews=` the last id); a review on a product
+  page links to the shop it was bought from. The buyer rates an item on the
+  order page while the API lists it as waiting (`/me/reviews/pending`), and
+  on `/reviews` sees everything they wrote with its state, MarkX's reason if
+  it was hidden, and the shop's reply. The shop has a Reviews screen with
+  one reply per review that it may reword.
+- **Report links** sit on the product, on every listing, on the shop page and
+  on every review, for anyone, signed in or not. The form sends the target
+  and a reason; the API limits and de-duplicates (`already_reported`, shown
+  in words).
+- **The seller menu is role-aware** (`seller/[sellerId]/menu.ts`, tested per
+  role in `menu.test.ts` against blueprint C.3), as the admin menu is
+  (D-070). The seller entry opens the first screen the member's role allows,
+  not always Orders.
+
 ---
 
 ## Decisions that need the founder

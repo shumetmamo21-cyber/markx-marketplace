@@ -3,11 +3,15 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { AddToCart } from "@/components/AddToCart";
+import { ReportForm } from "@/components/ReportForm";
+import { RatingSummary, ReviewItem } from "@/components/Reviews";
 import { serverApi } from "@/lib/api/server";
 import type { RankedOffer } from "@/lib/api/types";
 import { formatPrice, timeAgo } from "@/lib/format";
 import { fill, isLocale, type Locale, type Messages } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
+
+const REVIEWS_PER_PAGE = 10;
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
@@ -29,6 +33,10 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/p/[slug]">
 
 function conditionLabel(t: Messages, condition: string): string {
   return condition in t.condition ? t.condition[condition as keyof Messages["condition"]] : condition;
+}
+
+function reportText(t: Messages) {
+  return { report: t.report, apiErrors: t.apiErrors, reasons: t.labels.reportReason };
 }
 
 function OfferRow({ offer, lang, t, zoneChosen }: { offer: RankedOffer; lang: Locale; t: Messages; zoneChosen: boolean }) {
@@ -82,6 +90,7 @@ function OfferRow({ offer, lang, t, zoneChosen }: { offer: RankedOffer; lang: Lo
           <p className="font-semibold text-clay">{t.product.outOfStock}</p>
         )}
       </div>
+      <ReportForm target={{ type: "offer", id: offer.id }} t={reportText(t)} />
     </li>
   );
 }
@@ -98,15 +107,22 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
   const wanted = one(raw.variant);
   const variant = variants.find((v) => v.id === wanted) ?? variants[0];
   const zone = one(raw.zone);
+  const before = one(raw.reviews);
   const api = await serverApi();
-  const [offers, zones] = await Promise.all([
+  const [offers, zones, reviews] = await Promise.all([
     api.GET("/api/v1/catalog/products/{slug}/offers", {
       params: { path: { slug: product.slug }, query: { variant_id: variant?.id, zone: zone || undefined } },
     }),
     api.GET("/api/v1/delivery/zones", {}),
+    api.GET("/api/v1/catalog/products/{slug}/reviews", {
+      params: { path: { slug: product.slug }, query: { lang, limit: REVIEWS_PER_PAGE, before: /^[0-9a-f-]{36}$/.test(before) ? before : undefined } },
+    }),
   ]);
   const ranked = offers.data?.offers ?? [];
   const zoneChosen = Boolean(offers.data?.zone_code);
+  const shopNames = new Map(ranked.map((offer) => [offer.store_slug, offer.store_name]));
+  const shown = reviews.data?.reviews ?? [];
+  const keep = `${variant ? `variant=${variant.id}&` : ""}${zone ? `zone=${zone}&` : ""}`;
 
   return (
     <div className="space-y-8 pb-6">
@@ -117,6 +133,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
         </p>
         <h1 className="text-2xl font-extrabold md:text-3xl">{product.name}</h1>
         {product.description ? <p className="max-w-prose text-slate">{product.description}</p> : null}
+        <ReportForm target={{ type: "product", id: product.id }} t={reportText(t)} />
       </section>
 
       {variants.length > 1 ? (
@@ -169,6 +186,32 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
         <p className="flex gap-2 rounded-card border border-line bg-white p-4 text-sm">
           <svg aria-hidden="true" viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0 text-highland"><path d="M3 8l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" /></svg>
           {t.product.inspect}
+        </p>
+      </section>
+
+      <section aria-labelledby="reviews" className="space-y-3">
+        <h2 id="reviews" className="text-lg font-bold">{t.reviews.title}</h2>
+        {reviews.data ? <RatingSummary summary={reviews.data.summary} t={t} /> : null}
+        {shown.length ? (
+          <ul className="space-y-3">
+            {shown.map((review) => (
+              <ReviewItem
+                key={review.id}
+                review={review}
+                lang={lang}
+                t={t}
+                shopName={shopNames.get(review.store_slug) ?? review.store_slug}
+                linkShop
+                report={<ReportForm target={{ type: "review", id: review.id }} t={reportText(t)} />}
+              />
+            ))}
+          </ul>
+        ) : null}
+        <p className="flex flex-wrap gap-4">
+          {before ? <Link href={`/${lang}/p/${product.slug}?${keep}#reviews`} className="inline-flex min-h-12 items-center font-semibold underline">{t.reviews.newest}</Link> : null}
+          {shown.length === REVIEWS_PER_PAGE ? (
+            <Link href={`/${lang}/p/${product.slug}?${keep}reviews=${shown[shown.length - 1]?.id}#reviews`} className="inline-flex min-h-12 items-center font-semibold underline">{t.reviews.older}</Link>
+          ) : null}
         </p>
       </section>
 

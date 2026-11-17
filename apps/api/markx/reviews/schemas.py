@@ -80,6 +80,11 @@ class MyReviewOut(BaseModel):
     seller_replied_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # What the person reading may do now, by the service's own rules: the
+    # buyer may change it (not hidden, no reply yet, window open); the store
+    # may reply (published). Always false for anyone else (D-072).
+    can_edit: bool
+    can_reply: bool
 
 
 class ReviewableItemOut(BaseModel):

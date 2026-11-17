@@ -3586,6 +3586,14 @@
             "title": "Body",
             "type": "string"
           },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_reply": {
+            "title": "Can Reply",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -3722,7 +3730,9 @@
           "seller_reply",
           "seller_replied_at",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "can_edit",
+          "can_reply"
         ],
         "title": "MyReviewOut",
         "type": "object"

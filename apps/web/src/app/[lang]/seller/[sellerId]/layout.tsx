@@ -8,6 +8,8 @@ import { isLocale } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
 import { getMe } from "@/lib/session";
 
+import { sellerMenu } from "./menu";
+
 // The seller's own frame (I.4): a bottom bar on phones. Whether this person
 // may act for this shop is the API's decision on every call (require_seller);
 // this check only spares a non-member a screen of refusals.
@@ -26,13 +28,7 @@ export default async function SellerLayout({ children, params }: LayoutProps<"/[
       </main>
     );
   }
-  const base = `/${lang}/seller/${sellerId}`;
-  const items = [
-    { href: `${base}/orders`, label: t.seller.navOrders },
-    { href: `${base}/offers`, label: t.seller.navOffers },
-    ...(membership.store_slug ? [{ href: `/${lang}/s/${membership.store_slug}`, label: t.seller.navStore }] : []),
-    { href: `/${lang}`, label: t.seller.navExit },
-  ];
+  const items = sellerMenu(lang, sellerId, membership, t);
   return (
     <>
       <header className="sticky top-0 z-20 border-b border-line bg-ink text-paper">

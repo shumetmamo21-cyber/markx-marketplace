@@ -333,3 +333,62 @@ def test_the_daily_recount_repairs_any_total(
         select(RatingSummary).where(RatingSummary.subject_type == "product")
     ).all()
     assert (product.review_count, product.rating_sum, product.count_5) == (1, 5, 1)
+
+
+def test_each_reader_is_told_what_they_may_do_with_a_review(bazaar: Bazaar, db: DbSession) -> None:
+    """`can_edit` and `can_reply` (D-072) follow the service's own rules, so
+    the web app shows a form only where the API would accept it."""
+    bought = Bought(bazaar, [(bazaar.a128, 1), (bazaar.a256, 1)])
+    first_item, second_item = bought.items()
+    written = bought.review(first_item, body="Fine.").json()
+    assert (written["can_edit"], written["can_reply"]) == (True, False)
+    (seen,) = bazaar.a.get(f"/seller/{bazaar.a_id}/reviews").json()
+    assert (seen["can_edit"], seen["can_reply"]) == (False, True)
+
+    # Answered: the buyer may no longer change it; the store may reword.
+    answered = bazaar.a.post(
+        f"/seller/{bazaar.a_id}/reviews/{written['id']}/reply", json={"body": "Thank you."}
+    ).json()
+    assert (answered["can_edit"], answered["can_reply"]) == (False, True)
+    (mine,) = bought.buyer.get("/me/reviews").json()
+    assert (mine["can_edit"], mine["can_reply"]) == (False, False)
+    assert error_code(bought.buyer.put(
+        f"/me/reviews/{written['id']}", json={"product_rating": 1, "seller_rating": 1}
+    )) == "review_answered"  # fmt: skip
+
+    # Hidden by staff: nobody may act on it; staff never get the buyer's powers.
+    other = bought.review(second_item, body="Rude words.").json()
+    support = staff_client(db, "0911000303", StaffRole.SUPPORT)
+    hidden = support.post(
+        f"/admin/reviews/{other['id']}/moderate", json={"action": "hide", "reason": "Rude"}
+    ).json()
+    assert (hidden["can_edit"], hidden["can_reply"]) == (False, False)
+    by_id = {r["id"]: r for r in bought.buyer.get("/me/reviews").json()}
+    assert by_id[other["id"]]["can_edit"] is False
+    store_view = {r["id"]: r for r in bazaar.a.get(f"/seller/{bazaar.a_id}/reviews").json()}
+    assert store_view[other["id"]]["can_reply"] is False
+    assert error_code(bazaar.a.post(
+        f"/seller/{bazaar.a_id}/reviews/{other['id']}/reply", json={"body": "No"}
+    )) == "review_not_published"  # fmt: skip
+
+
+def test_the_buyer_is_told_when_the_window_to_change_a_review_has_closed(
+    bazaar: Bazaar, db: DbSession
+) -> None:
+    bought = Bought(bazaar, [(bazaar.a128, 1)])
+    (item,) = bought.items()
+    written = bought.review(item).json()
+    assert written["can_edit"] is True
+    settings_store.set_setting(db, "reviews.window_days", 1)
+    db.execute(
+        text("update seller_orders set completed_at = completed_at - interval '2 days' "
+             "where order_id = :order"),
+        {"order": bought.order["id"]},
+    )  # fmt: skip
+    db.commit()
+    (mine,) = bought.buyer.get("/me/reviews").json()
+    assert mine["can_edit"] is False
+    refused = bought.buyer.put(
+        f"/me/reviews/{written['id']}", json={"product_rating": 1, "seller_rating": 1}
+    )
+    assert error_code(refused) == "review_window_closed"

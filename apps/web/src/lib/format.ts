@@ -55,3 +55,8 @@ export function formatShare(share: number): string {
 export function addisDay(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Addis_Ababa", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
+
+/** An average rating from the API (1 to 5, two places) to one place, "4.5". */
+export function formatRating(average: number): string {
+  return (Math.round(average * 10) / 10).toFixed(1);
+}

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ReportForm } from "@/components/ReportForm";
+import { RatingSummary, ReviewItem } from "@/components/Reviews";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { fill, isLocale, type Messages } from "@/lib/i18n";
@@ -16,17 +18,26 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/s/[slug]">
 
 // Judge a seller (blueprint I.5): the level and exactly what was checked,
 // member since, completed orders, policies and offers. Numbers, not adjectives.
-export default async function StorePage({ params }: PageProps<"/[lang]/s/[slug]">) {
+const REVIEWS_PER_PAGE = 10;
+
+export default async function StorePage({ params, searchParams }: PageProps<"/[lang]/s/[slug]">) {
   const { lang, slug } = await params;
   if (!isLocale(lang)) notFound();
+  const raw = (await searchParams).reviews;
+  const before = (Array.isArray(raw) ? raw[0] : raw) ?? "";
   const t = await getMessages(lang);
   const api = await serverApi();
-  const [store, offers] = await Promise.all([
+  const [store, offers, reviews] = await Promise.all([
     api.GET("/api/v1/catalog/stores/{slug}", { params: { path: { slug } } }),
     api.GET("/api/v1/catalog/stores/{slug}/offers", { params: { path: { slug }, query: { lang } } }),
+    api.GET("/api/v1/catalog/stores/{slug}/reviews", {
+      params: { path: { slug }, query: { lang, limit: REVIEWS_PER_PAGE, before: /^[0-9a-f-]{36}$/.test(before) ? before : undefined } },
+    }),
   ]);
   if (!store.data) notFound();
   const s = store.data;
+  const reportText = { report: t.report, apiErrors: t.apiErrors, reasons: t.labels.reportReason };
+  const shown = reviews.data?.reviews ?? [];
   const checks = Object.entries(s.checks).filter(([, done]) => done).map(([key]) => key);
   return (
     <div className="space-y-6">
@@ -38,6 +49,7 @@ export default async function StorePage({ params }: PageProps<"/[lang]/s/[slug]"
           {fill(t.store.memberSince, { date: formatDateTime(s.member_since, lang) })} · {fill(t.store.completed, { count: s.completed_orders })}
         </p>
         {s.description ? <p className="max-w-prose">{s.description}</p> : null}
+        <ReportForm target={{ type: "store", slug: s.slug }} t={reportText} />
       </header>
 
       {checks.length ? (
@@ -81,6 +93,32 @@ export default async function StorePage({ params }: PageProps<"/[lang]/s/[slug]"
             </li>
           ))}
         </ul>
+      </section>
+
+      <section aria-labelledby="reviews" className="space-y-3">
+        <h2 id="reviews" className="text-lg font-bold">{t.reviews.storeTitle}</h2>
+        {reviews.data ? <RatingSummary summary={reviews.data.summary} t={t} /> : null}
+        {shown.length ? (
+          <ul className="space-y-3">
+            {shown.map((review) => (
+              <ReviewItem
+                key={review.id}
+                review={review}
+                lang={lang}
+                t={t}
+                shopName={s.name}
+                linkShop={false}
+                report={<ReportForm target={{ type: "review", id: review.id }} t={reportText} />}
+              />
+            ))}
+          </ul>
+        ) : null}
+        <p className="flex flex-wrap gap-4">
+          {before ? <Link href={`/${lang}/s/${s.slug}#reviews`} className="inline-flex min-h-12 items-center font-semibold underline">{t.reviews.newest}</Link> : null}
+          {shown.length === REVIEWS_PER_PAGE ? (
+            <Link href={`/${lang}/s/${s.slug}?reviews=${shown[shown.length - 1]?.id}#reviews`} className="inline-flex min-h-12 items-center font-semibold underline">{t.reviews.older}</Link>
+          ) : null}
+        </p>
       </section>
     </div>
   );

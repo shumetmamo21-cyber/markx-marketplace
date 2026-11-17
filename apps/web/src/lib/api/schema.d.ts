@@ -4072,6 +4072,10 @@ export interface components {
         MyReviewOut: {
             /** Body */
             body: string;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Reply */
+            can_reply: boolean;
             /**
              * Created At
              * Format: date-time

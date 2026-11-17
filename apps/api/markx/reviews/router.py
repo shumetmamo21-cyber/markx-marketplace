@@ -42,9 +42,9 @@ Slug = Annotated[str, Path(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$", max_length=120)]
 Limit = Annotated[int, Query(ge=1, le=50)]
 
 
-def _one(db: Db, review_id: uuid.UUID, lang: str, *, for_seller: bool = False) -> MyReviewOut:
+def _one(db: Db, review_id: uuid.UUID, lang: str, viewer: selectors.Viewer) -> MyReviewOut:
     return MyReviewOut.model_validate(
-        selectors.one_review(db, review_id, language=lang, for_seller=for_seller)
+        selectors.one_review(db, review_id, language=lang, viewer=viewer)
     )
 
 
@@ -116,7 +116,7 @@ def write_review(
         db, buyer.user, order_id, item_id, product_rating=body.product_rating,
         seller_rating=body.seller_rating, body=body.body,
     )  # fmt: skip
-    return _one(db, review.id, lang)
+    return _one(db, review.id, lang, "buyer")
 
 
 @buyer_router.put("/me/reviews/{review_id}", response_model=MyReviewOut)
@@ -128,7 +128,7 @@ def edit_review(
         db, buyer.user, review_id, product_rating=body.product_rating,
         seller_rating=body.seller_rating, body=body.body,
     )  # fmt: skip
-    return _one(db, review_id, lang)
+    return _one(db, review_id, lang, "buyer")
 
 
 # -- the seller --------------------------------------------------------------------------
@@ -154,7 +154,7 @@ def reply_to_review(
 ) -> MyReviewOut:
     """One reply, which the store may reword (S-16). A store cannot remove a review."""
     service.reply(db, context.seller, context.member, review_id, body=body.body)
-    return _one(db, review_id, lang, for_seller=True)
+    return _one(db, review_id, lang, "seller")
 
 
 # -- staff -------------------------------------------------------------------------------
@@ -185,4 +185,4 @@ def moderate_review(
 ) -> MyReviewOut:  # fmt: skip
     """Publish or hide, with a written reason; audit-logged."""
     service.moderate(db, staff.actor(request), review_id, action=body.action, reason=body.reason)
-    return _one(db, review_id, lang)
+    return _one(db, review_id, lang, "staff")
