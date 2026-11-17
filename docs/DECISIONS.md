@@ -1837,6 +1837,21 @@ otherwise. Now:
 - `e2e/setup-and-account.mjs` drives all of it (13 steps) and tidies the demo
   data it creates.
 
+## D-078 Setting descriptions in Amharic
+
+**Follows** blueprint I.1 (two languages, equal quality). **Accepted.** One
+change to an existing schema, both sides at once (D-061): `SettingOut` gains
+`description_am`.
+
+The admin settings screen showed each setting's English description on the
+Amharic page too (D-071). The Amharic text lives in the API beside the
+settings (`markx/core/settings_am.py`), so a description and its translation
+change in one place; `tests/unit/test_settings_am.py` fails if a setting has
+no Amharic description, if one names no setting, or if one is not written in
+Ethiopic script. The screen shows the description in the page's language.
+Drafted by an AI agent; a native speaker must review them with every other
+Amharic text (blueprint I.3).
+
 ---
 
 ## Decisions that need the founder

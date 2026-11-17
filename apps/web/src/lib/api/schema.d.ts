@@ -5704,6 +5704,8 @@ export interface components {
             default: boolean | number | string;
             /** Description */
             description: string;
+            /** Description Am */
+            description_am: string;
             /** Is Overridden */
             is_overridden: boolean;
             /** Key */

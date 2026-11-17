@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from markx.core.errors import NotFound, ValidationFailed
 from markx.core.models import Setting
+from markx.core.settings_am import DESCRIPTIONS_AM
 
 Kind = Literal["bool", "int", "str"]
 
@@ -372,6 +373,7 @@ def list_settings(db: Session) -> list[dict[str, Any]]:
             "key": spec.key,
             "kind": spec.kind,
             "description": spec.description,
+            "description_am": DESCRIPTIONS_AM[spec.key],
             "default": spec.default,
             "value": get_setting(db, spec.key),
             "is_overridden": spec.key in stored,

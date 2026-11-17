@@ -27,8 +27,8 @@ export default async function SettingsPage({ params }: PageProps<"/[lang]/admin/
         {rows.map((setting) => (
           <li key={setting.key} className="space-y-2 rounded-card border border-line bg-white p-4">
             <p className="font-bold"><code className="break-all">{setting.key}</code></p>
-            {/* The API's own description, written in English. */}
-            <p className="text-sm" lang="en">{setting.description}</p>
+            {/* The API's own description, in the page's language (D-078). */}
+            <p className="text-sm">{lang === "am" ? setting.description_am : setting.description}</p>
             <p className="text-sm text-slate">
               {fill(a.settingDefault, { value: shown(setting.default) })}
               {setting.is_overridden ? ` · ${a.settingChanged}` : ""}

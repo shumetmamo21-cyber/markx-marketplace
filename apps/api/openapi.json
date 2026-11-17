@@ -7699,6 +7699,10 @@
             "title": "Description",
             "type": "string"
           },
+          "description_am": {
+            "title": "Description Am",
+            "type": "string"
+          },
           "is_overridden": {
             "title": "Is Overridden",
             "type": "boolean"
@@ -7734,6 +7738,7 @@
           "key",
           "kind",
           "description",
+          "description_am",
           "default",
           "value",
           "is_overridden",

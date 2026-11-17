@@ -28,6 +28,8 @@ class SettingOut(BaseModel):
     key: str
     kind: str
     description: str
+    # The same description in Amharic (D-078).
+    description_am: str
     default: bool | int | str
     value: bool | int | str
     is_overridden: bool
