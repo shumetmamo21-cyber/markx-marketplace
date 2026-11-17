@@ -1,7 +1,8 @@
 # Setup
 
-How to run and test MarkX on a laptop. Every command here was run on
-16 November 2026, again by the third engineering session. Only the API exists so far; there is no web app to start.
+How to run and test MarkX on a laptop. Every command here was run again on
+17 November 2026 by the fifth engineering session. Only the API exists so
+far; there is no web app to start.
 
 Nothing here touches AWS or any paid service.
 
@@ -63,7 +64,7 @@ uv run alembic check         # models and migrations must not differ
 `alembic check` and `alembic upgrade head` use the `markx` database from
 steps 2 and 3. They do not use the test database.
 
-The whole suite takes about five minutes. The tests in
+The whole suite (815 tests) takes about five minutes. The tests in
 `tests/db/test_inventory.py` and `tests/db/test_checkout_contention.py` start
 up to 100 threads against the database on purpose.
 
