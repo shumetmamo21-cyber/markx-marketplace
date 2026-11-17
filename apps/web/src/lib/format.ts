@@ -44,3 +44,9 @@ export function formatDateTime(iso: string, locale: Locale): string {
 export function isPast(iso: string, now: Date = new Date()): boolean {
   return new Date(iso).getTime() < now.getTime();
 }
+
+/** A share the API computed (0 to 1) as a whole percentage, "87%". The page
+ * shows it; the API decides what it measures. */
+export function formatShare(share: number): string {
+  return `${Math.round(Math.min(Math.max(share, 0), 1) * 100)}%`;
+}

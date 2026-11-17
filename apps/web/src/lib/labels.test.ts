@@ -5,7 +5,8 @@ import en from "../../messages/en.json";
 import { codeLabel } from "./labels";
 
 // The codes the API defines (markx/accounts/models.py, markx/sellers/models.py,
-// markx/catalog/models.py). A new code in the API needs words here too.
+// markx/catalog/models.py, markx/delivery/models.py, markx/ops/models.py,
+// markx/notifications/models.py). A new code in the API needs words here too.
 const CODES = {
   staffRole: ["super_admin", "operations", "support", "catalogue", "finance"],
   reviewState: ["draft", "pending", "needs_documents", "approved", "rejected"],
@@ -13,6 +14,9 @@ const CODES = {
   documentStatus: ["pending", "accepted", "rejected"],
   productStatus: ["draft", "pending_review", "approved", "merged", "archived"],
   actorType: ["staff", "user", "system"],
+  deliveryMode: ["seller_rider", "partner_courier", "shop_collection"],
+  alertSeverity: ["warning", "critical"],
+  outboxStatus: ["pending", "done", "failed"],
 } as const;
 
 describe("code labels", () => {

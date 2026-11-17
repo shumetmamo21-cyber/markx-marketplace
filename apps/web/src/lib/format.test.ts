@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatPrice, timeAgo } from "./format";
+import { formatPrice, formatShare, timeAgo } from "./format";
 import { fill } from "./i18n";
 
 describe("formatPrice", () => {
@@ -41,5 +41,18 @@ describe("isPast", () => {
     const now = new Date("2026-11-17T12:00:00Z");
     expect(isPast("2026-11-17T11:59:00Z", now)).toBe(true);
     expect(isPast("2026-11-17T12:01:00Z", now)).toBe(false);
+  });
+});
+
+describe("formatShare", () => {
+  it("shows a share from the API as a whole percentage", () => {
+    expect(formatShare(0.873)).toBe("87%");
+    expect(formatShare(0)).toBe("0%");
+    expect(formatShare(1)).toBe("100%");
+    expect(formatShare(0.005)).toBe("1%");
+  });
+  it("never shows more than all or less than none", () => {
+    expect(formatShare(1.2)).toBe("100%");
+    expect(formatShare(-0.1)).toBe("0%");
   });
 });

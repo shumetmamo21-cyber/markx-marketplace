@@ -6,8 +6,9 @@
 // SECRET is the demo staff authenticator secret seed_demo.py printed; the
 // script computes the current code itself. A super administrator invites and
 // withdraws, approves and turns down proposals, takes a listing down and lifts
-// it, and reads it all in the audit trail, in English and Amharic. Then a
-// catalogue curator is created and must see only its own queues.
+// it, reads it all in the audit trail in English and Amharic, sees a packed
+// rider order on the dispatch board, and reads the dashboard and operations.
+// Then a catalogue curator is created and must see only its own queues.
 import { createHmac } from 'node:crypto';
 import { createRequire } from 'node:module';
 
@@ -35,6 +36,16 @@ function caller(page) {
     const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json', 'X-MarkX-Client': 'web', 'X-CSRF-Token': csrf }, body: b ? JSON.stringify(b) : undefined });
     return { status: r.status, body: await r.json() };
   }, [method, path, body]);
+}
+
+async function signInByCode(page, phone) {
+  await page.goto(`${BASE}/en/sign-in`);
+  const call = caller(page);
+  await call('POST', '/api/v1/auth/otp/request', { phone, language: 'en' });
+  const inbox = (await call('GET', `/api/v1/dev/sms-inbox?phone=${phone}`)).body;
+  const verified = await call('POST', '/api/v1/auth/otp/verify', { phone, code: inbox.at(-1).text.match(/\b\d{6}\b/)[0] });
+  expect(verified.status === 200, `sign-in ${phone}: ${verified.status}`);
+  return call;
 }
 
 async function staffSignIn(page, phone, password, secret, landing) {
@@ -79,7 +90,7 @@ function expect(condition, message) {
   watch(staff, 'staff');
   await staffSignIn(staff, '0911000900', process.env.MARKX_DEMO_STAFF_PASSWORD || 'demo-only-staff-password-1', SECRET, /\/en\/admin\/problems$/);
   const items = await menu(staff);
-  expect(items.join('|') === 'Problems|Orders desk|Seller applications|Invitations|Product proposals|Listing takedowns|Search|Audit trail', `menu: ${items}`);
+  expect(items.join('|') === 'Problems|Orders desk|Dispatch board|Dashboard|Seller applications|Invitations|Product proposals|Listing takedowns|Search|Audit trail|Operations', `menu: ${items}`);
   await staff.getByText('Role: Super administrator').waitFor();
   console.log('1 super administrator: lands on problems; menu', items.length, 'queues; role in words');
   const asStaff = caller(staff);
@@ -99,12 +110,7 @@ function expect(condition, message) {
   // 3. Proposals: a shop proposes two products; staff approve one, turn one down.
   const shop = await (await browser.newContext()).newPage();
   watch(shop, 'shop');
-  await shop.goto(`${BASE}/en/sign-in`);
-  const asShop = caller(shop);
-  await asShop('POST', '/api/v1/auth/otp/request', { phone: '0911000901', language: 'en' });
-  const inbox = (await asShop('GET', '/api/v1/dev/sms-inbox?phone=0911000901')).body;
-  const verified = await asShop('POST', '/api/v1/auth/otp/verify', { phone: '0911000901', code: inbox.at(-1).text.match(/\b\d{6}\b/)[0] });
-  expect(verified.status === 200, `shop sign-in ${verified.status}`);
+  const asShop = await signInByCode(shop, '0911000901');
   const sellerId = (await asShop('GET', '/api/v1/me')).body.sellers[0].seller_id;
   const phones = (await asShop('GET', '/api/v1/catalog/categories')).body.flatMap((c) => [c, ...(c.children || [])]).find((c) => c.slug === 'phones');
   const proposal = (name) => asShop('POST', `/api/v1/seller/${sellerId}/product-proposals`, {
@@ -158,14 +164,72 @@ function expect(condition, message) {
   console.log('5 audit trail: takedown, lift and invitation entries found;', entries, 'invitation entries; Amharic heading shown');
   if (shots) await staff.screenshot({ path: `${shots}/admin-audit.png`, fullPage: true });
 
-  // 6. No new page is wider than a 360px phone.
+  // 6. The dispatch board: a rider order, packed by the shop, waits to leave.
+  const buyer = await (await browser.newContext()).newPage();
+  watch(buyer, 'buyer');
+  const asBuyer = await signInByCode(buyer, '0911000950');
+  for (const o of (await asBuyer('GET', '/api/v1/me/orders')).body) {
+    for (const part of o.seller_orders) if (part.can_cancel) await asBuyer('POST', `/api/v1/me/orders/${o.id}/seller-orders/${part.id}/cancel`, {});
+  }
+  const riderOffer = (await asBuyer('GET', '/api/v1/catalog/products/xiaomi-redmi-13c/offers')).body.offers
+    .find((o) => o.in_stock && o.delivers_by_seller_rider);
+  expect(riderOffer, 'a demo offer delivered by the shop\'s rider');
+  await asBuyer('DELETE', '/api/v1/cart');
+  await asBuyer('PUT', `/api/v1/cart/items/${riderOffer.id}`, { quantity: 1 });
+  const address = (await asBuyer('GET', '/api/v1/me/addresses')).body[0];
+  const deliveries = [{ store_slug: riderOffer.store_slug, method: 'seller_rider' }];
+  const quote = await asBuyer('POST', '/api/v1/checkout/quote', { address_id: address.id, deliveries });
+  expect(quote.status === 200, `quote ${quote.status} ${JSON.stringify(quote.body)}`);
+  const placed = await asBuyer('POST', '/api/v1/checkout', {
+    address_id: address.id, deliveries, payment_method: 'cash',
+    expected_total_santim: quote.body.grand_total_santim, idempotency_key: `adminqueues${run}`,
+  });
+  expect(placed.status === 201, `checkout ${placed.status} ${JSON.stringify(placed.body)}`);
+  const part = placed.body.seller_orders[0];
+  let packedBy = null;
+  for (const sellerPhone of ['0911000901', '0911000902', '0911000903']) {
+    const page = await (await browser.newContext()).newPage();
+    const asSeller = await signInByCode(page, sellerPhone);
+    const membership = (await asSeller('GET', '/api/v1/me')).body.sellers.find((m) => m.store_slug === riderOffer.store_slug);
+    if (membership) {
+      for (const step of ['confirm', 'ready']) {
+        const moved = await asSeller('POST', `/api/v1/seller/${membership.seller_id}/orders/${part.id}/${step}`, {});
+        expect(moved.status === 200, `${step} ${moved.status} ${JSON.stringify(moved.body)}`);
+      }
+      packedBy = sellerPhone;
+    }
+    await page.context().close();
+    if (packedBy) break;
+  }
+  expect(packedBy, `no demo seller owns ${riderOffer.store_slug}`);
+  await staff.goto(`${BASE}/en/admin/dispatch`);
+  const waiting = staff.locator('main li', { hasText: placed.body.code });
+  await waiting.getByText("The shop's rider", { exact: false }).waitFor();
+  await waiting.getByRole('link', { name: 'Open in the orders desk' }).click();
+  await staff.waitForURL(/\/en\/admin\/orders\?code=/);
+  await staff.getByText(placed.body.code).first().waitFor();
+  console.log('6 dispatch board: rider order', placed.body.code, 'from', riderOffer.store_slug, 'waits to leave; opens in the orders desk');
+
+  // 7. The dashboard and the operations page show the API's figures.
+  await staff.goto(`${BASE}/en/admin/dashboard?days=30`);
+  await staff.getByRole('heading', { name: 'How the marketplace is doing' }).waitFor();
+  const tiles = await staff.locator('main dl > div').count();
+  const orders = await staff.locator('main dl > div', { hasText: /^Orders/ }).locator('dd').innerText();
+  expect(tiles === 13, `dashboard tiles: ${tiles}`);
+  await staff.goto(`${BASE}/en/admin/ops`);
+  await staff.getByRole('heading', { name: 'Scheduled jobs' }).waitFor();
+  const jobs = await staff.locator('main section', { hasText: 'Scheduled jobs' }).locator('li').count();
+  expect(jobs > 0, 'no scheduled job listed');
+  console.log('7 dashboard: 13 figures, orders in 30 days =', orders, '; operations: ', jobs, 'scheduled jobs listed');
+
+  // 8. No new page is wider than a 360px phone.
   const cookies = await staff.context().cookies();
-  for (const path of ['/en/admin/invitations', '/en/admin/catalog', '/en/admin/listings?product=xiaomi-redmi-13c', '/en/admin/audit', '/am/admin/audit']) {
+  for (const path of ['/en/admin/invitations', '/en/admin/catalog', '/en/admin/listings?product=xiaomi-redmi-13c', '/en/admin/audit', '/am/admin/audit', '/en/admin/dispatch', '/en/admin/dashboard', '/am/admin/dashboard', '/en/admin/ops']) {
     await noOverflow(browser, cookies, path);
   }
-  console.log('6 the four new pages fit a 360px screen');
+  console.log('8 every new admin page fits a 360px screen');
 
-  // 7. A catalogue curator sees only its own queues, and is told so elsewhere.
+  // 9. A catalogue curator sees only its own queues, and is told so elsewhere.
   const curatorPhone = phone(2);
   const created = await asStaff('POST', '/api/v1/admin/staff', {
     phone: curatorPhone, name: 'Demo Curator', role: 'catalogue', password: 'demo-only-curator-password-1',
@@ -181,7 +245,7 @@ function expect(condition, message) {
   await curator.getByText('Your role may not open this page.').waitFor();
   await curator.goto(`${BASE}/en/admin/invitations`);
   await curator.getByText('Your role may not open this page.').waitFor();
-  console.log('7 curator: lands on proposals; menu', own.join(', '), '; audit and invitations refused in words');
+  console.log('9 curator: lands on proposals; menu', own.join(', '), '; audit and invitations refused in words');
 
   await browser.close();
   console.log('console errors:', errors.length ? errors.join(' | ') : 'none');

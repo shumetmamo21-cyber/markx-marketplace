@@ -11,12 +11,15 @@ export function adminMenu(lang: string, capabilities: readonly string[], t: Pick
   const items: [string, string, string][] = [
     ["handle_cases", "problems", a.navProblems],
     ["find_orders", "orders", a.navOrders],
+    ["intervene_in_orders", "dispatch", a.navDispatch],
+    ["find_orders", "dashboard", a.navDashboard],
     ["review_sellers", "sellers", a.navSellers],
     ["review_sellers", "invitations", a.navInvitations],
     ["curate_catalogue", "catalog", a.navCatalog],
     ["moderate_listings", "listings", a.navListings],
     ["tune_search", "search", a.navSearch],
     ["read_audit_log", "audit", a.navAudit],
+    ["find_orders", "ops", a.navOps],
   ];
   return items
     .filter(([capability]) => can.has(capability))

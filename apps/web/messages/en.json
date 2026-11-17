@@ -511,7 +511,56 @@
     "before": "Before",
     "after": "After",
     "auditLead": "Every recorded action, by staff, people and the system, newest first. Nothing here can be changed.",
-    "notAllowed": "Your role may not open this page."
+    "notAllowed": "Your role may not open this page.",
+    "navDashboard": "Dashboard",
+    "navDispatch": "Dispatch board",
+    "navOps": "Operations",
+    "dashboardTitle": "How the marketplace is doing",
+    "period": "Period",
+    "days": "Last {days} days",
+    "show": "Show",
+    "fromTo": "{from} to {to}",
+    "kOrders": "Orders",
+    "kSellerOrders": "Shop orders",
+    "kCompletedValue": "Completed sales",
+    "kFees": "Fees charged",
+    "kMedianConfirm": "Median time to confirm",
+    "minutes": "{minutes} min",
+    "kAnswered": "Answered by the shop",
+    "kDelivered": "Delivered successfully",
+    "kProblemsOpened": "Problems reported",
+    "kProblemsOpen": "Problems open now",
+    "kLiveOffers": "Live offers",
+    "kProductsWithOffers": "Products with offers",
+    "kOffersPerProduct": "Offers per product",
+    "kFreshPrices": "Prices confirmed recently",
+    "notYet": "Not enough data yet",
+    "byStatus": "Shop orders by status",
+    "funnel": "From search to order",
+    "fSearches": "Searches",
+    "fZero": "Searches that found nothing",
+    "fCarts": "Carts filled",
+    "fOrders": "Orders placed",
+    "dispatchTitle": "Waiting to leave a shop",
+    "noDispatch": "Nothing is waiting to leave a shop.",
+    "waitingSince": "Waiting since {time}",
+    "promisedBy": "Promised by {time}",
+    "late": "Late",
+    "openOrder": "Open in the orders desk",
+    "opsTitle": "Operations",
+    "openAlerts": "Open alerts",
+    "noAlerts": "No alert is open.",
+    "alertSeen": "First seen {first}, last seen {last}, {count} times",
+    "resolvedAt": "Resolved {time}",
+    "recentAlerts": "Recent alerts",
+    "jobsTitle": "Scheduled jobs",
+    "jobNext": "Next run {time}",
+    "jobLastOk": "Last success {time}",
+    "jobNever": "Has not succeeded yet",
+    "jobFailures": "{count} failures in a row",
+    "jobError": "Last error: {error}",
+    "outboxTitle": "Messages waiting to be sent",
+    "noOutbox": "No message is waiting."
   },
   "labels": {
     "staffRole": {
@@ -550,6 +599,20 @@
       "staff": "Staff",
       "user": "User",
       "system": "System"
+    },
+    "deliveryMode": {
+      "seller_rider": "The shop's rider",
+      "partner_courier": "Partner courier",
+      "shop_collection": "Collect at the shop"
+    },
+    "alertSeverity": {
+      "warning": "Warning",
+      "critical": "Critical"
+    },
+    "outboxStatus": {
+      "pending": "Waiting",
+      "done": "Sent",
+      "failed": "Given up"
     }
   }
 }

@@ -511,7 +511,56 @@
     "before": "በፊት",
     "after": "በኋላ",
     "auditLead": "እያንዳንዱ የተመዘገበ ድርጊት — በሰራተኞች፣ በተጠቃሚዎችና በሥርዓቱ — አዲሱ መጀመሪያ። እዚህ ምንም ሊቀየር አይችልም።",
-    "notAllowed": "ሚናዎ ይህንን ገጽ እንዲከፍት አይፈቀድለትም።"
+    "notAllowed": "ሚናዎ ይህንን ገጽ እንዲከፍት አይፈቀድለትም።",
+    "navDashboard": "ዳሽቦርድ",
+    "navDispatch": "የመላኪያ ሰሌዳ",
+    "navOps": "ኦፕሬሽንስ",
+    "dashboardTitle": "ገበያው እንዴት እየሄደ ነው",
+    "period": "ጊዜ",
+    "days": "ያለፉት {days} ቀናት",
+    "show": "አሳይ",
+    "fromTo": "ከ{from} እስከ {to}",
+    "kOrders": "ትዕዛዞች",
+    "kSellerOrders": "የሱቅ ትዕዛዞች",
+    "kCompletedValue": "የተጠናቀቁ ሽያጮች",
+    "kFees": "የተከፈሉ ክፍያዎች",
+    "kMedianConfirm": "ለማረጋገጥ የሚወስደው መካከለኛ ጊዜ",
+    "minutes": "{minutes} ደቂቃ",
+    "kAnswered": "ሱቁ የመለሰው",
+    "kDelivered": "በተሳካ ሁኔታ የደረሰ",
+    "kProblemsOpened": "የተዘገቡ ችግሮች",
+    "kProblemsOpen": "አሁን ክፍት የሆኑ ችግሮች",
+    "kLiveOffers": "የቀጥታ ቅናሾች",
+    "kProductsWithOffers": "ቅናሽ ያላቸው ምርቶች",
+    "kOffersPerProduct": "በአንድ ምርት ያሉ ቅናሾች",
+    "kFreshPrices": "በቅርቡ የተረጋገጡ ዋጋዎች",
+    "notYet": "ገና በቂ መረጃ የለም",
+    "byStatus": "የሱቅ ትዕዛዞች በሁኔታ",
+    "funnel": "ከፍለጋ እስከ ትዕዛዝ",
+    "fSearches": "ፍለጋዎች",
+    "fZero": "ምንም ያላገኙ ፍለጋዎች",
+    "fCarts": "የተሞሉ ጋሪዎች",
+    "fOrders": "የተሰጡ ትዕዛዞች",
+    "dispatchTitle": "ከሱቅ ለመውጣት የሚጠብቁ",
+    "noDispatch": "ከሱቅ ለመውጣት የሚጠብቅ የለም።",
+    "waitingSince": "ከ{time} ጀምሮ እየጠበቀ",
+    "promisedBy": "የተገባው ቃል {time}",
+    "late": "ዘግይቷል",
+    "openOrder": "በትዕዛዝ ዴስክ ክፈት",
+    "opsTitle": "ኦፕሬሽንስ",
+    "openAlerts": "ክፍት ማንቂያዎች",
+    "noAlerts": "ክፍት ማንቂያ የለም።",
+    "alertSeen": "መጀመሪያ የታየው {first}፣ መጨረሻ የታየው {last}፣ {count} ጊዜ",
+    "resolvedAt": "የተፈታው {time}",
+    "recentAlerts": "የቅርብ ጊዜ ማንቂያዎች",
+    "jobsTitle": "የታቀዱ ሥራዎች",
+    "jobNext": "ቀጣዩ ሩጫ {time}",
+    "jobLastOk": "መጨረሻ የተሳካው {time}",
+    "jobNever": "ገና አልተሳካም",
+    "jobFailures": "በተከታታይ {count} ውድቀቶች",
+    "jobError": "የመጨረሻ ስህተት፦ {error}",
+    "outboxTitle": "ለመላክ የሚጠብቁ መልዕክቶች",
+    "noOutbox": "የሚጠብቅ መልዕክት የለም።"
   },
   "labels": {
     "staffRole": {
@@ -550,6 +599,20 @@
       "staff": "ሰራተኛ",
       "user": "ተጠቃሚ",
       "system": "ሥርዓት"
+    },
+    "deliveryMode": {
+      "seller_rider": "የሱቁ ፈረሰኛ",
+      "partner_courier": "አጋር መልዕክተኛ",
+      "shop_collection": "ከሱቁ መውሰድ"
+    },
+    "alertSeverity": {
+      "warning": "ማስጠንቀቂያ",
+      "critical": "አስቸኳይ"
+    },
+    "outboxStatus": {
+      "pending": "በመጠባበቅ ላይ",
+      "done": "ተልኳል",
+      "failed": "ተትቷል"
     }
   }
 }
