@@ -21,7 +21,7 @@ import uuid
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import delete, event, func, inspect, select
+from sqlalchemy import Text, delete, event, func, inspect, literal, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -63,9 +63,33 @@ def _facet_values(value: Any) -> list[str]:
     return []
 
 
+# The first key of the transaction-scoped advisory lock that serialises
+# rebuilds of one product. Any fixed number would do; this one spells "MXSR".
+_REBUILD_LOCK_SPACE = 0x4D585352
+
+
+def _lock_product_rebuild(db: Session, product_id: uuid.UUID) -> None:
+    """Only one transaction rebuilds a product's document at a time (D-057).
+
+    Without it, two rebuilds of one product could overlap: the one that read
+    the older state could write last and leave a stale "from" price until
+    the hourly rebuild. Held until commit, so the second rebuild starts
+    after the first is committed and, under READ COMMITTED, reads every
+    change committed before it. A hash collision between two products only
+    makes one wait for the other."""
+    db.execute(
+        select(
+            func.pg_advisory_xact_lock(
+                _REBUILD_LOCK_SPACE, func.hashtext(literal(str(product_id), type_=Text))
+            )
+        )
+    )
+
+
 def rebuild_document(db: Session, product_id: uuid.UUID) -> SearchDocument | None:
     """Write the product's search document from what the database holds now,
     or delete it when the product is not approved (draft, archived, merged)."""
+    _lock_product_rebuild(db, product_id)
     product = db.get(Product, product_id, populate_existing=True)
     if product is None or product.status != ProductStatus.APPROVED:
         db.execute(delete(SearchDocument).where(SearchDocument.product_id == product_id))

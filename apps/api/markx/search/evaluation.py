@@ -41,6 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from markx.catalog.models import Product, ProductStatus
+from markx.core.ethiopic import normalize_text
 from markx.search import selectors
 
 KINDS = ("amharic", "english", "latin_amharic")
@@ -78,6 +79,7 @@ class Outcome:
 @dataclass(slots=True)
 class Report:
     cases: int
+    distinct_queries: int
     top: int
     hits: int
     hit_rate: float
@@ -180,11 +182,24 @@ def evaluate(db: Session, cases: Sequence[Case], *, top: int = 3, language: str 
     hit_rate = round(hits / len(outcomes), 4) if outcomes else 0.0
     p95 = round(_p95(times), 2)
     notes = []
-    valid = len(outcomes) >= REQUIRED_CASES
+    # Two rows whose queries normalise alike run the same search: they are
+    # one measurement, not two, and do not count twice towards the 100 (D-057).
+    first_line: dict[str, int] = {}
+    duplicates: list[tuple[int, int]] = []
+    for case in cases:
+        key = normalize_text(case.query)
+        if key in first_line:
+            duplicates.append((case.line, first_line[key]))
+        else:
+            first_line[key] = case.line
+    distinct = len(first_line)
+    for line, original in duplicates:
+        notes.append(f"Line {line} searches the same as line {original}; it is counted once.")
+    valid = distinct >= REQUIRED_CASES
     if not valid:
         notes.append(
-            f"Not a valid P8 measurement: {len(outcomes)} of the {REQUIRED_CASES} real queries "
-            "the criterion needs."
+            f"Not a valid P8 measurement: {distinct} of the {REQUIRED_CASES} real queries "
+            "the criterion needs (a repeated query counts once)."
         )
     missing_kinds = [kind for kind in KINDS if kind not in by_kind]
     if missing_kinds:
@@ -195,6 +210,7 @@ def evaluate(db: Session, cases: Sequence[Case], *, top: int = 3, language: str 
     )
     return Report(
         cases=len(outcomes),
+        distinct_queries=distinct,
         top=top,
         hits=hits,
         hit_rate=hit_rate,
@@ -214,7 +230,7 @@ def evaluate(db: Session, cases: Sequence[Case], *, top: int = 3, language: str 
 
 def format_report(report: Report) -> str:
     lines = [
-        f"Queries: {report.cases}    right product in the top {report.top}: "
+        f"Queries: {report.cases} ({report.distinct_queries} distinct)    right product in the top {report.top}: "
         f"{report.hits} ({report.hit_rate:.1%}; target {TARGET_HIT_RATE:.0%})",
         f"Time per search: 95% under {report.p95_ms:.1f} ms, slowest {report.max_ms:.1f} ms "
         f"(target {TARGET_P95_MS:.0f} ms)",

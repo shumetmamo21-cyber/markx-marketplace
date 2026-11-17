@@ -22,7 +22,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import Select, and_, case, false, func, or_, select
+from sqlalchemy import Select, Text, and_, case, false, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from markx.catalog.models import Brand, Category, Product, ProductStatus, ProductTranslation
@@ -72,6 +72,21 @@ def _closeness(word: str) -> Any:
     return func.word_similarity(word, SearchDocument.search_text)
 
 
+def _close_enough(word: str) -> Any:
+    """`word_similarity(word, text) >= LETTER_MATCH`, written with pg_trgm's
+    `<%` operator so the trigram index on `search_text` can answer it. The
+    function form cannot use an index and scanned every document (D-057).
+    The threshold is the session's `pg_trgm.word_similarity_threshold`,
+    which `_use_letter_threshold` sets for the transaction."""
+    return literal(word, type_=Text).op("<%")(SearchDocument.search_text)
+
+
+def _use_letter_threshold(db: Session) -> None:
+    db.execute(
+        select(func.set_config("pg_trgm.word_similarity_threshold", str(LETTER_MATCH), True))
+    )
+
+
 def _match(variant: str) -> tuple[Any, Any, Any]:
     """The three match conditions for one wording of the query."""
     words = variant.split(" ")
@@ -86,7 +101,7 @@ def _match(variant: str) -> tuple[Any, Any, Any]:
         by_sound = false()
     # Every word must be close to some word of the document: one word of two
     # matching is not a match.
-    by_letters = and_(*(_closeness(word) >= LETTER_MATCH for word in words))
+    by_letters = and_(*(_close_enough(word) for word in words))
     return by_words, by_sound, by_letters
 
 
@@ -181,6 +196,7 @@ def search(
     raw = query.strip()[:MAX_QUERY_LENGTH]
     normalized = " ".join(normalize_text(raw).split(" ")[:MAX_WORDS])
 
+    _use_letter_threshold(db)
     statement = _public_documents()
     tier: Any = 0
     closeness: Any = 0
@@ -252,7 +268,7 @@ def search(
             list(
                 db.scalars(
                     _public_documents()
-                    .where(or_(*(_closeness(word) >= LETTER_MATCH for word in words)))
+                    .where(or_(*(_close_enough(word) for word in words)))
                     .order_by(closeness.desc(), SearchDocument.product_id)
                     .limit(3)
                 )

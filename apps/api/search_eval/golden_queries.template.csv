@@ -3,7 +3,8 @@
 # One row per real query: exactly what a person typed, and the product they meant.
 # The P8 target needs 100 rows across the three kinds, collected from real people
 # (shop owners, buyers, Telegram groups). Do not make queries up: the score is only
-# meaningful if the queries are real.
+# meaningful if the queries are real. A query repeated, even with different capitals
+# or punctuation, is scored but counts once towards the 100.
 #
 #   query     exactly as typed, spelling mistakes and all
 #   expected  the product's slug as it appears in its MarkX link (for example

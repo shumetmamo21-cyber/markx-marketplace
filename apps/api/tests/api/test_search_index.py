@@ -190,3 +190,67 @@ def test_the_hourly_rebuild_repairs_a_missing_or_wrong_document(
         assert search.rebuild_all(db) == 1
     db.commit()
     assert db.scalar(select(func.count()).select_from(SearchDocument)) == 1
+
+
+def test_a_rebuild_that_read_older_offers_never_writes_last(
+    bazaar: Bazaar, db: DbSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-057. Rebuild A reads the offers, then stalls before writing. A price
+    change commits and rebuild B runs for it. Without a per-product lock, B
+    writes the new price, A then writes the old one over it, and search shows
+    the wrong "from" price until the hourly rebuild. With the lock, B waits
+    for A and writes last."""
+    import threading
+
+    from sqlalchemy import update
+
+    from markx.core.db import get_session_factory
+    from markx.offers.models import Offer
+
+    product_id = uuid.UUID(bazaar.product["id"])
+    assert _doc(db, bazaar) is not None  # the document exists, at 17,900 birr
+    a_has_read = threading.Event()
+    let_a_write = threading.Event()
+    real_insert = search.insert
+
+    def stalling_insert(*args: object, **kwargs: object) -> object:
+        if threading.current_thread().name == "rebuild-a":
+            a_has_read.set()
+            assert let_a_write.wait(timeout=10)
+        return real_insert(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(search, "insert", stalling_insert)
+
+    def rebuild() -> None:
+        session = get_session_factory()()
+        try:
+            search.rebuild_document(session, product_id)
+            session.commit()
+        finally:
+            session.close()
+
+    a = threading.Thread(target=rebuild, name="rebuild-a")
+    a.start()
+    assert a_has_read.wait(timeout=10)
+    change = get_session_factory()()
+    try:
+        change.execute(
+            update(Offer)
+            .where(Offer.id == uuid.UUID(bazaar.b128["id"]))
+            .values(price_santim=1_500_000)
+        )
+        change.commit()
+    finally:
+        change.close()
+    b = threading.Thread(target=rebuild, name="rebuild-b")
+    b.start()
+    b.join(timeout=1)  # with the lock, B is waiting for A
+    let_a_write.set()
+    a.join(timeout=10)
+    b.join(timeout=10)
+    assert not a.is_alive()
+    assert not b.is_alive()
+    db.rollback()
+    doc = db.get(SearchDocument, product_id, populate_existing=True)
+    assert doc is not None
+    assert doc.min_price_santim == 1_500_000

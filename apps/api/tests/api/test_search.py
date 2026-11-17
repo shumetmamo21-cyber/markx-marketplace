@@ -280,3 +280,29 @@ def test_a_withdrawn_product_disappears_before_the_worker_runs(shelf: Shelf) -> 
     assert shelf.slugs("", category="phones") == [shelf.samsung["slug"]]
     assert shelf.visitor.get("/search/suggest", params={"q": "tec"}).json() == []
     assert shelf.find("tecno spark")["did_you_mean"] == []
+
+
+def test_a_typo_match_is_answered_by_the_trigram_index(shelf: Shelf, db: DbSession) -> None:
+    """The typo tier ("letters") must be indexable: written as
+    `word_similarity(...) >= x` it scanned every document on every search
+    (D-057; 322 ms against 41 ms on 50,000 synthetic documents). With
+    sequential scans priced out, the plan must use the trigram index."""
+    from sqlalchemy import text
+
+    from markx.search import selectors
+    from markx.search.models import SearchDocument
+
+    selectors._use_letter_threshold(db)
+    db.execute(text("set local enable_seqscan = off"))
+    _, _, by_letters = selectors._match("samsunk")
+    statement = select(SearchDocument.product_id).where(by_letters)
+    compiled = statement.compile(db.get_bind())
+    plan = "\n".join(
+        row[0] for row in db.connection().exec_driver_sql(f"explain {compiled}", compiled.params)
+    )
+    assert "ix_search_documents_trigram" in plan, plan
+    # And the operator keeps the threshold: the typo is found, a stranger is not.
+    assert shelf.slugs("samsunk") == [shelf.samsung["slug"]]
+    assert db.scalars(statement).all() == [uuid.UUID(shelf.samsung["id"])]
+    _, _, far = selectors._match("zzqxw")
+    assert db.scalars(select(SearchDocument.product_id).where(far)).all() == []

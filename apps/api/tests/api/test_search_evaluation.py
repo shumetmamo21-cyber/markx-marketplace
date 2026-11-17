@@ -88,27 +88,42 @@ def test_the_evaluator_scores_hits_misses_and_unknown_products(shelf: Shelf, db:
     assert "Miss, line 9 [english]: 'iphone 15'" in text
 
 
-def test_a_full_set_can_meet_the_criteria(shelf: Shelf, db: DbSession) -> None:
-    """A hundred SYNTHETIC cases (four queries repeated) only to show the
-    arithmetic: a valid set at or above 85% in time passes; below, it fails."""
-    good = [
-        Case(line=i, query=q, expected=(slug,), kind=kind, source="synthetic")
-        for i, (q, slug, kind) in enumerate(
-            [
-                ("ሳምሰንግ", shelf.samsung["slug"], "amharic"),
-                ("samsung", shelf.samsung["slug"], "english"),
-                ("tekno", shelf.tecno["slug"], "latin_amharic"),
-                ("ቴክኖ", shelf.tecno["slug"], "amharic"),
-            ]
-            * 25
-        )
+def _distinct_hits(shelf: Shelf) -> list[Case]:
+    """A hundred SYNTHETIC, distinct queries that each find their product: the
+    words of each product's name in every order and combination."""
+    from itertools import permutations
+
+    pools = [
+        (["samsung", "galaxy", "a16", "ሳምሰንግ"], shelf.samsung["slug"]),
+        (["tecno", "spark", "20", "ቴክኖ"], shelf.tecno["slug"]),
     ]
+    per_product = [
+        [(" ".join(words), slug) for size in range(1, 5) for words in permutations(pool, size)]
+        for pool, slug in pools
+    ]
+    queries = [pair for both in zip(*per_product, strict=True) for pair in both][:100]
+    kinds = ("english", "latin_amharic")
+    return [
+        Case(
+            line=i, query=q, expected=(slug,), source="synthetic",
+            kind="amharic" if any("\u1200" <= c <= "\u137f" for c in q) else kinds[i % 2],
+        )
+        for i, (q, slug) in enumerate(queries)
+    ]  # fmt: skip
+
+
+def test_a_full_set_can_meet_the_criteria(shelf: Shelf, db: DbSession) -> None:
+    """A hundred SYNTHETIC distinct cases only to show the arithmetic: a valid
+    set at or above 85% in time passes; below, it fails."""
+    good = _distinct_hits(shelf)
     report = evaluate(db, good)
-    assert (report.cases, report.hits, report.valid_set) == (100, 100, True)
+    assert (report.cases, report.distinct_queries, report.valid_set) == (100, 100, True)
+    assert report.hits == 100, [miss.query for miss in report.misses]
+    assert set(report.by_kind) == {"amharic", "english", "latin_amharic"}
     assert report.criteria_met is (report.p95_ms <= evaluation.TARGET_P95_MS)
     misses = [
-        Case(line=200 + i, query="laptop", expected=(shelf.samsung["slug"],), kind="english",
-             source="synthetic")
+        Case(line=200 + i, query=f"laptop{i}", expected=(shelf.samsung["slug"],),
+             kind="english", source="synthetic")
         for i in range(16)
     ]  # fmt: skip
     report = evaluate(db, good[:84] + misses)
@@ -116,12 +131,30 @@ def test_a_full_set_can_meet_the_criteria(shelf: Shelf, db: DbSession) -> None:
     assert report.criteria_met is False
 
 
+def test_repeated_queries_count_once(shelf: Shelf, db: DbSession) -> None:
+    """D-057: a hundred rows of four queries are four measurements, not a
+    hundred. Rows that normalise alike ("Samsung" and "SAMSUNG!") are one."""
+    repeated = [
+        Case(line=i, query=q, expected=(shelf.samsung["slug"],), kind=kind, source="synthetic")
+        for i, (q, kind) in enumerate(
+            [("ሳምሰንግ", "amharic"), ("Samsung", "english"), ("SAMSUNG!", "english"),
+             ("samsang", "latin_amharic")] * 25
+        )
+    ]  # fmt: skip
+    report = evaluate(db, repeated)
+    assert (report.cases, report.distinct_queries) == (100, 3)
+    assert report.valid_set is False
+    assert report.criteria_met is False
+    assert "Line 2 searches the same as line 1; it is counted once." in report.notes
+    assert any("3 of the 100" in note for note in report.notes)
+
+
 def test_the_command_line(shelf: Shelf, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert evaluation.main([str(_write(tmp_path, "nope\n"))]) == 2
     assert "header must be" in capsys.readouterr().err
     assert evaluation.main([str(SYNTHETIC)]) == 1  # six cases: never a valid measurement
     out = capsys.readouterr().out
-    assert "Queries: 6" in out
+    assert "Queries: 6 (6 distinct)" in out
     assert "CRITERIA NOT MET" in out
     assert evaluation.main([str(SYNTHETIC), "--json"]) == 1
     assert '"valid_set": false' in capsys.readouterr().out
