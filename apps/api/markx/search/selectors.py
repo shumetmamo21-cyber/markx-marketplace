@@ -25,7 +25,7 @@ from typing import Any, Literal
 from sqlalchemy import Select, and_, case, false, func, or_, select
 from sqlalchemy.orm import Session
 
-from markx.catalog.models import Brand, Category, Product, ProductTranslation
+from markx.catalog.models import Brand, Category, Product, ProductStatus, ProductTranslation
 from markx.core import settings_store
 from markx.core.errors import NotFound
 from markx.core.ethiopic import detect_script, normalize_text, skeleton_key
@@ -108,6 +108,18 @@ def _brand_id(db: Session, slug: str | None) -> uuid.UUID | None:
     return found
 
 
+def _public_documents() -> Select[Any]:
+    """Documents of products a buyer may see right now. The document says so
+    already, but it is rebuilt by the worker a little after a change; the
+    product's own status is checked at query time, so a product staff
+    withdraw is gone at once."""
+    return (
+        select(SearchDocument)
+        .join(Product, Product.id == SearchDocument.product_id)
+        .where(Product.status == ProductStatus.APPROVED)
+    )
+
+
 def _cards(db: Session, docs: list[SearchDocument], language: str) -> list[dict[str, Any]]:
     """The product card used everywhere (D.9): name, "from" price, sellers,
     best seller level, freshness."""
@@ -169,7 +181,7 @@ def search(
     raw = query.strip()[:MAX_QUERY_LENGTH]
     normalized = " ".join(normalize_text(raw).split(" ")[:MAX_WORDS])
 
-    statement: Select[Any] = select(SearchDocument)
+    statement = _public_documents()
     tier: Any = 0
     closeness: Any = 0
     if normalized:
@@ -239,7 +251,7 @@ def search(
             db,
             list(
                 db.scalars(
-                    select(SearchDocument)
+                    _public_documents()
                     .where(or_(*(_closeness(word) >= LETTER_MATCH for word in words)))
                     .order_by(closeness.desc(), SearchDocument.product_id)
                     .limit(3)

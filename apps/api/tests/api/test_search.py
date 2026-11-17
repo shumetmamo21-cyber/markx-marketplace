@@ -264,3 +264,19 @@ def test_a_visitor_can_ask_for_a_product_nobody_sells(shelf: Shelf, db: DbSessio
     assert shelf.visitor.post("/product-requests", json={"query": "Pixel"}).status_code == 429
     db.rollback()
     assert db.scalar(select(func.count()).select_from(ProductRequest)) == 10
+
+
+def test_a_withdrawn_product_disappears_before_the_worker_runs(shelf: Shelf) -> None:
+    """Staff archive a product (a restricted item, say): it must not be found
+    in the minutes before the worker rebuilds its document. Found in the
+    sixth session's review: search read the document alone."""
+    assert shelf.slugs("tecno") == [shelf.tecno["slug"]]
+    archived = shelf.bazaar.staff.post(
+        f"/admin/catalog/products/{shelf.tecno['id']}/archive", json={"note": "Withdrawn"}
+    )
+    assert archived.status_code == 200, archived.text
+    # No worker pass yet: the stale document is still in the table.
+    assert shelf.find("tecno")["total"] == 0
+    assert shelf.slugs("", category="phones") == [shelf.samsung["slug"]]
+    assert shelf.visitor.get("/search/suggest", params={"q": "tec"}).json() == []
+    assert shelf.find("tecno spark")["did_you_mean"] == []

@@ -892,7 +892,8 @@ C-16, S-16, AD-09. **Accepted, with two provisional parts below.**
   the case's decision is the record that the money went back. There is no
   `refunds` table yet; it arrives with Protected payments (Release 2).
 
-**PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH** (both are easy to change):
+**PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH** (both are easy to change;
+the founder approved both as provisional on 17 November 2026, D-053):
 
 1. **What happens to the stock on a refund.** Staff tick "the goods went back
    to the shop" (`goods_returned`). If ticked, the held units go back on sale;
@@ -985,6 +986,40 @@ queries in the top three; 95% of queries under 300 ms). Both need real
 queries and a real-sized catalogue. The trigram match does not use the
 trigram index (it compares per word with a threshold), which is fine at
 pilot scale; F.7 names the point to move to a dedicated engine.
+
+## D-053 The founder's provisional approvals of 17 November 2026
+
+**Recorded** on the founder's written instruction. Everything in this entry is
+**PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH**. None of it is a settled
+legal or business requirement; no engineer may describe it as one.
+
+**Approved as provisional:**
+
+1. **Refunds and stock** (D-050, part 1). When staff record that a seller
+   refunded a buyer, the units go back on sale **only when staff confirm the
+   goods have physically returned to the shop** (`goods_returned: true`).
+   Otherwise they leave the shop's count. To change it: the one branch in
+   `resolve_dispute`, `markx/orders/service.py`.
+2. **Who decides a problem** (D-050, part 2). Staff with `handle_cases`
+   (super administrator, operations and **support**) may decide alone, with a
+   **48-hour** target (`orders.problem_decision_hours`). To change who: the
+   `CaseHandler` permission in `markx/orders/router.py` and the
+   `HANDLE_CASES` row in `markx/accounts/permissions.py`. To change the
+   target: the setting.
+
+**Kept as documented, unchanged, and easy to change** (the founder asked that
+these stay visible; their F- entries below remain open and no recommendation
+was implemented):
+
+| Item | What the code does today | Where it changes |
+| --- | --- | --- |
+| TIN format (F-03) | Exactly ten digits after removing spaces and dashes | `_TIN` and `_clean_tin` in `markx/sellers/service.py` |
+| Seller verification for used goods (F-04) | Every `used` offer needs Level 2, in every category | `USED_GOODS_MIN_LEVEL` in `markx/offers/service.py` |
+| A rejected applicant (F-05) | Needs a fresh invitation | invitation use in `markx/sellers/service.py` (D-019) |
+| Ownership transfer (F-02) | Not built: no route transfers a store | to be built once decided |
+| Document storage (F-01) | Local disk on a laptop only; refuses staging and production | `get_private_storage` in `markx/core/storage.py`: one new adapter class |
+| Fulfilment hold (D-043) | A part still `confirmed` or `ready` 14 days after confirmation is cancelled and its stock freed | the setting `orders.fulfilment_hold_days`, or the job `cancel_overdue_fulfilment` |
+| Merged products' offers (F-06), lifting a takedown (F-07) | As their F- entries say | as their F- entries say |
 
 ---
 
