@@ -3,11 +3,14 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { OrderActions } from "@/components/OrderActions";
+import { PhotoUpload } from "@/components/PhotoUpload";
+import { ProblemMessageForm } from "@/components/ProblemMessageForm";
+import { ProblemPhotos } from "@/components/ProblemPhotos";
 import { ReviewForm } from "@/components/ReviewForm";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
-import { statusLabel } from "@/lib/labels";
+import { codeLabel, statusLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 import { getMe } from "@/lib/session";
 
@@ -28,6 +31,17 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
   // Items the API says are waiting for a review (completed, window open).
   const toRate = new Set((pending.data ?? []).filter((item) => item.order_id === order.id).map((item) => item.order_item_id));
   const reviewText = { reviews: t.reviews, apiErrors: t.apiErrors };
+  // Evidence photos, each link signed for this buyer (C-16, D-062).
+  const photos = new Map(
+    await Promise.all(
+      order.seller_orders.filter((part) => part.problem).map(async (part) => {
+        const { data } = await api.GET("/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/problem/photos", {
+          params: { path: { order_id: order.id, seller_order_id: part.id } },
+        });
+        return [part.id, data ?? []] as const;
+      }),
+    ),
+  );
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -92,11 +106,40 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
           </div>
 
           {part.problem ? (
-            <div className="space-y-1 rounded-card border border-clay p-3 text-sm">
+            <div className="space-y-3 rounded-card border border-clay p-3 text-sm">
               <p className="font-semibold">{fill(o.problemOpen, { type: t.problemType[part.problem.problem_type as keyof typeof t.problemType] ?? part.problem.problem_type })}</p>
-              <p>{part.problem.description}</p>
+              <p className="whitespace-pre-line break-words">{part.problem.description}</p>
+              {part.problem.messages.length ? (
+                <div className="space-y-1">
+                  <h3 className="font-semibold">{o.problemMessages}</h3>
+                  <ul className="space-y-1">
+                    {part.problem.messages.map((message, index) => (
+                      <li key={index} className="break-words"><span className="font-semibold">{codeLabel(t, "author", message.author_type)}:</span> {message.body}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {(photos.get(part.id) ?? []).length ? (
+                <div className="space-y-1">
+                  <h3 className="font-semibold">{o.problemPhotos}</h3>
+                  <ProblemPhotos photos={photos.get(part.id) ?? []} lang={lang} t={t} />
+                </div>
+              ) : null}
               {part.problem.decision ? (
                 <p className="font-semibold">{fill(o.problemDecision, { decision: t.decision[part.problem.decision as keyof typeof t.decision] ?? part.problem.decision })}</p>
+              ) : null}
+              {part.problem.status !== "resolved" ? (
+                <div className="space-y-3 border-t border-line pt-3">
+                  <ProblemMessageForm orderId={order.id} sellerOrderId={part.id} t={{ orders: t.orders, apiErrors: t.apiErrors }} />
+                  <p className="text-slate">{o.problemPhotoHint}</p>
+                  <PhotoUpload
+                    path={`/api/v1/me/orders/${order.id}/seller-orders/${part.id}/problem/photos`}
+                    label={o.problemPhotoAdd}
+                    send={o.problemPhotoSend}
+                    sent={o.problemPhotoSent}
+                    t={{ apiErrors: t.apiErrors }}
+                  />
+                </div>
               ) : null}
             </div>
           ) : null}

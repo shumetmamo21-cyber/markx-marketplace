@@ -3,11 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Countdown } from "@/components/Countdown";
+import { PhotoUpload } from "@/components/PhotoUpload";
+import { ProblemPhotos } from "@/components/ProblemPhotos";
 import { SellerOrderActions } from "@/components/SellerOrderActions";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
-import { statusLabel } from "@/lib/labels";
+import { codeLabel, statusLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 
 export const metadata: Metadata = { robots: { index: false } };
@@ -22,6 +24,9 @@ export default async function SellerOrderPage({ params }: PageProps<"/[lang]/sel
   });
   if (!order) notFound();
   const s = t.seller;
+  const photos = order.problem
+    ? ((await api.GET("/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/photos", { params: { path: { seller_id: sellerId, seller_order_id: orderId } } })).data ?? [])
+    : [];
   const method = t.checkout[`method_${order.delivery_method}` as "method_seller_rider"] ?? order.delivery_method;
 
   return (
@@ -85,11 +90,29 @@ export default async function SellerOrderPage({ params }: PageProps<"/[lang]/sel
           <p>{order.problem.description}</p>
           <ul className="space-y-1">
             {order.problem.messages.map((message, index) => (
-              <li key={index}><span className="font-semibold">{message.author_type}:</span> {message.body}</li>
+              <li key={index} className="break-words"><span className="font-semibold">{codeLabel(t, "author", message.author_type)}:</span> {message.body}</li>
             ))}
           </ul>
+          {photos.length ? (
+            <div className="space-y-1">
+              <h3 className="font-semibold">{t.orders.problemPhotos}</h3>
+              <ProblemPhotos photos={photos} lang={lang} t={t} />
+            </div>
+          ) : null}
           {order.problem.decision ? (
             <p className="font-semibold">{fill(t.orders.problemDecision, { decision: t.decision[order.problem.decision as keyof typeof t.decision] ?? order.problem.decision })}</p>
+          ) : null}
+          {order.problem.status !== "resolved" ? (
+            <div className="space-y-2 border-t border-line pt-3">
+              <p className="text-slate">{t.orders.problemPhotoHint}</p>
+              <PhotoUpload
+                path={`/api/v1/seller/${sellerId}/orders/${orderId}/problem/photos`}
+                label={t.orders.problemPhotoAdd}
+                send={t.orders.problemPhotoSend}
+                sent={t.orders.problemPhotoSent}
+                t={{ apiErrors: t.apiErrors }}
+              />
+            </div>
           ) : null}
         </section>
       ) : null}

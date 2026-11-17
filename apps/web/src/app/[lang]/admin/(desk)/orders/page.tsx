@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 
 import { DispatchForm, ReissueCodeForm, ResolveProblemForm } from "@/components/admin/StaffActions";
+import { ProblemPhotos } from "@/components/ProblemPhotos";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
-import { statusLabel } from "@/lib/labels";
+import { codeLabel, statusLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 
 const CODE = /^MX-[34679ACDEFGHJKMNPQRTUVWXY]{6}$/;
@@ -21,6 +22,16 @@ export default async function OrdersDeskPage({ params, searchParams }: PageProps
   const api = await serverApi();
   const found = CODE.test(code) ? await api.GET("/api/v1/admin/orders/{code}", { params: { path: { code }, query: { lang } } }) : null;
   const order = found?.data;
+  // Evidence on each reported problem, for staff who handle cases; for other
+  // roles the API refuses and nothing is shown.
+  const photos = new Map(
+    await Promise.all(
+      (order?.seller_orders ?? []).filter((part) => part.problem).map(async (part) => {
+        const { data } = await api.GET("/api/v1/admin/orders/seller-orders/{seller_order_id}/problem/photos", { params: { path: { seller_order_id: part.id } } });
+        return [part.id, data ?? []] as const;
+      }),
+    ),
+  );
   const a = t.admin;
   const text = { admin: a, apiErrors: t.apiErrors };
   return (
@@ -52,7 +63,8 @@ export default async function OrdersDeskPage({ params, searchParams }: PageProps
                 <div className="space-y-2 rounded-card border border-clay p-3 text-sm">
                   <p className="font-semibold">{t.problemType[part.problem.problem_type as keyof typeof t.problemType] ?? part.problem.problem_type}</p>
                   <p>{part.problem.description}</p>
-                  <ul className="space-y-1">{part.problem.messages.map((m, i) => <li key={i}><span className="font-semibold">{m.author_type}:</span> {m.body}</li>)}</ul>
+                  <ul className="space-y-1">{part.problem.messages.map((m, i) => <li key={i} className="break-words"><span className="font-semibold">{codeLabel(t, "author", m.author_type)}:</span> {m.body}</li>)}</ul>
+                  <ProblemPhotos photos={photos.get(part.id) ?? []} lang={lang} t={t} />
                   {part.problem.decision ? <p className="font-semibold">{part.problem.decision === "seller_refunded" ? a.decisionRefunded : a.decisionNoAction} · {part.problem.decision_reason}</p> : null}
                 </div>
               ) : null}

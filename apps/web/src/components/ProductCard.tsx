@@ -4,8 +4,10 @@ import type { ProductCard as Card } from "@/lib/api/types";
 import { formatPrice } from "@/lib/format";
 import { fill, type Locale, type Messages } from "@/lib/i18n";
 
-// The same card everywhere (blueprint D.9, I.5): name, "from ETB", number of
-// sellers, best seller level and a freshness mark. Text before pictures.
+// The same card everywhere (blueprint D.9, I.5): photo, name, "from ETB",
+// number of sellers, best seller level and a freshness mark. The photo is the
+// API's small thumbnail (within 320 px and 30 KB, D-062), loaded lazily, and
+// left out when the product has none; the text never waits for it.
 export function ProductCard({ card, lang, t }: { card: Card; lang: Locale; t: Messages }) {
   const sellers = card.seller_count === 1 ? t.card.sellerOne : fill(t.card.sellerCount, { count: card.seller_count });
   return (
@@ -13,6 +15,12 @@ export function ProductCard({ card, lang, t }: { card: Card; lang: Locale; t: Me
       href={`/${lang}/p/${card.slug}`}
       className="flex h-full flex-col gap-2 rounded-card border border-line bg-card p-4 hover:border-ink"
     >
+      {card.thumb_url ? (
+        <span className="flex h-28 items-center justify-center overflow-hidden rounded-card bg-white">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the worker already made it small (D-062) */}
+          <img src={card.thumb_url} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain" />
+        </span>
+      ) : null}
       {card.brand ? <span className="text-xs font-semibold uppercase tracking-wide text-slate">{card.brand}</span> : null}
       <span className="font-semibold leading-snug">{card.name}</span>
       <span className="mt-auto">

@@ -4630,6 +4630,8 @@ export interface components {
             seller_count: number;
             /** Slug */
             slug: string;
+            /** Thumb Url */
+            thumb_url: string | null;
         };
         /**
          * ProductImagesOut

@@ -29,6 +29,7 @@ from markx.catalog.models import Brand, Category, Product, ProductStatus, Produc
 from markx.core import settings_store
 from markx.core.errors import NotFound
 from markx.core.ethiopic import detect_script, normalize_text, skeleton_key
+from markx.images.selectors import first_thumbnails
 from markx.search.models import SearchDocument, SearchQuery, SearchSynonym
 
 Sort = Literal["relevance", "price", "freshness"]
@@ -155,6 +156,7 @@ def _cards(db: Session, docs: list[SearchDocument], language: str) -> list[dict[
     ) if brand_ids else {}  # fmt: skip
     other = "en" if language == "am" else "am"
     sink_before = _sink_before(db)
+    thumbs = first_thumbnails(db, ids)
     return [
         {
             "product_id": doc.product_id,
@@ -170,6 +172,7 @@ def _cards(db: Session, docs: list[SearchDocument], language: str) -> list[dict[
             "in_stock": doc.in_stock,
             "price_is_fresh": doc.freshest_price_at is not None
             and doc.freshest_price_at >= sink_before,
+            "thumb_url": thumbs.get(doc.product_id),
         }
         for doc in docs
     ]

@@ -1679,6 +1679,34 @@ capability the API checks (`menu.ts`, tested per role in `menu.test.ts`):
   (D-070). The seller entry opens the first screen the member's role allows,
   not always Orders.
 
+## D-073 Pictures on the web: the card's thumbnail, the gallery, shops' photos, problem evidence
+
+**Follows** blueprint D.5, D.9, F.6, S-06, C-16, D-062. **Accepted.** One
+change to an existing schema, both sides at once (D-061): `ProductCardOut`
+gains `thumb_url`.
+
+- **The product card** (D.9: "photo, name, from ETB, ...") carries the
+  thumbnail of the product's first ready catalogue picture, or null.
+  `images.selectors.first_thumbnails` finds them for a page of cards in one
+  query (`DISTINCT ON`). A shop's real photo never becomes the card's
+  picture; a picture taken down gives way to the next. The card loads it
+  lazily and shows no box when there is none, so the text never waits.
+- **The product page** shows the first catalogue picture large and the rest
+  as thumbnails, each a link to its main size, then "Photos from shops"
+  with the shop's name. Only ready pictures with both sizes are shown.
+- **The shop's photos** of a product it sells: a screen per product, linked
+  from every offer, with every photo in every state, an upload and a
+  withdraw button (not offered once a photo is down). The API decides who may
+  add, how many and of what (`no_offer_for_product`, `too_many_images`).
+- **Problem evidence** on the buyer's order page, the shop's order page and
+  the orders desk: the photos both sides added, each behind the link the API
+  signed for the person reading (a staff role without `handle_cases` gets
+  none, as the API refuses); an upload and, for the buyer, a message form
+  while the problem is not `resolved`, the same state test the shop's reply
+  form already used. Message authors are shown in words (`labels.author`),
+  not as codes.
+- Uploads go through `PhotoUpload`, which uses `sendForm` (D-071).
+
 ---
 
 ## Decisions that need the founder

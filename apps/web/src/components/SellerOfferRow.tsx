@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -11,7 +12,7 @@ type Offer = components["schemas"]["SellerOfferOut"];
 
 // Quick edit (blueprint I.5): price and stock in place, pause and resume.
 // Prices are typed in birr and sent in santim; the API checks the rest.
-export function SellerOfferRow({ sellerId, offer, t, confirmedText }: { sellerId: string; offer: Offer; t: Pick<Messages, "seller" | "condition" | "apiErrors">; confirmedText: string }) {
+export function SellerOfferRow({ sellerId, offer, t, confirmedText, photosHref }: { sellerId: string; offer: Offer; t: Pick<Messages, "seller" | "condition" | "apiErrors">; confirmedText: string; photosHref: string }) {
   const s = t.seller;
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -88,6 +89,7 @@ export function SellerOfferRow({ sellerId, offer, t, confirmedText }: { sellerId
         ) : null}
       </form>
       {offer.reserved > 0 ? <p className="text-sm text-slate">{fill(s.held, { count: offer.reserved })}</p> : null}
+      <p><Link href={photosHref} className="inline-flex min-h-12 items-center text-sm font-semibold underline">{s.photosLink}</Link></p>
       {note ? <p role={note.ok ? "status" : "alert"} className={note.ok ? "text-sm font-semibold" : "text-sm font-semibold text-clay"}>{note.text}</p> : null}
     </li>
   );

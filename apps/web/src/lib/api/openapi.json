@@ -4891,6 +4891,17 @@
           "slug": {
             "title": "Slug",
             "type": "string"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
           }
         },
         "required": [
@@ -4904,7 +4915,8 @@
           "seller_count",
           "best_seller_level",
           "in_stock",
-          "price_is_fresh"
+          "price_is_fresh",
+          "thumb_url"
         ],
         "title": "ProductCardOut",
         "type": "object"

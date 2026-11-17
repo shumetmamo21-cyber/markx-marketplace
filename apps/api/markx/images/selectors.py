@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from markx.catalog.models import ImageKind, ImageStatus, Product, ProductImage, ProductStatus
@@ -70,6 +71,29 @@ def public_images(db: Session, slug: str) -> dict[str, Any]:
             for i, store in real
         ],
     }
+
+
+def first_thumbnails(db: Session, product_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """Each product's first ready catalogue picture as a thumbnail link, for
+    the product card (D.9). Products without one are left out."""
+    if not product_ids:
+        return {}
+    first = (
+        select(ProductImage)
+        .where(
+            ProductImage.product_id.in_(product_ids),
+            ProductImage.kind == ImageKind.CATALOGUE,
+            ProductImage.status == ImageStatus.READY,
+        )
+        .order_by(
+            ProductImage.product_id,
+            ProductImage.position,
+            ProductImage.created_at,
+            ProductImage.id,
+        )
+        .ext(distinct_on(ProductImage.product_id))
+    )
+    return {image.product_id: public_url(thumb_key(image)) for image in db.scalars(first)}
 
 
 def _row(image: ProductImage) -> dict[str, Any]:

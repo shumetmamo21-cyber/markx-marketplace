@@ -109,7 +109,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
   const zone = one(raw.zone);
   const before = one(raw.reviews);
   const api = await serverApi();
-  const [offers, zones, reviews] = await Promise.all([
+  const [offers, zones, reviews, pictures] = await Promise.all([
     api.GET("/api/v1/catalog/products/{slug}/offers", {
       params: { path: { slug: product.slug }, query: { variant_id: variant?.id, zone: zone || undefined } },
     }),
@@ -117,7 +117,10 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
     api.GET("/api/v1/catalog/products/{slug}/reviews", {
       params: { path: { slug: product.slug }, query: { lang, limit: REVIEWS_PER_PAGE, before: /^[0-9a-f-]{36}$/.test(before) ? before : undefined } },
     }),
+    api.GET("/api/v1/catalog/products/{slug}/images", { params: { path: { slug: product.slug } } }),
   ]);
+  const catalogue = (pictures.data?.catalogue ?? []).filter((p) => p.main_url && p.thumb_url);
+  const realPhotos = (pictures.data?.real_photos ?? []).filter((p) => p.main_url && p.thumb_url);
   const ranked = offers.data?.offers ?? [];
   const zoneChosen = Boolean(offers.data?.zone_code);
   const shopNames = new Map(ranked.map((offer) => [offer.store_slug, offer.store_name]));
@@ -135,6 +138,27 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
         {product.description ? <p className="max-w-prose text-slate">{product.description}</p> : null}
         <ReportForm target={{ type: "product", id: product.id }} t={reportText(t)} />
       </section>
+
+      {catalogue.length ? (
+        <section aria-label={t.pictures.title} className="space-y-2">
+          <a href={catalogue[0]?.main_url ?? undefined} className="flex max-h-96 items-center justify-center overflow-hidden rounded-card border border-line bg-white p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- rendered by the worker within 1,200 px and 150 KB (D-062) */}
+            <img src={catalogue[0]?.main_url ?? undefined} alt={fill(t.pictures.catalogueAlt, { name: product.name, number: 1 })} width={catalogue[0]?.width} height={catalogue[0]?.height} fetchPriority="high" className="max-h-80 w-auto max-w-full object-contain" />
+          </a>
+          {catalogue.length > 1 ? (
+            <ul className="flex gap-2 overflow-x-auto pb-1">
+              {catalogue.slice(1).map((picture, index) => (
+                <li key={picture.id} className="shrink-0">
+                  <a href={picture.main_url ?? undefined} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-card border border-line bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a thumbnail within 320 px and 30 KB (D-062) */}
+                    <img src={picture.thumb_url ?? undefined} alt={fill(t.pictures.catalogueAlt, { name: product.name, number: index + 2 })} loading="lazy" className="h-full w-full object-contain" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       {variants.length > 1 ? (
         <section aria-labelledby="variant" className="space-y-2">
@@ -188,6 +212,27 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
           {t.product.inspect}
         </p>
       </section>
+
+      {realPhotos.length ? (
+        <section aria-labelledby="real-photos" className="space-y-2">
+          <h2 id="real-photos" className="text-lg font-bold">{t.pictures.realPhotos}</h2>
+          <p className="text-sm text-slate">{t.pictures.realPhotosLead}</p>
+          <ul className="flex gap-3 overflow-x-auto pb-1">
+            {realPhotos.map((photo) => {
+              const store = shopNames.get(photo.store_slug) ?? photo.store_slug;
+              return (
+                <li key={photo.id} className="w-28 shrink-0 space-y-1">
+                  <a href={photo.main_url ?? undefined} className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-card border border-line bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a thumbnail within 320 px and 30 KB (D-062) */}
+                    <img src={photo.thumb_url ?? undefined} alt={fill(t.pictures.realAlt, { name: product.name, store })} loading="lazy" className="h-full w-full object-contain" />
+                  </a>
+                  <p className="truncate text-xs text-slate">{fill(t.pictures.by, { store })}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       <section aria-labelledby="reviews" className="space-y-3">
         <h2 id="reviews" className="text-lg font-bold">{t.reviews.title}</h2>

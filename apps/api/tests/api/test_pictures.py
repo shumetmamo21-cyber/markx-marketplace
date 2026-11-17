@@ -179,6 +179,41 @@ def test_the_catalogue_picture_limit_holds(bazaar: Bazaar, db: DbSession) -> Non
     assert _upload(bazaar.staff, path, phone_jpeg()).status_code == 202
 
 
+def test_the_product_card_shows_the_first_ready_catalogue_picture(bazaar: Bazaar) -> None:
+    """D.9: the card everywhere carries a photo (D-073): the first catalogue
+    picture that is ready, never a shop's own photo."""
+
+    def card() -> dict[str, Any]:
+        results = ApiClient().get("/search", params={"q": ""}).json()["results"]
+        return dict(next(r for r in results if r["product_id"] == bazaar.product["id"]))
+
+    _render()
+    assert card()["thumb_url"] is None
+    path = f"/admin/catalog/products/{bazaar.product['id']}/images"
+    for _ in range(2):
+        assert _upload(bazaar.staff, path, phone_jpeg()).status_code == 202
+    assert card()["thumb_url"] is None  # not before the worker has rendered it
+    _render()
+    first, second = _images(bazaar)["catalogue"]
+    assert card()["thumb_url"] == first["thumb_url"]
+    assert _fetch(first["thumb_url"]).status_code == 200
+
+    # Taken down: the next picture takes its place.
+    removed = bazaar.staff.post(
+        f"/admin/catalog/images/{first['id']}/remove", json={"reason": "Blurry"}
+    )
+    assert removed.status_code == 200
+    assert card()["thumb_url"] == second["thumb_url"]
+
+    # A shop's real photo is shown on the product page, never on the card.
+    photos = f"/seller/{bazaar.a_id}/products/{bazaar.product['id']}/photos"
+    assert _upload(bazaar.a, photos, phone_jpeg()).status_code == 202
+    _render()
+    assert len(_images(bazaar)["real_photos"]) == 1
+    bazaar.staff.post(f"/admin/catalog/images/{second['id']}/remove", json={"reason": "Blurry"})
+    assert card()["thumb_url"] is None
+
+
 def test_a_seller_adds_real_photos_only_for_what_it_sells(bazaar: Bazaar, db: DbSession) -> None:
     """D.5, S-06: a "Real photo" names its store; only for a product the store
     has an offer on; one store cannot touch another's photos."""

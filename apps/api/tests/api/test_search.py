@@ -103,6 +103,7 @@ def test_results_are_products_with_the_card_facts(shelf: Shelf) -> None:
         "best_seller_level": 2,
         "in_stock": True,
         "price_is_fresh": True,
+        "thumb_url": None,  # no catalogue picture yet (test_pictures.py has one)
     }
     assert shelf.find("samsung galaxy", lang="am")["results"][0]["name"] == "ሳምሰንግ ጋላክሲ A16"
     # A draft product is never found, nor anything that is not there at all.

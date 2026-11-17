@@ -38,6 +38,7 @@ export default async function SellerOffersPage({ params }: PageProps<"/[lang]/se
             offer={offer}
             t={rowText}
             confirmedText={fill(s.confirmedAgo, { ago: timeAgo(offer.price_confirmed_at, lang) })}
+            photosHref={`/${lang}/seller/${sellerId}/photos/${offer.product_id}`}
           />
         ))}
       </ul>
