@@ -62,30 +62,43 @@ async function code(page, phone) {
   const store = await buyer.locator('section h2').first().innerText();
   console.log('3 order placed, total', total, 'from', store, 'status:', await buyer.locator('section span.rounded-full').first().innerText());
   const shopPhone = { 'Merkato Mobile': '0911000901', 'Bole Phone House': '0911000902', 'Piassa Electronics': '0911000903' }[store];
-  // 4. The shop (a second browser) confirms, packs and dispatches through the API.
-  const shop = await (await browser.newContext()).newPage();
-  await shop.goto(`${BASE}/en/sign-in`);
-  const call = (method, path, body) => shop.evaluate(async ([m, p, b]) => {
-    const csrf = decodeURIComponent((document.cookie.split('; ').find((c) => c.startsWith('markx_csrf=')) || '=').split('=')[1]);
-    const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json', 'X-MarkX-Client': 'web', 'X-CSRF-Token': csrf }, body: b ? JSON.stringify(b) : undefined });
-    return { status: r.status, body: await r.json() };
-  }, [method, path, body]);
-  await call('POST', '/api/v1/auth/otp/request', { phone: shopPhone, language: 'en' });
-  await call('POST', '/api/v1/auth/otp/verify', { phone: shopPhone, code: await code(shop, shopPhone) });
-  const me = await call('GET', '/api/v1/me');
-  const sellerId = me.body.sellers[0].seller_id;
-  const parts = await call('GET', `/api/v1/seller/${sellerId}/orders?status=placed`);
-  const part = parts.body[0];
-  for (const step of ['confirm', 'ready', 'dispatch']) {
-    const r = await call('POST', `/api/v1/seller/${sellerId}/orders/${part.id}/${step}`, step === 'dispatch' ? { rider_name: 'Demo Rider' } : {});
-    if (r.status !== 200) throw new Error(step + ' ' + r.status + JSON.stringify(r.body));
-  }
-  // 5. The buyer sees the code; the shop enters it at the door.
+  // 4. The shop works the order in its own dashboard, in a second browser.
+  const shop = await (await browser.newContext({ viewport: { width: 360, height: 800 } })).newPage();
+  shop.on('console', (m) => { if (m.type() === 'error' && !/_rsc=|404 \(Not Found\)|409 \(Conflict\)/.test(m.text())) errors.push('shop: ' + m.text().slice(0, 120)); });
+  await shop.goto(`${BASE}/en/sign-in?next=/en/seller`);
+  await shop.fill('input[type=tel]', shopPhone);
+  await shop.getByRole('button', { name: 'Send code' }).click();
+  await shop.getByText('We sent a code').waitFor();
+  await shop.fill('input[name=code]', await code(shop, shopPhone));
+  await shop.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await shop.waitForURL(/\/en\/seller\/[0-9a-f-]{36}\/orders/);
+  console.log('4 shop dashboard opens on', new URL(shop.url()).pathname.replace(/[0-9a-f-]{36}/, '{seller}'));
+  await shop.getByRole('link', { name: /Order MX-/ }).first().click();
+  await shop.getByRole('button', { name: 'Accept the order' }).click();
+  await shop.getByText('Confirmed by the shop').first().waitFor();
+  await shop.getByRole('button', { name: 'Mark as packed' }).click();
+  await shop.getByRole('button', { name: 'Send with a rider' }).waitFor();
+  await shop.getByRole('button', { name: 'Send with a rider' }).click();
+  await shop.fill('input[name=name]', 'Demo Rider');
+  await shop.locator('form button[type=submit]').click();
+  await shop.getByText('On the way').first().waitFor();
+  console.log('  shop: accepted, packed, sent with a rider');
+  // 5. The buyer sees the code; the shop enters it at the door, wrong first.
   await buyer.reload();
   const handover = (await buyer.locator('p.price.text-4xl').innerText()).trim();
   console.log('5 buyer sees status', await buyer.locator('section span.rounded-full').first().innerText(), 'and a', handover.length, 'digit code');
-  const h = await call('POST', `/api/v1/seller/${sellerId}/orders/${part.id}/handover`, { code: handover });
-  console.log('  shop enters the code:', h.status, h.body.status);
+  await shop.getByRole('button', { name: "Enter the buyer's code" }).click();
+  const wrong = handover === '000000' ? '111111' : '000000';
+  await shop.fill('input[name=code]', wrong);
+  await shop.locator('form button[type=submit]').click();
+  console.log('  wrong code:', await shop.locator('p[role=alert]').innerText());
+  await shop.fill('input[name=code]', handover);
+  await shop.locator('form button[type=submit]').click();
+  await shop.getByText('Delivered').first().waitFor();
+  console.log('  shop enters the right code: Delivered');
+  await shop.goto(shop.url().replace(/\/orders\/.*/, '/offers'));
+  await shop.getByRole('button', { name: 'All my prices and stock are still right' }).click();
+  console.log('  offers page:', await shop.getByRole('status').innerText());
   // 6. The buyer confirms the goods are right.
   await buyer.reload();
   await buyer.getByRole('button', { name: 'The goods are right' }).click();

@@ -26,6 +26,6 @@ export function fill(message: string, values: Record<string, string | number>): 
 
 /** The API's error code in words, in the page's language; a generic line for
  * codes without a message, never the raw code. */
-export function apiErrorText(t: Messages, code: string): string {
+export function apiErrorText(t: Pick<Messages, "apiErrors">, code: string): string {
   return code in t.apiErrors ? t.apiErrors[code as keyof Messages["apiErrors"]] : t.apiErrors.unknown;
 }

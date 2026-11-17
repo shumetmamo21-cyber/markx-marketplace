@@ -25,7 +25,7 @@ function newKey(): string {
 // Four short steps in one column (blueprint I.5). The browser never sends a
 // price: it sends what and where, the server prices it, and the order is
 // placed with the total the buyer saw, which the server compares (G.5).
-export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale; t: Messages; addresses: Address[]; zones: Zone[] }) {
+export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale; t: Pick<Messages, "checkout" | "cart" | "apiErrors">; addresses: Address[]; zones: Zone[] }) {
   const c = t.checkout;
   const router = useRouter();
   const [addresses, setAddresses] = useState(initial);
@@ -219,7 +219,7 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
   );
 }
 
-function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Messages; zones: Zone[]; onSaved: (address: Address) => void }) {
+function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<Messages, "checkout" | "apiErrors">; zones: Zone[]; onSaved: (address: Address) => void }) {
   const c = t.checkout;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);

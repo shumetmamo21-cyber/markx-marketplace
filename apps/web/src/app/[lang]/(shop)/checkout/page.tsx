@@ -23,7 +23,7 @@ export default async function CheckoutPage({ params }: PageProps<"/[lang]/checko
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <h1 className="text-2xl font-extrabold">{t.checkout.title}</h1>
-      <Checkout lang={lang} t={t} addresses={addresses.data ?? []} zones={(zones.data ?? []).filter((z) => z.is_active)} />
+      <Checkout lang={lang} t={{ checkout: t.checkout, cart: t.cart, apiErrors: t.apiErrors }} addresses={addresses.data ?? []} zones={(zones.data ?? []).filter((z) => z.is_active)} />
     </div>
   );
 }
