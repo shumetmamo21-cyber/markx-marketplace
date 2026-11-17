@@ -1319,6 +1319,48 @@ location data". **Accepted.** Migration `0008`.
   (`order_items.image_key`) and on reviews are not wired. No real bucket or
   CDN adapter.
 
+## D-063 Backups: an encrypted dump, a restore that never overwrites, a drill in CI
+
+**Follows** blueprint F.13, H.2 (backups) and the P2 deliverable "a nightly
+encrypted backup and a scripted restore". **Accepted.** Nothing is uploaded
+anywhere; no cloud resource was created.
+
+- `infra/backup/backup.sh DBNAME` writes `pg_dump` in custom format, owners
+  and grants included, piped straight into AES-256 encryption (`openssl enc
+  -aes-256-cbc -pbkdf2`, 600,000 iterations) and a SHA-256 checksum file.
+  It refuses a passphrase shorter than 32 characters, or one kept inside the
+  backup directory, and never writes an unencrypted dump. It deletes nothing
+  unless `--keep-days N` is given, which removes only its own older backup
+  files (the blueprint keeps 30 days; PROVISIONAL — FOUNDER MAY CHANGE
+  BEFORE LAUNCH).
+- `infra/backup/restore.sh FILE TARGET` checks the checksum, refuses if the
+  target database exists, creates it with the roles exactly as
+  `bootstrap.sh` does, and restores in one transaction. If the restore fails
+  (a wrong passphrase, a damaged file) it removes the empty database it
+  created itself, and nothing else.
+- `infra/backup/drill.sh DBNAME` backs up, restores into a new
+  `markx_drill_<time>` database, compares the migration version and every
+  table's row count, checks that the application role still cannot change
+  the audit log in the copy, reports the time taken (target: four hours),
+  and drops only the drill database. CI runs it on every push against the
+  demo data.
+- `PG_DUMP`, `PG_RESTORE` and `PSQL` choose the client commands, so the
+  server's own tools can run in its container when the local client is
+  older (`pg_dump` refuses a newer server). `bootstrap.sh` honours `PSQL`
+  too and now reads its SQL from standard input.
+- **Encryption choice (PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH):**
+  `openssl enc` is on every server and needs no new tool. It does not
+  authenticate the ciphertext; the checksum file and `pg_restore`'s own
+  format checks catch damage, not a deliberate forgery by someone holding
+  the passphrase. `age` or GnuPG would add that, at the cost of one more
+  tool to install.
+- **Not done:** the nightly schedule and the copy away from the server are
+  host settings (a cron line or systemd timer, and object storage), decided
+  with deployment; uploaded files (pictures, documents) are not in the
+  database dump and need their own protection once a real bucket exists
+  (F.6). Restoring staging from last night's backup (P2 criterion 3) needs
+  staging.
+
 ---
 
 ## Decisions that need the founder

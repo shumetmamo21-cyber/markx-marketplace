@@ -70,6 +70,18 @@ jobs:
         run: uv run python -m scripts.check_openapi_copy --exact openapi.json
       - name: The web app's copy of the API description is still true
         run: uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
+      # D-063: an encrypted backup of a database with data in it restores
+      # into a new database with every row and every protection. The client
+      # tools come from the same postgres:17 image as the server.
+      - name: Backup and restore drill
+        env:
+          PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:17 pg_dump
+          PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:17 pg_restore
+          PSQL: docker run --rm -i --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:17 psql
+        run: |
+          uv run python -m scripts.seed_demo > /dev/null
+          head -c 48 /dev/urandom | base64 > "$RUNNER_TEMP/backup.key"
+          MARKX_BACKUP_PASSPHRASE_FILE="$RUNNER_TEMP/backup.key" ../../infra/backup/drill.sh markx
 
   web:
     name: Web app (lint, types, unit tests, build)

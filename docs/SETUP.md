@@ -133,6 +133,35 @@ from a mirror of the same Python image:
 `docker build --build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.13-slim-bookworm -t markx-api:local apps/api`.
 Nothing here deploys anything.
 
+## 4d. Back up, restore and drill (D-063)
+
+```bash
+export PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=postgres_dev_only
+# a passphrase of at least 32 characters, kept outside the repository and
+# outside the backup directory
+head -c 48 /dev/urandom | base64 > ~/markx-backup.key
+export MARKX_BACKUP_PASSPHRASE_FILE=~/markx-backup.key
+
+infra/backup/backup.sh markx                     # -> var/backups/markx-markx-<time>.dump.enc
+infra/backup/restore.sh var/backups/<file> markx_restored   # into a NEW database only
+infra/backup/drill.sh markx                      # backup, restore, compare, clean up
+```
+
+`pg_dump` refuses a server newer than itself. If your client is older than
+PostgreSQL 17, use the server's own tools in its container:
+
+```bash
+export PG_DUMP="docker exec -i -e PGUSER -e PGPASSWORD markx-pg pg_dump"
+export PG_RESTORE="docker exec -i -e PGUSER -e PGPASSWORD markx-pg pg_restore"
+export PSQL="docker exec -i -e PGUSER -e PGPASSWORD markx-pg psql"
+```
+
+Keep the passphrase somewhere safe and separate from the backups: without
+it a backup cannot be read, by anyone. On a server, a nightly cron line
+such as `15 2 * * * cd /srv/markx && infra/backup/backup.sh markx
+--keep-days 30` runs it; that, and the copy away from the server, are
+deployment settings.
+
 ## 5. Run the API
 
 ```bash
