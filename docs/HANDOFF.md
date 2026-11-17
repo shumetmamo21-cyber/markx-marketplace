@@ -54,11 +54,25 @@ reference and was neither merged, deleted nor rewritten.
 **Final checks** (on `b2b674e` plus this session's work): `uv run pytest` **935 passed** in 726 s (927 on `b2b674e` plus this session's 8); ruff clean; 176 files formatted; strict mypy clean over 118 source files; `alembic check` no difference; `apps/api/openapi.json` exact and the web app's copy exact too (regenerated). The web app: lint and strict typecheck clean, **11 unit tests passed**, the production build passed, and `e2e/admin-queues.mjs` passed all 7 steps in Chromium with no console errors.
 GitHub Actions run #37 on `b2b674e`, the head this was built on, passed.
 
-**Still to build on the web** (Part B, step 5): picture moderation, the
-operations status, settings and risk limits, staff accounts, the dispatch
-board, the business dashboard, the review and report queues; reviews and
-report links for buyers; pictures and problem photos; the rest of the seller
-dashboard.
+5. **Every other admin screen the API supports** (D-071), in pushed stages
+   with no API change: the dashboard, the dispatch board and operations
+   (`9ac3b94`); then reviews, reports, settings, staff accounts, exports and
+   pictures. A unit test fixes the exact screens of each of the five staff
+   roles; `e2e/admin-queues.mjs` now runs 15 steps in Chromium
+   against the demo data. Two things the browser journey found along the
+   way were in the journey, not the app, and are fixed there: it took a
+   listing down without relisting it (lifting a hold publishes nothing,
+   D-032), and it signed the same demo phone in more often than the API's
+   five codes per phone per hour allow. One fault was in the app: a long
+   setting name made the settings page 19 px wider than a phone; fixed.
+
+**Final checks of the second half:** on the final tree: `uv run pytest` **935 passed** in 726 s (no API change in this half); ruff, format (176 files), strict mypy (118 files), `alembic check` and both API-description checks clean; web lint and strict typecheck clean, **21 unit tests passed**, the build passed, `schema.d.ts` matches; `e2e/admin-queues.mjs` passed all 15 steps with no console errors.
+
+**Still to build on the web** (Part B, step 5): reviews and report links for
+buyers, pictures on product pages and in the seller's offers, problem photos
+on the order pages and in the orders desk, the rest of the seller dashboard
+(add an offer, application, documents, team, store settings), and setting
+descriptions in Amharic.
 
 **Waiting on the founder:** unchanged — F-01 to F-08 in `docs/DECISIONS.md`.
 Nothing this session did depends on them.
@@ -306,7 +320,7 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-070; D-043, D-050, D-053 and parts of D-062 to D-067 are
+(D-001 to D-071; D-043, D-050, D-053 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
@@ -324,7 +338,7 @@ uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json
 uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
 cd ../web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
-# expect 11 web unit tests
+# expect 21 web unit tests
 ```
 
 **Never start a second test run while one is going**: both use
@@ -336,21 +350,21 @@ laptop only), `uv run uvicorn markx.main:app --port 8000`, and in
 `apps/web` `npm run dev`; open `http://localhost:3000`. Sign-in codes are in
 `GET /api/v1/dev/sms-inbox?phone=...`. `node e2e/buyer-journey.mjs` replays
 the buyer's journey; `MARKX_DEMO_TOTP_SECRET=... node e2e/admin-queues.mjs`
-replays the admin queues (the secret is the one `seed_demo` printed).
+replays every admin screen (the secret is the one `seed_demo` printed; it
+signs each demo phone in once, and the API allows five codes per phone per
+hour).
 
 **5. Task (the web app's owner):** first pick up any API additions made
 since the ninth session: `cd apps/api && uv run python -m
 scripts.export_openapi ../web/src/lib/api/openapi.json`, then `cd ../web &&
 npm run gen:api` (D-061; it was current at the ninth session's last commit).
 Then the screens, in the order "The exact next task" in
-`docs/DEVELOPMENT_STATUS.md` gives: the admin screens still missing (picture
-moderation, operations status, settings and risk limits, staff accounts,
-dispatch board, dashboard, the review and report queues); reviews and
-report links for buyers; pictures and problem photos; the rest of the seller
-dashboard. Add each admin queue to `apps/web/src/app/[lang]/admin/(desk)/menu.ts`
-with the capability that opens it (D-070), and a step to
-`e2e/admin-queues.mjs`. The audit trail, proposals, invitations and
-takedowns are done. The API enforces every role and seller boundary;
+`docs/DEVELOPMENT_STATUS.md` gives. **Every admin screen the API supports is
+done** (D-070, D-071). Next: reviews and report links for buyers; pictures
+on product pages and in the seller's offers; problem photos on the order
+pages and in the orders desk; the rest of the seller dashboard. Any new
+admin route gets its line in `apps/web/src/app/[lang]/admin/(desk)/menu.ts`
+and `menu.test.ts`, and a step in `e2e/admin-queues.mjs`. The API enforces every role and seller boundary;
 the web app only shows what it returns and sends the member's choices.
 Every text in both message files; client components receive only the
 message sections they use. Test at 360 pixels. Extend

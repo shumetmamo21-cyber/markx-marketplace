@@ -1,8 +1,10 @@
 # Development status
 
 **Last updated:** 17 November 2026, ninth engineering session (the web app's
-owner, resuming: the admin queues for proposals, invitations, takedowns and
-the audit trail; D-069, D-070). The eighth session before it worked on the
+owner, resuming: every admin screen the API supports — proposals,
+invitations, takedowns, the audit trail, the dashboard, the dispatch board,
+operations, reviews, reports, settings, staff accounts, exports and
+pictures; D-069 to D-071). The eighth session before it worked on the
 back end only (D-061).
 **Branch:** `claude/project-scaffold`. `main` holds the initial commit only
 and nothing has been merged into it.
@@ -74,7 +76,7 @@ anywhere.
 | 6 | `641a95b` to the head; see `docs/HANDOFF.md` | Review fix (a withdrawn product stayed findable), the founder's provisional approvals (D-053), the search evaluator (D-054), CI, the web app (D-055): the storefront and buyer journey, the seller dashboard, the admin dashboard; demo data (D-056); variant labels in the cart and offer lists. 854 API tests, 9 web unit tests, two browser journeys |
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`; see `docs/HANDOFF.md`, Part A.0 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), and listing reports, migration `0011` (D-067). **`apps/web` not touched** |
-| 9 (web owner, resuming) | `eab7c21`, then the admin-queues commit and its documentation | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); the admin screens for product proposals, invitations, listing takedowns and the audit trail, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070); `e2e/admin-queues.mjs`. 935 API tests, 11 web unit tests |
+| 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
 
 ## Blueprint phase tracking
 
@@ -579,10 +581,19 @@ API types are generated from the API's OpenAPI description.
   comes from one table of queues and the capability that opens each; the
   admin home sends each role to its first queue; roles, review states,
   seller, document and product statuses are shown in words in both
-  languages; a page the API refuses says so. `e2e/admin-queues.mjs` drives
-  all of it in Chromium, in English and Amharic, checks the four pages at
-  360 pixels, and signs in a new catalogue curator who must see only its own
-  three queues.
+  languages; a page the API refuses says so.
+- **The rest of the admin screens** (D-071): the dashboard (the API's figures
+  for 1, 7, 30 or 90 days), the dispatch board (late parts marked, each
+  opening in the orders desk), operations (open alerts, scheduled jobs, the
+  outbox), reviews (held first; publish or hide with a reason), reports
+  (acted on or dismissed with a note), settings (each row changeable only if
+  the API says so), staff accounts (create — the authenticator secret shown
+  once — change a role, switch off), exports (four CSV files; a refused
+  period shown in words) and pictures (every state with its thumbnail;
+  upload, take down). `menu.test.ts` checks the exact screens of each of the
+  five staff roles.
+- `e2e/admin-queues.mjs` drives all of it in Chromium against the demo data:
+  15 steps, "console errors: none": proposals, invitations, a takedown lifted and relisted, the audit trail in English and Amharic, a rider order on the dispatch board, the dashboard, operations, a held review published, a report dismissed, a setting changed and restored, a staff account created (its shown secret signs it in), re-roled and switched off, an export downloaded and a reversed period refused, a picture uploaded, rendered and taken down, every page at 360 px, and a catalogue curator who sees only its six screens.
 - **Demo data:** `apps/api/scripts/seed_demo.py` (D-056), laptop only.
 - **Known gaps:** the seller application, documents, team, store settings
   and "add an offer" screens are not built (their API exists). Variant
@@ -667,10 +678,9 @@ Be careful with these. They were written and never exercised.
 
 ## What does not exist
 
-- Web screens for most of what the eighth session added: pictures, problem
-  photos, operations status, settings and risk limits, staff accounts, the
-  dispatch board, the business dashboard, the review and report queues
-  (D-062, D-064 to D-067). The audit-log viewer has its screen (D-070).
+- Problem photos on the web (D-062): the buyer's and the shop's order pages
+  and the staff orders desk do not show or upload them yet. Every other
+  admin route has its screen (D-070, D-071).
   Photos on reviews, ratings on product cards and in search, payments beyond the direct payment record
   (Release 2: Protected prepay, refunds through a provider, payouts).
 - Ownership transfer between seller members (needs the founder's decision,
@@ -716,6 +726,15 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
+- **Setting descriptions are in English on the Amharic admin page**: they
+  are the API's own text (`settings_store`), shown with `lang="en"` (D-071).
+- **The browser journeys use the demo phones' sign-in codes**, five per phone
+  per hour (`auth.otp_per_phone_per_hour`, working as designed). The admin
+  journey signs each demo phone in once per run, so about four runs fit in
+  an hour; a fifth is refused until the clock hour turns.
+- **The admin journey changes the demo data** (orders, reviews, reports, a
+  staff account per run); it relists what it takes down. Re-seed a fresh
+  database for a clean demo.
 - No failing test and no known defect in the tested code. The 801 tests of
   session four were reproduced unchanged at the start of session five before
   any code was written. One defect in session four's code was found and
@@ -798,6 +817,26 @@ $ npm test                    ->  11 passed (3 files)
 $ npm run build               ->  36 pages; the four new admin routes rendered per request
 $ node e2e/admin-queues.mjs   ->  7 steps passed, "console errors: none"
 ```
+
+**Ninth session, second half** (the rest of the admin screens, D-071; no API
+change), on the final tree:
+
+```text
+$ cd apps/api && uv run pytest ->  935 passed in 725.61s (0:12:05)
+  ruff check, ruff format --check (176 files), mypy (118 files), alembic check,
+  check_openapi_copy --exact and the web copy check -> all clean
+$ cd apps/web
+$ npm run gen:api             ->  schema.d.ts unchanged
+$ npm run lint                ->  no problems
+$ npm run typecheck           ->  strict tsc clean
+$ npm test                    ->  21 passed (4 files: format, labels, messages, the admin menu per role)
+$ npm run build               ->  54 pages
+$ node e2e/admin-queues.mjs   ->  15 steps passed, "console errors: none"
+```
+
+The journey's 360-pixel check caught one real layout fault on the way: a long
+setting name made the settings page 19 pixels wider than a phone; the name
+now wraps.
 
 At the start of the session, on `88d481b` before any change: 854 API tests
 passed (the sixth session's figure, reproduced exactly), and the web app's
@@ -939,13 +978,12 @@ end. Work in this order within each. Finish and push each step first.
    routes: `cd apps/api && uv run python -m scripts.export_openapi
    ../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
    (D-061). Session nine did this; it was current at its last commit.
-3. The admin screens still missing for what the API has: picture
-   moderation, the operations status, settings and risk limits, staff
-   accounts, the dispatch board, the business dashboard, the review queue,
-   the reports queue (D-062, D-064 to D-067). Done in session nine: the
-   audit-log viewer, catalogue curation, invitations and takedowns (D-070).
-   Add each new queue to `menu.ts` with its capability, its words to both
-   message files, and a step to `e2e/admin-queues.mjs`.
+3. The admin screens are done (D-070, D-071). What remains for staff:
+   problem photos in the orders desk (D-062), and translated setting
+   descriptions (they are the API's English text today). Any new admin
+   route gets its screen in `menu.ts` with its capability, a line in
+   `menu.test.ts`, its words in both message files, and a step in
+   `e2e/admin-queues.mjs`.
 3b. Reviews on the product and store pages, "rate this purchase" for the
    buyer, the seller's replies, and a report link on every listing, store
    and review (D-066, D-067).
