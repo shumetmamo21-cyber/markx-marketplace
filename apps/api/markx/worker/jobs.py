@@ -24,6 +24,7 @@ from markx.core.db import session_scope
 from markx.offers import service as offers
 from markx.ops import service as ops
 from markx.orders import service as orders
+from markx.reviews import service as reviews
 from markx.search import service as search
 from markx.sellers import service as sellers
 from markx.worker.models import ScheduledJob
@@ -81,6 +82,8 @@ JOBS: tuple[Job, ...] = (
     ),
     # The safety net behind the queued rebuilds, and the first fill (D-051).
     Job("search.rebuild_all", timedelta(hours=1), lambda db, now: search.rebuild_all(db)),
+    # The safety net behind the queued rating recounts (D-066).
+    Job("reviews.recount_all", timedelta(days=1), lambda db, now: reviews.recount_all(db)),
     # Last, so they see what the jobs above just did (F.12; D-064); the watch
     # after the reconciliation, so it never calls a job overdue that this
     # very pass is about to run.

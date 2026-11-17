@@ -3419,6 +3419,30 @@
         "title": "MergeIn",
         "type": "object"
       },
+      "ModerateReviewIn": {
+        "properties": {
+          "action": {
+            "enum": [
+              "publish",
+              "hide"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "ModerateReviewIn",
+        "type": "object"
+      },
       "ModerationIn": {
         "additionalProperties": false,
         "properties": {
@@ -3473,6 +3497,154 @@
           "created_at"
         ],
         "title": "MovementOut",
+        "type": "object"
+      },
+      "MyReviewOut": {
+        "description": "A review with its state, for its buyer, its seller and staff. The\nseller never sees the order code.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "held_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "moderation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moderation Reason"
+          },
+          "order_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Code"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
+          },
+          "order_item_id": {
+            "format": "uuid",
+            "title": "Order Item Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_rating": {
+            "title": "Product Rating",
+            "type": "integer"
+          },
+          "seller_rating": {
+            "title": "Seller Rating",
+            "type": "integer"
+          },
+          "seller_replied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Replied At"
+          },
+          "seller_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Reply"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_code",
+          "order_item_id",
+          "product_id",
+          "title",
+          "variant_label",
+          "store_slug",
+          "product_rating",
+          "seller_rating",
+          "body",
+          "status",
+          "held_reason",
+          "moderation_reason",
+          "seller_reply",
+          "seller_replied_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MyReviewOut",
         "type": "object"
       },
       "NewStaffOut": {
@@ -4992,6 +5164,31 @@
         "title": "ProductRequestOut",
         "type": "object"
       },
+      "ProductReviewsOut": {
+        "properties": {
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewOut"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RatingSummaryOut"
+          }
+        },
+        "required": [
+          "product_slug",
+          "summary",
+          "reviews"
+        ],
+        "title": "ProductReviewsOut",
+        "type": "object"
+      },
       "ProductTextIn": {
         "additionalProperties": false,
         "properties": {
@@ -5129,6 +5326,77 @@
           "main_url"
         ],
         "title": "PublicImageOut",
+        "type": "object"
+      },
+      "PublicReviewOut": {
+        "description": "A published review as anyone sees it: from a verified buyer, never\nwith their name or phone number.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "product_rating": {
+            "title": "Product Rating",
+            "type": "integer"
+          },
+          "seller_rating": {
+            "title": "Seller Rating",
+            "type": "integer"
+          },
+          "seller_replied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Replied At"
+          },
+          "seller_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Reply"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "product_rating",
+          "seller_rating",
+          "body",
+          "variant_label",
+          "store_slug",
+          "created_at",
+          "seller_reply",
+          "seller_replied_at"
+        ],
+        "title": "PublicReviewOut",
         "type": "object"
       },
       "PublicStoreOut": {
@@ -5619,6 +5887,40 @@
         "title": "RateOut",
         "type": "object"
       },
+      "RatingSummaryOut": {
+        "description": "`average` has two decimals, or is null with no review; `stars` counts\nthe reviews that gave each number of stars, \"1\" to \"5\".",
+        "properties": {
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "stars": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Stars",
+            "type": "object"
+          }
+        },
+        "required": [
+          "count",
+          "average",
+          "stars"
+        ],
+        "title": "RatingSummaryOut",
+        "type": "object"
+      },
       "RealPhotoOut": {
         "properties": {
           "height": {
@@ -5762,6 +6064,101 @@
           "reason"
         ],
         "title": "RestrictedTermOut",
+        "type": "object"
+      },
+      "ReviewIn": {
+        "properties": {
+          "body": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Body",
+            "type": "string"
+          },
+          "product_rating": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Product Rating",
+            "type": "integer"
+          },
+          "seller_rating": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Seller Rating",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_rating",
+          "seller_rating"
+        ],
+        "title": "ReviewIn",
+        "type": "object"
+      },
+      "ReviewReplyIn": {
+        "properties": {
+          "body": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "ReviewReplyIn",
+        "type": "object"
+      },
+      "ReviewableItemOut": {
+        "properties": {
+          "order_code": {
+            "title": "Order Code",
+            "type": "string"
+          },
+          "order_id": {
+            "format": "uuid",
+            "title": "Order Id",
+            "type": "string"
+          },
+          "order_item_id": {
+            "format": "uuid",
+            "title": "Order Item Id",
+            "type": "string"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "review_until": {
+            "format": "date-time",
+            "title": "Review Until",
+            "type": "string"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "order_code",
+          "order_item_id",
+          "product_id",
+          "title",
+          "variant_label",
+          "store_slug",
+          "review_until"
+        ],
+        "title": "ReviewableItemOut",
         "type": "object"
       },
       "SearchOut": {
@@ -7626,6 +8023,31 @@
           "telegram_channel"
         ],
         "title": "StoreOut",
+        "type": "object"
+      },
+      "StoreReviewsOut": {
+        "properties": {
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewOut"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "store_slug": {
+            "title": "Store Slug",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RatingSummaryOut"
+          }
+        },
+        "required": [
+          "store_slug",
+          "summary",
+          "reviews"
+        ],
+        "title": "StoreReviewsOut",
         "type": "object"
       },
       "StoreUpdateIn": {
@@ -10485,6 +10907,160 @@
         ]
       }
     },
+    "/api/v1/admin/reviews": {
+      "get": {
+        "description": "Held reviews by default: what a pattern check stopped (AD-12).",
+        "operationId": "review_queue_api_v1_admin_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "held",
+              "pattern": "^(held|published|hidden)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyReviewOut"
+                  },
+                  "title": "Response Review Queue Api V1 Admin Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Queue",
+        "tags": [
+          "admin: reviews"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/{review_id}/moderate": {
+      "post": {
+        "description": "Publish or hide, with a written reason; audit-logged.",
+        "operationId": "moderate_review_api_v1_admin_reviews__review_id__moderate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerateReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Moderate Review",
+        "tags": [
+          "admin: reviews"
+        ]
+      }
+    },
     "/api/v1/admin/search/synonyms": {
       "get": {
         "operationId": "list_synonyms_api_v1_admin_search_synonyms_get",
@@ -12469,6 +13045,91 @@
         ]
       }
     },
+    "/api/v1/catalog/products/{slug}/reviews": {
+      "get": {
+        "description": "Published reviews, newest first; page with `before` set to the last id.\nThe summary is the product's rating totals.",
+        "operationId": "product_reviews_api_v1_catalog_products__slug__reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductReviewsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Reviews",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/stores/{slug}": {
       "get": {
         "operationId": "read_public_store_api_v1_catalog_stores__slug__get",
@@ -12575,6 +13236,90 @@
           }
         },
         "summary": "Store Price List",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/stores/{slug}/reviews": {
+      "get": {
+        "operationId": "store_reviews_api_v1_catalog_stores__slug__reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreReviewsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Store Reviews",
         "tags": [
           "catalog"
         ]
@@ -13262,6 +14007,81 @@
         ]
       }
     },
+    "/api/v1/me/orders/{order_id}/items/{item_id}/review": {
+      "post": {
+        "description": "Rate the product and the seller of one item of a completed order (C-18).",
+        "operationId": "write_review_api_v1_me_orders__order_id__items__item_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Review",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
     "/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/alternatives": {
       "get": {
         "description": "The next-best offer for each line of a part the seller declined or let\nexpire (C-26).",
@@ -13724,6 +14544,168 @@
         "summary": "Add My Problem Photo",
         "tags": [
           "orders"
+        ]
+      }
+    },
+    "/api/v1/me/reviews": {
+      "get": {
+        "operationId": "my_reviews_api_v1_me_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyReviewOut"
+                  },
+                  "title": "Response My Reviews Api V1 Me Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Reviews",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/me/reviews/pending": {
+      "get": {
+        "description": "Items of completed orders waiting for a review, while the window is open.",
+        "operationId": "reviewable_api_v1_me_reviews_pending_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewableItemOut"
+                  },
+                  "title": "Response Reviewable Api V1 Me Reviews Pending Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reviewable",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/me/reviews/{review_id}": {
+      "put": {
+        "description": "Until the seller replies or the window closes.",
+        "operationId": "edit_review_api_v1_me_reviews__review_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Review",
+        "tags": [
+          "reviews"
         ]
       }
     },
@@ -16675,6 +17657,169 @@
         "summary": "Add Seller Photo",
         "tags": [
           "seller: pictures"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/reviews": {
+      "get": {
+        "description": "This store's reviews, published or hidden by staff, newest first.",
+        "operationId": "seller_reviews_api_v1_seller__seller_id__reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyReviewOut"
+                  },
+                  "title": "Response Seller Reviews Api V1 Seller  Seller Id  Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seller Reviews",
+        "tags": [
+          "seller: reviews"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/reviews/{review_id}/reply": {
+      "post": {
+        "description": "One reply, which the store may reword (S-16). A store cannot remove a review.",
+        "operationId": "reply_to_review_api_v1_seller__seller_id__reviews__review_id__reply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewReplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reply To Review",
+        "tags": [
+          "seller: reviews"
         ]
       }
     },

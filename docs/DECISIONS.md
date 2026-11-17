@@ -1447,6 +1447,56 @@ owner's to build on these routes (D-061 lists them as additions).
   review moderation (AD-12) waits for reviews; data export (C.4) and the
   weekly seller message are not built.
 
+## D-066 Reviews and ratings: only completed orders, held when suspicious, totals in the background
+
+**Follows** blueprint D.15, C-18, S-16, AD-12, H.4 and G.8 rule 2.
+**Accepted.** Migration `0010`. The `reviews` table existed since `0001`
+with no behaviour.
+
+- **Who reviews what.** The buyer of an order item, once per item (a
+  unique constraint), after its seller order is `completed` (not merely
+  delivered, refunded or in dispute: D.15 "after a completed order", H.4
+  "reviews only on completed orders"), for `reviews.window_days` (60)
+  after completion. Nobody reviews a store they belong to, even one they
+  joined after buying. Both ratings are 1 to 5; the text is optional, up to
+  2,000 characters.
+- **Fake-review guards** (D.15, H.4). A buyer writes at most
+  `reviews.per_buyer_per_day` (10) reviews a day. A review whose text
+  carries a phone number or a link (contact details that take a buyer off
+  MarkX), or a buyer's review of a seller they already reviewed
+  `reviews.hold_after_same_seller` (3) times in 30 days, is **held**: not
+  shown, not counted, not shown to the seller, until staff publish or hide
+  it. PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH: the three numbers and
+  the two patterns.
+- **Editing.** The buyer may change the ratings and text until the seller
+  replies or the window closes; the same checks run again. A review staff
+  hid cannot be edited back.
+- **The seller** (owner, manager and the orders role, C.3) sees its
+  published and hidden reviews, without the buyer's order code, and replies
+  once to a published review, rewording allowed. It cannot remove a review:
+  there is no route for it.
+- **Staff** who moderate reviews (super administrator, operations, support,
+  catalogue: C.4) see the held queue and publish or hide any review with a
+  written reason, audit-logged with before and after.
+- **What the public sees** (`GET /catalog/products/{slug}/reviews`,
+  `GET /catalog/stores/{slug}/reviews`): published reviews, newest first,
+  "a verified buyer" with the variant, the store and the date, never a
+  name, phone number or order code. A merged product's reviews show on its
+  survivor's page.
+- **Rating totals** (`rating_summaries`, per product and per seller: count,
+  sum, how many gave each star) are derived from published reviews only.
+  Every write, edit and moderation queues `reviews.recount` through the
+  outbox; one recount of a subject runs at a time (an advisory lock, as for
+  search, D-057); the daily `reviews.recount_all` job repairs anything.
+- **Notifications:** the store's members who may reply hear of a new
+  visible review (`review.received_for_seller`); the buyer hears of the
+  first reply (`review.seller_replied`). The ops watch warns about held
+  reviews waiting more than two days.
+- **Not done:** photos on reviews (C-18 names them; the problem-photo
+  pipeline of D-062 is the model to follow), ratings on the product card
+  and in search ranking and filters (they change existing schemas, D-061),
+  the seller rating feeding the trust level.
+
 ---
 
 ## Decisions that need the founder

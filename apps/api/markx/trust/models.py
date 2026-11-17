@@ -4,7 +4,16 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, SmallInteger, Text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,19 +47,45 @@ class CaseDecision(StrEnum):
     SELLER_REFUNDED = "seller_refunded"
 
 
+class ReviewStatus(StrEnum):
+    """Only `published` reviews are shown and counted (D-066)."""
+
+    PUBLISHED = "published"
+    # Waiting for staff: a pattern check flagged it (contact details in the
+    # text, many reviews of one seller by one buyer).
+    HELD = "held"
+    HIDDEN = "hidden"
+
+
 class Review(UUIDPrimaryKey, Timestamps, Base):
-    """A rating that only a real delivered order can create (blueprint D.15)."""
+    """A rating that only a real completed order can create (blueprint D.15,
+    C-18; D-066). The buyer rates the product and the seller; the seller may
+    reply once (S-16); staff moderate (AD-12). A seller cannot remove one."""
 
     __tablename__ = "reviews"
     __table_args__ = (
-        in_check("moderation_status", ("published", "hidden")),
+        in_check("moderation_status", ReviewStatus),
         CheckConstraint("product_rating between 1 and 5", name="product_rating_range"),
         CheckConstraint("seller_rating between 1 and 5", name="seller_rating_range"),
         CheckConstraint(
             "(seller_reply is null) = (seller_replied_at is null)", name="reply_fields_together"
         ),
+        CheckConstraint("length(body) <= 2000", name="body_length"),
+        CheckConstraint(
+            "seller_reply is null or length(btrim(seller_reply)) between 1 and 1000",
+            name="reply_length",
+        ),
+        CheckConstraint(
+            "moderation_status <> 'held' or held_reason is not null", name="held_has_reason"
+        ),
+        CheckConstraint(
+            "moderation_status <> 'hidden' or moderation_reason is not null",
+            name="hidden_has_reason",
+        ),
         Index("ix_reviews_product_id", "product_id"),
         Index("ix_reviews_seller_id", "seller_id"),
+        Index("ix_reviews_status_created", "moderation_status", "created_at"),
+        Index("ix_reviews_buyer_created", "buyer_user_id", "created_at"),
     )
 
     # One review per order item (G.8 rule 2).
@@ -73,8 +108,51 @@ class Review(UUIDPrimaryKey, Timestamps, Base):
     seller_rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     moderation_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="published")
+    held_reason: Mapped[str | None] = mapped_column(Text)
+    moderation_reason: Mapped[str | None] = mapped_column(Text)
+    moderated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     seller_reply: Mapped[str | None] = mapped_column(Text)
     seller_replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RatingSummary(Base):
+    """Rating totals for one product or one seller, from its published reviews
+    (D.15: "rating totals are updated in the background"; D-066). Derived:
+    the worker rebuilds a row from the reviews whenever one changes, and a
+    daily job rebuilds them all."""
+
+    __tablename__ = "rating_summaries"
+    __table_args__ = (
+        in_check("subject_type", ("product", "seller")),
+        CheckConstraint("review_count >= 0", name="review_count_non_negative"),
+        CheckConstraint(
+            "rating_sum between review_count and 5 * review_count", name="rating_sum_range"
+        ),
+        CheckConstraint(
+            "count_1 >= 0 and count_2 >= 0 and count_3 >= 0 and count_4 >= 0 and count_5 >= 0",
+            name="counts_non_negative",
+        ),
+        CheckConstraint(
+            "count_1 + count_2 + count_3 + count_4 + count_5 = review_count",
+            name="counts_add_up",
+        ),
+    )
+
+    subject_type: Mapped[str] = mapped_column(Text, primary_key=True)
+    subject_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    review_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    rating_sum: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    count_1: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    count_2: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    count_3: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    count_4: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    count_5: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class Report(UUIDPrimaryKey, CreatedAt, Base):

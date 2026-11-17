@@ -99,6 +99,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
         "offers.mark_stale": 0,
         "sellers.activate_due_payout_accounts": 0,
         "search.rebuild_all": 1,  # the one approved product
+        "reviews.recount_all": 0,  # no review yet (D-066)
         "ops.reconcile": 0,  # nothing out of line (D-064)
         "ops.watch": 0,
     }
@@ -113,6 +114,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
         "offers.mark_stale": (True, 1),
         "sellers.activate_due_payout_accounts": (True, 1),
         "search.rebuild_all": (True, 1),
+        "reviews.recount_all": (True, 0),
         "ops.reconcile": (True, 0),
         "ops.watch": (True, 0),
     }

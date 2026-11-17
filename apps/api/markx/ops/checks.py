@@ -27,7 +27,12 @@ from markx.notifications.models import Outbox
 from markx.offers.models import Inventory, InventoryReservation, ReservationStatus
 from markx.orders.models import Order, OrderItem, SellerOrder, SellerOrderStatus
 from markx.payments.models import FeeCharge, LedgerEntry
-from markx.trust.models import CaseStatus, DisputeCase
+from markx.trust.models import (
+    CaseStatus,
+    DisputeCase,
+    Review,
+    ReviewStatus,
+)
 from markx.worker.models import ScheduledJob
 
 logger = logging.getLogger("markx.ops.checks")
@@ -297,6 +302,29 @@ def stuck_images(db: Session, now: datetime) -> list[Finding]:
     ]
 
 
+def held_reviews(db: Session, now: datetime) -> list[Finding]:
+    """Reviews a pattern check held, waiting more than two days for staff
+    (AD-12): a buyer is waiting to see their review appear (D-066)."""
+    count = db.scalar(
+        select(func.count())
+        .select_from(Review)
+        .where(
+            Review.moderation_status == ReviewStatus.HELD,
+            Review.created_at < now - timedelta(days=2),
+        )
+    )
+    if not count:
+        return []
+    return [
+        Finding(
+            key="reviews.held",
+            severity="warning",
+            summary=f"{count} held review(s) have waited more than two days for staff.",
+            details={"count": count},
+        )
+    ]
+
+
 WATCH: tuple[Check, ...] = (
     failing_jobs,
     overdue_jobs,
@@ -305,6 +333,7 @@ WATCH: tuple[Check, ...] = (
     overdue_problems,
     sms_budget,
     stuck_images,
+    held_reviews,
 )
 
 

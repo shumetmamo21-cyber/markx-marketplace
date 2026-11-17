@@ -169,6 +169,33 @@ _SPECS: tuple[SettingSpec, ...] = (
         100,
         10_000_000_000,
     ),
+    # Reviews (blueprint D.15, H.4; D-066)
+    SettingSpec(
+        "reviews.window_days",
+        60,
+        "int",
+        "Days after a part completes during which its buyer may review it, and edit "
+        "the review until the seller replies.",
+        1,
+        365,
+    ),
+    SettingSpec(
+        "reviews.per_buyer_per_day",
+        10,
+        "int",
+        "Reviews one buyer may write in a day (blueprint D.15: rate limits against fake reviews).",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "reviews.hold_after_same_seller",
+        3,
+        "int",
+        "A buyer's review of a seller they already reviewed this many times in 30 days "
+        "waits for staff before it is shown (a pattern check, D.15).",
+        1,
+        50,
+    ),
     # Pictures (blueprint F.6, S-06, C-16; D-062)
     SettingSpec(
         "images.max_upload_bytes",
