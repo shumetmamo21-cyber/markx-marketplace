@@ -633,3 +633,47 @@ def test_every_cancelled_shipment_has_its_tracking_event(bazaar: Bazaar, db: DbS
     # The buyer's timeline shows it.
     events = _part(_mine(buyer, order["id"]), "beta")["shipment"]["events"]
     assert [e["status"] for e in events] == ["cancelled"]
+
+
+def test_no_payment_is_recorded_before_confirmation_or_after_a_return(
+    bazaar: Bazaar, db: DbSession
+) -> None:
+    """Ported from the alternative branch (session three, `03a879b`), which the
+    official tests did not cover. A buyer owes a seller only between
+    confirmation and the end of the part: neither a part still waiting for the
+    seller nor goods that went back to the shop can be marked paid, and the
+    payment intent is left exactly as it was."""
+    buyer, _, order = _two_seller_order(bazaar)
+    alpha_id = _part(order, "alpha")["id"]
+    base = f"/seller/{bazaar.a_id}/orders/{alpha_id}"
+
+    def intent() -> tuple[str, str | None, datetime | None]:
+        db.rollback()
+        row = db.scalar(
+            select(PaymentIntent).where(PaymentIntent.seller_order_id == uuid.UUID(alpha_id))
+        )
+        assert row is not None
+        return row.status, row.method, row.settled_at
+
+    waiting = intent()
+    assert waiting[0] == "pending"
+    refused = bazaar.a.post(f"{base}/payment", json={"method": "cash"})
+    assert refused.status_code == 409
+    assert error_code(refused) == "payment_not_recordable"
+    assert intent() == waiting
+
+    assert bazaar.a.post(f"{base}/confirm").status_code == 200
+    assert bazaar.a.post(f"{base}/ready").status_code == 200
+    assert bazaar.a.post(f"{base}/dispatch", json={}).status_code == 200
+    failed = bazaar.a.post(f"{base}/delivery-failed", json={"reason": "Nobody at the gate"})
+    assert failed.status_code == 200, failed.text
+    back = bazaar.a.post(f"{base}/return", json={"reason": "Buyer unreachable twice"})
+    assert back.status_code == 200, back.text
+    returned = intent()
+    assert returned[0] == "cancelled"
+    refused = bazaar.a.post(f"{base}/payment", json={"method": "cash"})
+    assert refused.status_code == 409
+    assert error_code(refused) == "payment_not_recordable"
+    assert intent() == returned
+    assert _part(_mine(buyer, order["id"]), "alpha")["paid_method"] is None
+    assert db.scalar(select(func.count()).select_from(PaymentAttempt)) == 0

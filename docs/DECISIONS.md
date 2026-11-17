@@ -682,8 +682,8 @@ inserted by hand. The fee is charged when the seller order completes (D-045).
 ## D-043 An overdue fulfilment hold cancels the order and frees the stock
 
 **Fills the gap** D-037 left open (blueprint G.9: "the worker releases
-expired reservations"). **Accepted as PROVISIONAL — FOUNDER MAY CHANGE
-BEFORE LAUNCH.**
+expired reservations"). **Accepted as PROVISIONAL — confirmed by the founder
+on 17 November 2026 as the pilot policy; FOUNDER MAY CHANGE BEFORE LAUNCH.**
 
 When a seller confirms, the stock stays held for `orders.fulfilment_hold_days`
 (14). The worker job `orders.cancel_overdue_fulfilment` (every ten minutes)
@@ -701,8 +701,21 @@ stock tests enforce (reserved stock equals held reservations), so release and
 cancellation have to go together. The alternative, a staff warning with the
 order left open, is one setting and one job away: lengthen
 `orders.fulfilment_hold_days`, or replace the job's `_move` with a
-notification. The founder's view (asked in session three, A.6) has not been
-received; this is the engineer's placeholder.
+notification.
+
+**Founder's confirmation, 17 November 2026.** The founder confirmed this as
+the **provisional pilot policy**: after 14 days a part that is still
+`confirmed` or `ready` is cancelled and its stock released, **subject to safe
+handling of orders already out for delivery**. The job meets that condition
+by construction: it selects only `confirmed` and `ready` parts, so a part
+that is `out_for_delivery` or `delivery_failed` is never touched, and the
+state diagram allows no cancellation from those states in any case. The test
+`test_an_overdue_fulfilment_hold_cancels_the_order_and_frees_the_stock`
+dispatches one part and lets the hold of the other expire: only the waiting
+part is cancelled, and the parcel on the road keeps its stock held. The
+founder may change the policy before launch; to do so, change
+`orders.fulfilment_hold_days`, or replace the job's `_move` with a
+notification to staff, and update this entry and D-053.
 
 ## D-044 The handover code is derived, compared in constant time, and locks after five
 
@@ -1018,7 +1031,7 @@ was implemented):
 | A rejected applicant (F-05) | Needs a fresh invitation | invitation use in `markx/sellers/service.py` (D-019) |
 | Ownership transfer (F-02) | Not built: no route transfers a store | to be built once decided |
 | Document storage (F-01) | Local disk on a laptop only; refuses staging and production | `get_private_storage` in `markx/core/storage.py`: one new adapter class |
-| Fulfilment hold (D-043) | A part still `confirmed` or `ready` 14 days after confirmation is cancelled and its stock freed | the setting `orders.fulfilment_hold_days`, or the job `cancel_overdue_fulfilment` |
+| Fulfilment hold (D-043) | A part still `confirmed` or `ready` 14 days after confirmation is cancelled and its stock freed; a part out for delivery is never touched. **Confirmed by the founder on 17 November 2026 as the provisional pilot policy** | the setting `orders.fulfilment_hold_days`, or the job `cancel_overdue_fulfilment` |
 | Merged products' offers (F-06), lifting a takedown (F-07) | As their F- entries say | as their F- entries say |
 
 ## D-054 The search golden set: a file the founder fills, a command that scores it
