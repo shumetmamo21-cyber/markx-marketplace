@@ -2554,6 +2554,8 @@ export interface components {
             variant_attributes: {
                 [key: string]: unknown;
             };
+            /** Variant Label */
+            variant_label: string;
             /** Warranty Months */
             warranty_months: number;
         };
@@ -3390,6 +3392,8 @@ export interface components {
              * Format: uuid
              */
             variant_id: string;
+            /** Variant Label */
+            variant_label: string;
             /** Warranty Months */
             warranty_months: number;
             /** Warranty Note */
@@ -4028,6 +4032,8 @@ export interface components {
              * Format: uuid
              */
             variant_id: string;
+            /** Variant Label */
+            variant_label: string;
             /** Warranty Months */
             warranty_months: number;
             /** Warranty Note */
@@ -4101,6 +4107,8 @@ export interface components {
              * Format: uuid
              */
             variant_id: string;
+            /** Variant Label */
+            variant_label: string;
             /** Warranty Months */
             warranty_months: number;
             /** Warranty Note */

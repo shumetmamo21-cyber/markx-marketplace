@@ -25,6 +25,8 @@ class CartItemOut(ApiModel):
     product_slug: str
     product_name: str
     variant_attributes: dict[str, Any]
+    # "Black · 128 GB", as the product page shows it.
+    variant_label: str
     condition: str
     warranty_months: int
     quantity: int

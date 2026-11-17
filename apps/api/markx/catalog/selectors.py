@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import select
@@ -286,6 +287,16 @@ def product_out(
             )
         ]
     return out
+
+
+def variant_labels(db: Session, products: Iterable[Product], language: str) -> dict[uuid.UUID, str]:
+    """Each variant's label ("Black · 128 GB"), exactly as the product page
+    shows it, for screens that list variants of several products."""
+    labels: dict[uuid.UUID, str] = {}
+    for product in {product.id: product for product in products}.values():
+        for variant in product_out(db, product, language)["variants"]:
+            labels[variant["id"]] = str(variant["label"])
+    return labels
 
 
 def public_product(db: Session, slug: str, language: str) -> dict[str, Any]:

@@ -60,6 +60,7 @@ class SellerOfferOut(ApiModel):
     product_slug: str
     product_name: str
     variant_attributes: dict[str, Any]
+    variant_label: str
     model_code: str | None
     condition: str
     price_santim: int
@@ -151,6 +152,7 @@ class PriceListItemOut(PublicOfferOut):
     product_slug: str
     product_name: str
     variant_attributes: dict[str, Any]
+    variant_label: str
 
 
 class ModerationIn(ApiModel):

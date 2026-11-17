@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from markx.catalog import selectors as catalog_selectors
 from markx.catalog.models import ProductTranslation
 from markx.core.errors import NotFound
 from markx.core.money import Money
@@ -67,6 +68,7 @@ def cart_view(
             raise NotFound("zone_not_found", "That delivery zone was not found.")
     lines = service.load_lines(db, cart.id) if cart is not None else []
     names = _names(db, {line.product.id for line in lines}, language)
+    labels = catalog_selectors.variant_labels(db, (line.product for line in lines), language)
     min_level = service._min_level(db)
     rates = active_rates_for_zone(db, zone.id) if zone is not None else {}
 
@@ -89,6 +91,7 @@ def cart_view(
                     "product_slug": line.product.slug,
                     "product_name": names.get(line.product.id, ""),
                     "variant_attributes": line.variant.attribute_values,
+                    "variant_label": labels.get(line.variant.id, ""),
                     "condition": line.offer.condition,
                     "warranty_months": line.offer.warranty_months,
                     "quantity": line.item.quantity,

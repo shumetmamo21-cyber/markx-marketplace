@@ -90,7 +90,10 @@ the checks actually printed.
    opened through a five-minute link, then approve or reject; and the
    search tools. The menu shows only what each staff role may do, and the
    API checks again on every action.
-10. **Proof in a browser.** A script drives the whole journey in Chromium:
+10. **Variant names** (this commit): the cart, the seller's offers and the
+    shop page now say "Black · 128 GB" instead of the internal codes
+    "black · 128gb", using the same code as the product page.
+11. **Proof in a browser.** A script drives the whole journey in Chromium:
    sign in with a code, add the best offer, check out; **the shop, in its
    own dashboard,** accepts, packs and sends a rider; the buyer sees the
    six-digit code; the shop types a wrong code (refused: "4 attempts
@@ -107,7 +110,7 @@ the checks actually printed.
 API, from `apps/api`, with nothing else using the test database:
 
 ```
-uv run pytest                 ->  853 passed in 405.55s (0:06:45)
+uv run pytest                 ->  854 passed in 400.69s (0:06:40)
 uv run ruff check .           ->  All checks passed!
 uv run ruff format --check .  ->  138 files already formatted
 uv run mypy markx             ->  Success: no issues found in 90 source files
@@ -191,7 +194,7 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 853 passed, six to seven minutes
+uv run pytest                  # expect 854 passed, six to seven minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 cd ../web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
@@ -245,7 +248,7 @@ printed.
 | P11 Admin operations | **On the web: problems, orders desk, seller review, search tools**; dispatch board, catalogue curation, audit trail missing |
 | P12 onwards | Not started |
 
-**Numbers:** 853 API tests, 9 web unit tests, two browser
+**Numbers:** 854 API tests, 9 web unit tests, two browser
 journeys; 65 tables; migrations `0001` to `0007`; 90 typed API source files.
 
 **Traps already paid for:** see `docs/DEVELOPMENT_STATUS.md` ("Lessons" and

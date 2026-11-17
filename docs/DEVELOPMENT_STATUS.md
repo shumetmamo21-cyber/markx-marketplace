@@ -59,7 +59,7 @@ anywhere.
 | 3 | `399507e`, `bd835ef`, `7079cb5`, `eb52d2f` | Review fixes (a moderation bypass, lock ordering), the worker, cart and checkout (P9), multi-seller orders (P10, first half). 779 tests |
 | 4 | `7c492c6`, `6582017`, `10573b4` | The second half of P10: ready, dispatch, the handover code, delivered, completed with `commit_stock` and the fee charge posted to the ledger, failed deliveries and returns, the direct payment record, the overdue-hold job, the staff orders desk's first three routes, the tracking page by secure link. 801 tests |
 | 5 | `497fcf5`, `5ce4340`, `cdf16c5` and a documentation commit | Review fix (a cancelled shipment had no tracking event), the next-best offer (C-26), problems on a delivered order with staff decisions (`disputed`, `refunded`), search (P8 on the API side). 847 tests |
-| 6 | `641a95b` to the head; see `docs/HANDOFF.md` | Review fix (a withdrawn product stayed findable), the founder's provisional approvals (D-053), the search evaluator (D-054), CI, the web app (D-055) with the buyer's whole journey, demo data (D-056). 853 API tests, 8 web unit tests, one browser journey |
+| 6 | `641a95b` to the head; see `docs/HANDOFF.md` | Review fix (a withdrawn product stayed findable), the founder's provisional approvals (D-053), the search evaluator (D-054), CI, the web app (D-055): the storefront and buyer journey, the seller dashboard, the admin dashboard; demo data (D-056); variant labels in the cart and offer lists. 854 API tests, 9 web unit tests, two browser journeys |
 
 ## Blueprint phase tracking
 
@@ -528,7 +528,7 @@ API types are generated from the API's OpenAPI description.
   shop, the handover code and its warning, contacts, timeline, cancel,
   "the goods are right", "report a problem"), the tracking page by link.
 - **Tested:** `npm run lint`, `npm run typecheck` (strict), `npm test`
-  (8 Vitest tests: price and time formatting, message keys and
+  (9 Vitest tests: price and time formatting, message keys and
   placeholders equal in both languages, API errors always in words) and
   `npm run build`, all in CI. `e2e/buyer-journey.mjs` drives the whole
   journey in Chromium against the demo data, the buyer's side and the shop's
@@ -554,10 +554,11 @@ API types are generated from the API's OpenAPI description.
   staff decision and checks isolation at both layers (another shop's
   dashboard and API: 404; the admin area and API for a buyer: 403).
 - **Demo data:** `apps/api/scripts/seed_demo.py` (D-056), laptop only.
-- **Known gaps:** variants show their codes ("black · 128gb") in the cart
-  and the seller's offers, because those API responses carry codes, not
-  labels; the seller application, documents, team, store settings and
-  "add an offer" screens are not built (their API exists).
+- **Known gaps:** the seller application, documents, team, store settings
+  and "add an offer" screens are not built (their API exists). Variant
+  labels ("Black · 128 GB") come from the API in the cart, the seller's
+  offers and the shop's price list, built by the same code as the product
+  page (`catalog.selectors.variant_labels`).
 
 ### CI (blueprint P1)
 
@@ -684,7 +685,7 @@ Be careful with these. They were written and never exercised.
 
 ```text
 $ cd apps/api
-$ uv run pytest               ->  853 passed in 405.55s (0:06:45)
+$ uv run pytest               ->  854 passed in 400.69s (0:06:40)
 $ uv run ruff check .         ->  All checks passed!
 $ uv run ruff format --check . ->  138 files already formatted
 $ uv run mypy markx           ->  Success: no issues found in 90 source files
@@ -736,7 +737,7 @@ errors. **Never run two test sessions at once**: they share `markx_test`
 | `tests/api/test_seller_staff_permissions.py` | 23 |
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_offers.py` | 42 |
-| `tests/api/test_cart.py` | 22 |
+| `tests/api/test_cart.py` | 23 |
 | `tests/api/test_checkout.py` | 21 |
 | `tests/api/test_fulfilment.py` | 11 |
 | `tests/api/test_tracking.py` | 2 |
@@ -779,8 +780,7 @@ Work in this order. Finish and push each step before starting the next.
    of codes for roles and review states.
 3. **The rest of the seller dashboard:** add an offer by searching the
    catalogue (I.6 workflow 4), the application and documents screens, team
-   and store settings. Return variant labels from the API so the cart and
-   the offers list stop showing codes.
+   and store settings.
 4. **The search golden set**, only when the founder sends real queries
    (D-054): load them into `search_eval/golden_queries.csv`, score, tune
    `LETTER_MATCH`, report the real figure.

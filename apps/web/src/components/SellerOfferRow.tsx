@@ -38,7 +38,7 @@ export function SellerOfferRow({ sellerId, offer, t, confirmedText }: { sellerId
         <div>
           <p className="font-semibold">{offer.product_name}</p>
           <p className="text-sm text-slate">
-            {[...Object.values(offer.variant_attributes).map(String), t.condition[offer.condition as keyof Messages["condition"]] ?? offer.condition].join(" · ")}
+            {[offer.variant_label, t.condition[offer.condition as keyof Messages["condition"]] ?? offer.condition].filter(Boolean).join(" · ")}
           </p>
           <p className="text-sm text-slate">{confirmedText}</p>
         </div>

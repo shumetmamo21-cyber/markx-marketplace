@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from markx.catalog.models import Product, ProductStatus, ProductTranslation, ProductVariant
-from markx.catalog.selectors import resolve_merged
+from markx.catalog.selectors import resolve_merged, variant_labels
 from markx.core import settings_store
 from markx.core.errors import NotFound
 from markx.delivery.models import DeliveryMode, DeliveryRate, DeliveryZone
@@ -44,7 +44,7 @@ def _product_names(db: Session, product_ids: set[uuid.UUID], language: str) -> d
 
 def _seller_row(
     offer: Offer, inventory: Inventory, variant: ProductVariant, product: Product, name: str,
-    sink_before: datetime,
+    sink_before: datetime, label: str,
 ) -> dict[str, Any]:  # fmt: skip
     available = inventory.on_hand - inventory.reserved
     return {
@@ -54,6 +54,7 @@ def _seller_row(
         "product_slug": product.slug,
         "product_name": name,
         "variant_attributes": variant.attribute_values,
+        "variant_label": label,
         "model_code": variant.model_code,
         "condition": offer.condition,
         "price_santim": offer.price_santim,
@@ -111,11 +112,15 @@ def seller_offers(
         query = query.where(Offer.id > after)
     rows = db.execute(query).all()
     names = _product_names(db, {product.id for _, _, _, product in rows}, language)
+    labels = variant_labels(db, (product for *_, product in rows), language)
     sink_before = _sink_before(db)
     return [
-        _seller_row(offer, inventory, variant, product, names.get(product.id, ""), sink_before)
+        _seller_row(
+            offer, inventory, variant, product, names.get(product.id, ""), sink_before,
+            labels.get(variant.id, ""),
+        )
         for offer, inventory, variant, product in rows
-    ]
+    ]  # fmt: skip
 
 
 def seller_offer_detail(
@@ -127,8 +132,9 @@ def seller_offer_detail(
     offer, inventory, variant, product = row
     names = _product_names(db, {product.id}, language)
     out = _seller_row(
-        offer, inventory, variant, product, names.get(product.id, ""), _sink_before(db)
-    )
+        offer, inventory, variant, product, names.get(product.id, ""), _sink_before(db),
+        variant_labels(db, [product], language).get(variant.id, ""),
+    )  # fmt: skip
     out["price_history"] = [
         {
             "old_price_santim": h.old_price_santim,
@@ -370,11 +376,13 @@ def store_price_list(
         .limit(limit)
     ).all()
     names = _product_names(db, {product.id for *_, product in rows}, language)
+    labels = variant_labels(db, (product for *_, product in rows), language)
     out = []
     for offer, inventory, seller, store, variant, product in rows:
         row = _public_row(offer, inventory, seller, store)
         row["product_slug"] = product.slug
         row["product_name"] = names.get(product.id, "")
         row["variant_attributes"] = variant.attribute_values
+        row["variant_label"] = labels.get(variant.id, "")
         out.append(row)
     return out

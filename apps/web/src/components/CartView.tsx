@@ -12,7 +12,7 @@ type Cart = components["schemas"]["CartOut"];
 type Item = components["schemas"]["CartItemOut"];
 
 function problemText(t: Messages["cart"], problem: string): string {
-  if (problem === "out_of_stock") return t.problem_out_of_stock;
+  if (problem === "out_of_stock" || problem === "not_enough_stock") return t.problem_out_of_stock;
   if (problem.endsWith("_not_available")) return t.problem_unavailable;
   return t.problemGeneric;
 }
@@ -66,7 +66,7 @@ export function CartView({ lang, t, conditions }: { lang: Locale; t: Messages["c
       <div className="min-w-0 flex-1 space-y-1">
         <Link href={`/${lang}/p/${item.product_slug}`} className="font-semibold hover:underline">{item.product_name}</Link>
         <p className="text-sm text-slate">
-          {[...Object.values(item.variant_attributes).map(String), item.condition in conditions ? conditions[item.condition as keyof typeof conditions] : item.condition].join(" · ")}
+          {[item.variant_label, item.condition in conditions ? conditions[item.condition as keyof typeof conditions] : item.condition].filter(Boolean).join(" · ")}
         </p>
         {item.price_changed ? (
           <p className="text-sm font-semibold text-clay">{fill(t.priceChanged, { before: formatPrice(item.price_seen_santim, lang), after: formatPrice(item.price_santim, lang) })}</p>

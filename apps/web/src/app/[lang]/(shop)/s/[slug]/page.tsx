@@ -75,7 +75,7 @@ export default async function StorePage({ params }: PageProps<"/[lang]/s/[slug]"
             <li key={offer.id}>
               <Link href={`/${lang}/p/${offer.product_slug}`} className="flex h-full flex-col gap-1 rounded-card border border-line bg-white p-4 hover:border-ink">
                 <span className="font-semibold">{offer.product_name}</span>
-                <span className="text-sm text-slate">{Object.values(offer.variant_attributes).map(String).join(" · ")} · {t.condition[offer.condition as keyof Messages["condition"]] ?? offer.condition}</span>
+                <span className="text-sm text-slate">{offer.variant_label} · {t.condition[offer.condition as keyof Messages["condition"]] ?? offer.condition}</span>
                 {offer.in_stock ? <span className="price">{formatPrice(offer.price_santim, lang)}</span> : <span className="font-semibold text-clay">{t.card.outOfStock}</span>}
               </Link>
             </li>

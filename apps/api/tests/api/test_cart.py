@@ -306,3 +306,25 @@ def test_a_staff_session_cannot_shop(bazaar: Bazaar, db: DbSession) -> None:
     ):
         assert response.status_code == 403
         assert error_code(response) == "customer_session_required"
+
+
+def test_variants_are_named_as_on_the_product_page(bazaar: Bazaar) -> None:
+    """The cart, the seller's offers and the shop's price list name a variant
+    the way the product page does ("Black · 128 GB"), in the page's language,
+    not by its attribute codes."""
+    buyer = ApiClient()
+    add_to_cart(buyer, bazaar.a128["id"])
+    product = bazaar.staff.get(f"/catalog/products/{bazaar.product['slug']}?lang=en").json()
+    page_label = next(v["label"] for v in product["variants"] if v["id"] == bazaar.v128)
+    assert page_label == "Black · 128 GB"
+    for lang, label in (("en", "Black · 128 GB"), ("am", "ጥቁር · 128 ጊባ")):
+        (line,) = buyer.get(f"/cart?lang={lang}").json()["groups"][0]["items"]
+        assert line["variant_label"] == label
+        offers = bazaar.a.get(f"/seller/{bazaar.a_id}/offers?lang={lang}").json()
+        assert {o["variant_label"] for o in offers if o["id"] == bazaar.a128["id"]} == {label}
+        detail = bazaar.a.get(
+            f"/seller/{bazaar.a_id}/offers/{bazaar.a128['id']}?lang={lang}"
+        ).json()
+        assert detail["variant_label"] == label
+        listed = ApiClient().get(f"/catalog/stores/alpha/offers?lang={lang}").json()
+        assert {o["variant_label"] for o in listed if o["id"] == bazaar.a128["id"]} == {label}
