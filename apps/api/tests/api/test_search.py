@@ -306,3 +306,58 @@ def test_a_typo_match_is_answered_by_the_trigram_index(shelf: Shelf, db: DbSessi
     assert db.scalars(statement).all() == [uuid.UUID(shelf.samsung["id"])]
     _, _, far = selectors._match("zzqxw")
     assert db.scalars(select(SearchDocument.product_id).where(far)).all() == []
+
+
+@pytest.fixture
+def frozen_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hold the rate-limit clock still, so a test never straddles the edge of
+    a one-minute window."""
+    from markx.core import ratelimit
+
+    moment = datetime(2026, 11, 17, 10, 30, 15, tzinfo=UTC)
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> Frozen:  # type: ignore[override]
+            return cls.fromtimestamp(moment.timestamp(), tz)
+
+    monkeypatch.setattr(ratelimit, "datetime", Frozen)
+
+
+@pytest.mark.usefixtures("frozen_minute")
+def test_search_is_throttled_per_network_address(shelf: Shelf, db: DbSession) -> None:
+    """D-059 (blueprint H.2, "throttles on search"). Past the limit a search is
+    refused before it runs, so it is neither answered nor logged; another
+    address is unaffected; suggestions have their own allowance."""
+    from markx.core import settings_store
+
+    settings_store.set_setting(db, "search.requests_per_ip_per_minute", 10)
+    settings_store.set_setting(db, "search.suggestions_per_ip_per_minute", 12)
+    db.commit()
+    for _ in range(10):
+        assert shelf.visitor.get("/search", params={"q": "samsung"}).status_code == 200
+    refused = shelf.visitor.get("/search", params={"q": "flood"})
+    assert refused.status_code == 429
+    assert error_code(refused) == "rate_limited"
+    assert 1 <= refused.json()["error"]["details"]["retry_after_seconds"] <= 60
+    db.rollback()
+    logged = db.scalars(select(SearchQuery.query)).all()
+    assert logged.count("samsung") == 10
+    assert "flood" not in logged
+
+    other = ApiClient(ip="198.51.100.7")
+    assert other.get("/search", params={"q": "samsung"}).status_code == 200
+    # Suggestions are counted apart from searches.
+    for _ in range(12):
+        assert shelf.visitor.get("/search/suggest", params={"q": "sam"}).status_code == 200
+    assert shelf.visitor.get("/search/suggest", params={"q": "sam"}).status_code == 429
+
+
+@pytest.mark.usefixtures("frozen_minute")
+def test_the_default_search_allowance_fits_a_person(shelf: Shelf) -> None:
+    """The defaults (120 searches, 300 suggestions a minute) never stop a
+    person: a burst of 40 searches and 100 keystrokes passes."""
+    for i in range(40):
+        assert shelf.visitor.get("/search", params={"q": f"samsung {i}"}).status_code == 200
+    for _ in range(100):
+        assert shelf.visitor.get("/search/suggest", params={"q": "ga"}).status_code == 200

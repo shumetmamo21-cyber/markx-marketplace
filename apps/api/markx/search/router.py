@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from markx.accounts.deps import OptionalPrincipal, Principal, require_staff
 from markx.accounts.permissions import StaffCapability
-from markx.core import ratelimit
+from markx.core import ratelimit, settings_store
 from markx.core.http import Db, client_ip
 from markx.core.schemas import Ok
 from markx.search import selectors, service
@@ -42,10 +42,24 @@ Slug = Annotated[str | None, Query(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$", max_leng
 PRODUCT_REQUESTS_PER_HOUR = 10
 
 
+def _throttle(db: Db, request: Request, kind: str, setting: str) -> None:
+    """Throttle searching per network address (blueprint H.2; D-059). Every
+    first page is logged (D.8), so this also bounds what one address can
+    write to the query log and the zero-result report. Counted before the
+    search runs, in its own transaction, so a refused search costs one
+    counter update and nothing else."""
+    ratelimit.hit(
+        f"{kind}:ip:{client_ip(request) or 'unknown'}",
+        settings_store.get_int(db, setting),
+        timedelta(minutes=1),
+    )
+
+
 @router.get("/search", response_model=SearchOut)
 def search_products(
     principal: OptionalPrincipal,
     db: Db,
+    request: Request,
     q: Annotated[str, Query(max_length=200)] = "",
     category: Slug = None,
     brand: Slug = None,
@@ -61,6 +75,8 @@ def search_products(
 ) -> SearchOut:
     """Products, never listings (D.8). Prices in santim; the "from" price is
     the lowest in stock. Every first page is logged with its result count."""
+    # Throttled per network address (`search.requests_per_ip_per_minute`).
+    _throttle(db, request, "search", "search.requests_per_ip_per_minute")
     return SearchOut.model_validate(
         selectors.search(
             db, q, language=lang, category=category, brand=brand, condition=condition,
@@ -73,8 +89,13 @@ def search_products(
 
 @router.get("/search/suggest", response_model=list[SuggestionOut])
 def suggest_products(
-    db: Db, q: Annotated[str, Query(max_length=200)] = "", lang: LangQuery = "am"
+    db: Db,
+    request: Request,
+    q: Annotated[str, Query(max_length=200)] = "",
+    lang: LangQuery = "am",
 ) -> list[SuggestionOut]:
+    # Throttled per network address (`search.suggestions_per_ip_per_minute`).
+    _throttle(db, request, "suggest", "search.suggestions_per_ip_per_minute")
     return [SuggestionOut.model_validate(row) for row in selectors.suggest(db, q, language=lang)]
 
 

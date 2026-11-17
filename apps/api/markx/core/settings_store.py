@@ -169,6 +169,25 @@ _SPECS: tuple[SettingSpec, ...] = (
         100,
         10_000_000_000,
     ),
+    # Search (blueprint H.2: "throttles on search"; D-059)
+    SettingSpec(
+        "search.requests_per_ip_per_minute",
+        120,
+        "int",
+        "Searches one network address may run per minute; more are refused for the rest "
+        "of the minute (blueprint H.2, D-059).",
+        10,
+        100_000,
+    ),
+    SettingSpec(
+        "search.suggestions_per_ip_per_minute",
+        300,
+        "int",
+        "Name suggestions one network address may ask for per minute, as a buyer types "
+        "(blueprint H.2, D-059).",
+        10,
+        100_000,
+    ),
     # Sign-in
     SettingSpec(
         "auth.otp_per_phone_per_hour",
