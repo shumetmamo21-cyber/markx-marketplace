@@ -7,6 +7,7 @@ import description from "@/lib/api/openapi.json";
 import { serverApi } from "@/lib/api/server";
 import { isLocale } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
+import { getMe } from "@/lib/session";
 
 export const metadata: Metadata = { robots: { index: false } };
 
@@ -29,6 +30,8 @@ export default async function NewOfferPage({ params, searchParams }: PageProps<"
   const t = await getMessages(lang);
   const s = t.seller;
   const api = await serverApi();
+  const me = await getMe();
+  const can = (capability: string) => me?.sellers.find((m) => m.seller_id === sellerId)?.capabilities.includes(capability) ?? false;
   const base = `/${lang}/seller/${sellerId}/offers/new`;
   const product = /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)
     ? (await api.GET("/api/v1/catalog/products/{slug}", { params: { path: { slug }, query: { lang } } })).data
@@ -61,6 +64,9 @@ export default async function NewOfferPage({ params, searchParams }: PageProps<"
             </label>
             <button type="submit" className="min-h-12 shrink-0 rounded-card bg-adey px-5 font-bold">{s.addOfferSearch}</button>
           </form>
+          {can("propose_products") ? (
+            <p><Link href={`/${lang}/seller/${sellerId}/offers/propose`} className="inline-flex min-h-12 items-center font-semibold underline">{s.proposeLink}</Link></p>
+          ) : null}
           {found ? (
             found.results.length ? (
               <ul className="space-y-2">

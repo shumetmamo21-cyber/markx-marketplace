@@ -8,7 +8,7 @@ import { browserApi } from "@/lib/api/browser";
 type Labels = { add: string; adding: string; added: string; failed: string; cart: string };
 
 // The cart lives on the server (D-036); a visitor gets one through a cookie.
-export function AddToCart({ offerId, cartHref, labels }: { offerId: string; cartHref: string; labels: Labels }) {
+export function AddToCart({ offerId, cartHref, labels, quantity = 1 }: { offerId: string; cartHref: string; labels: Labels; quantity?: number }) {
   const [state, setState] = useState<"idle" | "adding" | "added" | "failed">("idle");
   if (state === "added") {
     return (
@@ -26,7 +26,7 @@ export function AddToCart({ offerId, cartHref, labels }: { offerId: string; cart
           setState("adding");
           const { error } = await browserApi.PUT("/api/v1/cart/items/{offer_id}", {
             params: { path: { offer_id: offerId } },
-            body: { quantity: 1 },
+            body: { quantity },
           });
           setState(error ? "failed" : "added");
         }}

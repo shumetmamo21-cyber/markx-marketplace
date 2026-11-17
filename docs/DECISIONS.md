@@ -1784,6 +1784,59 @@ how to get an invitation. A new application lands on the overview.
   /seller/{id}/product-proposals` needs the category's attribute options for
   its variants), closing the shop, and a map pin for the shop's location.
 
+## D-076 A store with orders in progress cannot close
+
+**Fills a gap in** blueprint G.1 and C.3 (the owner may close a store, which
+is archived, never deleted). **Accepted**, as a safety rule the founder may
+change.
+
+Closing was allowed at any time, but a closed store can no longer act on its
+orders (`require_seller` refuses it): a buyer with an order placed,
+confirmed, packed, on the way, delivered inside its problem window, failed
+or disputed would be left with nobody to finish it. `close_seller` now
+refuses with `open_orders_remain` (and the count in `details`) while any of
+the store's seller orders is in one of those states; declined, expired,
+cancelled, returned, completed and refunded orders do not count. The store
+row is locked first, and checkout locks the same row before it places an
+order, so no order slips in between the count and the close. Two tests
+(`tests/api/test_seller_closing.py`).
+
+## D-077 The remaining screens: account, staff setup, trust actions, proposals, categories
+
+**Follows** blueprint I.4, I.5, C-08, C-26, H.5, D.5, D.6, D.8, D.13, AD-01,
+AD-02, AD-05, S-05. **Accepted.** No API change except D-076.
+
+A comparison of every API route with the routes the web app calls showed
+these had no screen, and the tenth session's earlier report was wrong to say
+otherwise. Now:
+
+| Screen | Who | What it does |
+| --- | --- | --- |
+| Account (`/account`) | a signed-in person | Name and message language; saved addresses (add, remove); messages from MarkX in words with a link to what each is about, the ten newest shown; data requests (a copy, a correction, deletion; H.5); sign out on every device |
+| The next-best offer | the buyer | On a part the shop declined or let expire, the best offer from another shop for each line, added to the cart in one tap (C-26) |
+| Category page (`/c/{slug}`) | anyone | Breadcrumbs, subcategories and the category's products as cards; filters stay on search |
+| Search suggestions | anyone | Product names as links while typing two letters or more; the plain form still works without script |
+| Shop location | the owner | Latitude and longitude, typed or from the phone, before the application is sent (legal details lock after); the public shop page links to OpenStreetMap |
+| Close the shop | the owner | Behind a confirmation; refused in words while orders are in progress (D-076) |
+| Suggest a product | `propose_products` | The same product form staff use; the API makes it a proposal staff review |
+| Level and standing | `review_sellers` | Set the verification level with a reason, record the re-check, suspend, reinstate; the checks behind the level shown |
+| Delivery zones | `change_delivery_and_risk` | Zones, their areas (switched on and off), and each zone's fee and promised time per way of delivering |
+| Catalogue setup | `curate_catalogue` | Categories (add, rename, reorder, switch off), attributes with options, which attribute a category uses and how, brands, the goods not allowed |
+| Products | `curate_catalogue` | Every product by state; a new product from its category's details and versions; one product's text, versions, search names and links to its pictures and listings |
+
+- **Notifications** are shown from their template's words
+  (`src/lib/notifications.ts`, tested against every template the API sends,
+  including the two a condition chooses); an unknown template reads as a
+  generic line, never a code.
+- **One product form** (`ProductForm`) serves staff and shops; a category's
+  version-defining details become the version lines, the rest its details.
+  A new version may leave a detail the other versions leave empty
+  (`variants_inconsistent` otherwise).
+- **Where a page tests a state** (the standing actions by the shop's status,
+  the close section by capability), the API refuses anything else in words.
+- `e2e/setup-and-account.mjs` drives all of it (13 steps) and tidies the demo
+  data it creates.
+
 ---
 
 ## Decisions that need the founder

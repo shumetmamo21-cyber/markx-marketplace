@@ -25,6 +25,8 @@ const CODES = {
   reportReason: ["counterfeit", "prohibited", "wrong_information", "offensive", "fraud", "spam", "other"],
   imageKind: ["catalogue", "seller_real_photo"],
   imageStatus: ["processing", "ready", "failed", "removed"],
+  dataRequestKind: ["export", "correct", "delete"],
+  dataRequestStatus: ["open", "done", "refused"],
   author: ["buyer", "seller", "staff"],
   docType: ["owner_id", "business_licence", "tin_certificate", "shop_photo", "other"],
   payoutStatus: ["pending", "active", "replaced"],

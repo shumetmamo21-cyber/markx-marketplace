@@ -33,7 +33,7 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
             {shortcuts.map((category) => (
               <li key={category.id}>
                 <Link
-                  href={`/${lang}/search?category=${category.slug}`}
+                  href={`/${lang}/c/${category.slug}`}
                   className="inline-flex min-h-12 items-center rounded-full border border-line bg-white px-4 font-semibold hover:border-ink"
                 >
                   {category.name}

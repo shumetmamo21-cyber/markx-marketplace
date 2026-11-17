@@ -36,7 +36,7 @@ export function SiteHeader({ lang, t, query, signedIn = false }: { lang: Locale;
               {t.nav.orders}
             </Link>
           ) : null}
-          <Link href={`/${lang}/sign-in`} className="inline-flex min-h-12 items-center px-3 font-semibold hover:underline">
+          <Link href={`/${lang}/account`} className="inline-flex min-h-12 items-center px-3 font-semibold hover:underline">
             {signedIn ? t.nav.account : t.nav.signIn}
           </Link>
           <Suspense fallback={null}>

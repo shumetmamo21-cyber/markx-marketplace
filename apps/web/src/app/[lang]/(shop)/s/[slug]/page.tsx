@@ -45,6 +45,18 @@ export default async function StorePage({ params, searchParams }: PageProps<"/[l
         <h1 className="text-2xl font-extrabold">{s.name}</h1>
         <p className="font-semibold text-highland">{fill(t.store.level, { level: s.verification_level })}</p>
         <p className="text-slate">{s.shop_address}</p>
+        {s.shop_latitude !== null && s.shop_longitude !== null && s.shop_latitude !== undefined && s.shop_longitude !== undefined ? (
+          <p>
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${s.shop_latitude}&mlon=${s.shop_longitude}#map=18/${s.shop_latitude}/${s.shop_longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-12 items-center font-semibold underline"
+            >
+              {t.store.directions}
+            </a>
+          </p>
+        ) : null}
         <p className="text-sm text-slate">
           {fill(t.store.memberSince, { date: formatDateTime(s.member_since, lang) })} · {fill(t.store.completed, { count: s.completed_orders })}
         </p>

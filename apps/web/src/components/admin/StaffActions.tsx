@@ -512,3 +512,438 @@ export function RemovePictureForm({ imageId, t }: { imageId: string; t: T }) {
     </StaffForm>
   );
 }
+
+// -- a shop's level and standing (AD-01, C.5, C.6) ---------------------------------
+
+/** Staff change an approved shop's level, record its periodic re-check,
+ * suspend or reinstate it, always with a written reason the audit log keeps.
+ * The page offers each where the shop's state allows it; the API checks the
+ * state, the checks behind a level and conflicts of interest again. */
+export function SellerStanding({ sellerId, status, approved, level, t }: { sellerId: string; status: string; approved: boolean; level: number; t: T }) {
+  const a = t.admin;
+  const path = { params: { path: { seller_id: sellerId } } };
+  const reason = (name: string, label: string) => (
+    <label className="block space-y-1"><span className="text-sm font-semibold">{label}</span><input name={name} required minLength={3} maxLength={1000} className={field} /></label>
+  );
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      {approved && status !== "closed" ? (
+        <section className="space-y-2">
+          <h3 className="font-bold">{a.setLevelTitle}</h3>
+          <StaffForm
+            t={t}
+            label={a.setLevel}
+            onSubmit={(form) =>
+              browserApi.POST("/api/v1/admin/sellers/{seller_id}/verification-level", {
+                ...path,
+                body: { level: Number(form.get("level")), reason: text(form, "reason"), shop_visited: form.get("visited") === "on" },
+              })
+            }
+          >
+            <fieldset className="space-y-1">
+              <legend className="text-sm font-semibold">{a.newLevel}</legend>
+              {[a.level0, a.level1, a.level2, a.level3].map((label, value) => (
+                <label key={value} className="flex min-h-12 items-center gap-2"><input type="radio" name="level" value={value} defaultChecked={value === level} className="h-5 w-5" />{label}</label>
+              ))}
+            </fieldset>
+            <label className="flex min-h-12 items-center gap-2"><input type="checkbox" name="visited" className="h-5 w-5" />{a.shopVisited}</label>
+            {reason("reason", a.reason)}
+          </StaffForm>
+        </section>
+      ) : null}
+      {approved && status !== "closed" ? (
+        <section className="space-y-2">
+          <h3 className="font-bold">{a.recheckTitle}</h3>
+          <StaffForm t={t} label={a.recheck} onSubmit={(form) => browserApi.POST("/api/v1/admin/sellers/{seller_id}/recheck", { ...path, body: { reason: text(form, "reason") } })}>
+            {reason("reason", a.recheckNote)}
+          </StaffForm>
+        </section>
+      ) : null}
+      {status === "active" ? (
+        <section className="space-y-2">
+          <h3 className="font-bold">{a.suspendTitle}</h3>
+          <p className="text-sm text-slate">{a.suspendHint}</p>
+          <StaffForm t={t} label={a.suspend} onSubmit={(form) => browserApi.POST("/api/v1/admin/sellers/{seller_id}/suspend", { ...path, body: { reason: text(form, "reason") } })}>
+            {reason("reason", a.reason)}
+          </StaffForm>
+        </section>
+      ) : null}
+      {status === "suspended" ? (
+        <section className="space-y-2">
+          <h3 className="font-bold">{a.reinstateTitle}</h3>
+          <StaffForm t={t} label={a.reinstate} onSubmit={(form) => browserApi.POST("/api/v1/admin/sellers/{seller_id}/reinstate", { ...path, body: { reason: text(form, "reason") } })}>
+            {reason("reason", a.reason)}
+          </StaffForm>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+// -- delivery zones, areas and fees (AD-05; change_delivery_and_risk) --------------
+
+export function NewZoneForm({ t }: { t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.zoneNew}
+      onSubmit={(form) =>
+        browserApi.POST("/api/v1/admin/delivery/zones", {
+          body: { code: text(form, "code"), name_am: text(form, "name_am"), name_en: text(form, "name_en"), position: Number(text(form, "position") || 0) },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.zoneCode}</span><input name="code" required pattern="[a-z][a-z0-9_]{1,39}" className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.position}</span><input name="position" type="number" min={0} max={10000} defaultValue={0} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameAm}</span><input name="name_am" lang="am" required maxLength={80} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameEn}</span><input name="name_en" lang="en" required maxLength={80} className={field} /></label>
+      </div>
+    </StaffForm>
+  );
+}
+
+export function ZoneForm({ zone, t }: { zone: { id: string; name_am: string; name_en: string; position: number; is_active: boolean }; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.zoneSave}
+      onSubmit={(form) =>
+        browserApi.PATCH("/api/v1/admin/delivery/zones/{zone_id}", {
+          params: { path: { zone_id: zone.id } },
+          body: { name_am: text(form, "name_am"), name_en: text(form, "name_en"), position: Number(text(form, "position") || 0), is_active: form.get("active") === "on" },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameAm}</span><input name="name_am" lang="am" required maxLength={80} defaultValue={zone.name_am} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameEn}</span><input name="name_en" lang="en" required maxLength={80} defaultValue={zone.name_en} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.position}</span><input name="position" type="number" min={0} max={10000} defaultValue={zone.position} className={field} /></label>
+      </div>
+      <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="active" defaultChecked={zone.is_active} className="h-5 w-5" />{a.zoneActive}</label>
+    </StaffForm>
+  );
+}
+
+export function NewAreaForm({ zoneId, t }: { zoneId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.areaAdd}
+      onSubmit={(form) =>
+        browserApi.POST("/api/v1/admin/delivery/zones/{zone_id}/areas", {
+          params: { path: { zone_id: zoneId } },
+          body: { name_am: text(form, "name_am"), name_en: text(form, "name_en"), position: Number(text(form, "position") || 0) },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameAm}</span><input name="name_am" lang="am" required maxLength={80} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameEn}</span><input name="name_en" lang="en" required maxLength={80} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.position}</span><input name="position" type="number" min={0} max={10000} defaultValue={0} className={field} /></label>
+      </div>
+    </StaffForm>
+  );
+}
+
+export function AreaSwitch({ areaId, active, t }: { areaId: string; active: boolean; t: T }) {
+  return (
+    <StaffForm
+      t={t}
+      label={active ? t.admin.areaOff : t.admin.areaOn}
+      onSubmit={() => browserApi.PATCH("/api/v1/admin/delivery/areas/{area_id}", { params: { path: { area_id: areaId } }, body: { is_active: !active } })}
+    >
+      {null}
+    </StaffForm>
+  );
+}
+
+export function RateForm({ zoneId, method, rate, t }: { zoneId: string; method: "seller_rider" | "partner_courier"; rate: { fee_santim: number; promised_hours: number; is_active: boolean } | undefined; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.rateSave}
+      onSubmit={(form) =>
+        browserApi.PUT("/api/v1/admin/delivery/zones/{zone_id}/rates", {
+          params: { path: { zone_id: zoneId } },
+          body: { method, fee_santim: Math.round(Number(text(form, "fee")) * 100), promised_hours: Number(text(form, "hours")), is_active: form.get("active") === "on" },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.rateFee}</span><input name="fee" type="number" required min={0} step="0.01" inputMode="decimal" defaultValue={rate ? rate.fee_santim / 100 : ""} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.rateHours}</span><input name="hours" type="number" required min={1} max={720} inputMode="numeric" defaultValue={rate?.promised_hours ?? ""} className={field} /></label>
+      </div>
+      <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="active" defaultChecked={rate ? rate.is_active : true} className="h-5 w-5" />{a.rateActive}</label>
+    </StaffForm>
+  );
+}
+
+// -- catalogue setup (AD-02; curate_catalogue) -------------------------------------
+
+const slugPattern = "[a-z0-9]+(-[a-z0-9]+)*";
+
+function TwoNames({ t, am = "name_am", en = "name_en", labels }: { t: T; am?: string; en?: string; labels?: [string, string] }) {
+  const a = t.admin;
+  return (
+    <>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{labels?.[0] ?? a.nameAm}</span><input name={am} lang="am" required maxLength={160} className={field} /></label>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{labels?.[1] ?? a.nameEn}</span><input name={en} lang="en" required maxLength={160} className={field} /></label>
+    </>
+  );
+}
+
+export function NewCategoryForm({ parents, t }: { parents: { id: string; label: string }[]; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.categoryNew}
+      onSubmit={(form) =>
+        browserApi.POST("/api/v1/admin/catalog/categories", {
+          body: {
+            slug: text(form, "slug"), name_am: text(form, "name_am"), name_en: text(form, "name_en"),
+            parent_id: text(form, "parent_id") || null, position: Number(text(form, "position") || 0),
+            default_commission_bps: Number(text(form, "commission") || 0),
+          },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">{a.categoryParent}</span>
+          <select name="parent_id" defaultValue="" className={field}>
+            <option value="">{a.categoryTop}</option>
+            {parents.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.categorySlug}</span><input name="slug" required minLength={2} maxLength={80} pattern={slugPattern} className={field} /></label>
+        <TwoNames t={t} />
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.position}</span><input name="position" type="number" min={0} max={10000} defaultValue={0} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.categoryCommission}</span><input name="commission" type="number" min={0} max={10000} defaultValue={0} className={field} /></label>
+      </div>
+    </StaffForm>
+  );
+}
+
+export function CategoryForm({ category, t }: { category: { id: string; position: number; is_active: boolean }; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.categorySave}
+      onSubmit={(form) =>
+        browserApi.PATCH("/api/v1/admin/catalog/categories/{category_id}", {
+          params: { path: { category_id: category.id } },
+          body: { position: Number(text(form, "position") || 0), is_active: form.get("active") === "on", ...(text(form, "name_am") ? { name_am: text(form, "name_am") } : {}), ...(text(form, "name_en") ? { name_en: text(form, "name_en") } : {}) },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameAm}</span><input name="name_am" lang="am" maxLength={160} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameEn}</span><input name="name_en" lang="en" maxLength={160} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.position}</span><input name="position" type="number" min={0} max={10000} defaultValue={category.position} className={field} /></label>
+      </div>
+      <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="active" defaultChecked={category.is_active} className="h-5 w-5" />{a.categoryActive}</label>
+    </StaffForm>
+  );
+}
+
+const OPTION_ROWS = 4;
+
+export function NewAttributeForm({ t, types }: { t: T; types: Messages["labels"]["attributeType"] }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.attributeNew}
+      onSubmit={(form) => {
+        const options = Array.from({ length: OPTION_ROWS }, (_, i) => ({ code: text(form, `option_${i}_code`), label_am: text(form, `option_${i}_am`), label_en: text(form, `option_${i}_en`) })).filter((o) => o.code);
+        return browserApi.POST("/api/v1/admin/catalog/attributes", {
+          body: {
+            code: text(form, "code"), data_type: text(form, "data_type") as "text" | "number" | "option",
+            name_am: text(form, "name_am"), name_en: text(form, "name_en"), unit: text(form, "unit") || null, options,
+          },
+        });
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.attributeCode}</span><input name="code" required pattern="[a-z][a-z0-9_]{0,39}" className={field} /></label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold">{a.attributeType}</span>
+          <select name="data_type" className={field}>
+            {(["option", "number", "text"] as const).map((type) => <option key={type} value={type}>{types[type]}</option>)}
+          </select>
+        </label>
+        <TwoNames t={t} />
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.attributeUnit}</span><input name="unit" maxLength={20} className={field} /></label>
+      </div>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-semibold">{a.optionNew}</legend>
+        {Array.from({ length: OPTION_ROWS }, (_, i) => (
+          <div key={i} className="grid gap-2 sm:grid-cols-3">
+            <input name={`option_${i}_code`} aria-label={`${a.optionCode} ${i + 1}`} placeholder={a.optionCode} pattern="[a-z0-9][a-z0-9_]{0,39}" className={field} />
+            <input name={`option_${i}_am`} lang="am" aria-label={`${a.labelAm} ${i + 1}`} placeholder={a.labelAm} maxLength={160} className={field} />
+            <input name={`option_${i}_en`} lang="en" aria-label={`${a.labelEn} ${i + 1}`} placeholder={a.labelEn} maxLength={160} className={field} />
+          </div>
+        ))}
+      </fieldset>
+    </StaffForm>
+  );
+}
+
+export function NewOptionForm({ attributeId, t }: { attributeId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.optionNew}
+      onSubmit={(form) =>
+        browserApi.POST("/api/v1/admin/catalog/attributes/{attribute_id}/options", {
+          params: { path: { attribute_id: attributeId } },
+          body: { code: text(form, "code"), label_am: text(form, "label_am"), label_en: text(form, "label_en") },
+        })
+      }
+    >
+      <div className="grid gap-2 sm:grid-cols-3">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.optionCode}</span><input name="code" required pattern="[a-z0-9][a-z0-9_]{0,39}" className={field} /></label>
+        <TwoNames t={t} am="label_am" en="label_en" labels={[a.labelAm, a.labelEn]} />
+      </div>
+    </StaffForm>
+  );
+}
+
+export function CategoryAttributeForm({ categories, attributes, t }: { categories: { id: string; label: string }[]; attributes: { id: string; label: string }[]; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.linkSave}
+      onSubmit={(form) =>
+        browserApi.PUT("/api/v1/admin/catalog/categories/{category_id}/attributes/{attribute_id}", {
+          params: { path: { category_id: text(form, "category_id"), attribute_id: text(form, "attribute_id") } },
+          body: {
+            is_required: form.get("required") === "on", is_filterable: form.get("filterable") === "on",
+            is_variant_defining: form.get("variant") === "on", position: Number(text(form, "position") || 0),
+          },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.linkCategory}</span><select name="category_id" required className={field}>{categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.linkAttribute}</span><select name="attribute_id" required className={field}>{attributes.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.position}</span><input name="position" type="number" min={0} max={10000} defaultValue={0} className={field} /></label>
+      </div>
+      <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="required" className="h-5 w-5" />{a.linkRequired}</label>
+      <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="filterable" className="h-5 w-5" />{a.linkFilterable}</label>
+      <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="variant" className="h-5 w-5" />{a.linkVariant}</label>
+    </StaffForm>
+  );
+}
+
+export function NewBrandForm({ t }: { t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.brandNew} onSubmit={(form) => browserApi.POST("/api/v1/admin/catalog/brands", { body: { name: text(form, "name") } })}>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.brandName}</span><input name="name" required maxLength={160} className={field} /></label>
+    </StaffForm>
+  );
+}
+
+export function RestrictedTermForm({ t }: { t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.termNew} onSubmit={(form) => browserApi.POST("/api/v1/admin/catalog/restricted-terms", { body: { term: text(form, "term"), reason: text(form, "reason") } })}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.restrictedTerm}</span><input name="term" required maxLength={160} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.termReason}</span><input name="reason" maxLength={300} className={field} /></label>
+      </div>
+    </StaffForm>
+  );
+}
+
+export function RemoveTermButton({ termId, t }: { termId: string; t: T }) {
+  return (
+    <StaffForm t={t} label={t.admin.termRemove} onSubmit={() => browserApi.DELETE("/api/v1/admin/catalog/restricted-terms/{term_id}", { params: { path: { term_id: termId } } })}>
+      {null}
+    </StaffForm>
+  );
+}
+
+// -- one product (AD-02) -----------------------------------------------------------
+
+export function ProductTextForm({ product, t }: { product: { id: string; name_am: string; name_en: string; description_am: string; description_en: string }; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.productTextSave}
+      onSubmit={(form) =>
+        browserApi.PUT("/api/v1/admin/catalog/products/{product_id}/text", {
+          params: { path: { product_id: product.id } },
+          body: { name_am: text(form, "name_am"), name_en: text(form, "name_en"), description_am: text(form, "description_am"), description_en: text(form, "description_en") },
+        })
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameAm}</span><input name="name_am" lang="am" required maxLength={160} defaultValue={product.name_am} className={field} /></label>
+        <label className="block space-y-1"><span className="text-sm font-semibold">{a.nameEn}</span><input name="name_en" lang="en" required maxLength={160} defaultValue={product.name_en} className={field} /></label>
+      </div>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.descriptionAm}</span><textarea name="description_am" lang="am" maxLength={5000} rows={3} defaultValue={product.description_am} className="w-full rounded-card border border-line bg-white p-3" /></label>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.descriptionEn}</span><textarea name="description_en" lang="en" maxLength={5000} rows={3} defaultValue={product.description_en} className="w-full rounded-card border border-line bg-white p-3" /></label>
+    </StaffForm>
+  );
+}
+
+export function AddVariantForm({ productId, attributes, t }: { productId: string; attributes: { code: string; name: string; is_required: boolean; options: { code: string; label: string }[] }[]; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.variantAdd}
+      onSubmit={(form) => {
+        const attribute_values: Record<string, string> = {};
+        for (const attribute of attributes) if (text(form, attribute.code)) attribute_values[attribute.code] = text(form, attribute.code);
+        return browserApi.POST("/api/v1/admin/catalog/products/{product_id}/variants", {
+          params: { path: { product_id: productId } },
+          body: { attribute_values, model_code: text(form, "model_code") || null },
+        });
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        {attributes.map((attribute) => (
+          <label key={attribute.code} className="block space-y-1">
+            <span className="text-sm font-semibold">{attribute.name}</span>
+            {/* Only a required detail must be chosen: every version sets the same details, so one the others leave empty stays empty (variants_inconsistent). */}
+            <select name={attribute.code} required={attribute.is_required} defaultValue="" className={field}>
+              <option value="">—</option>
+              {attribute.options.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+            </select>
+          </label>
+        ))}
+        <label className="block space-y-1"><span className="text-sm font-semibold">{t.admin.modelCode}</span><input name="model_code" maxLength={80} className={field} /></label>
+      </div>
+    </StaffForm>
+  );
+}
+
+export function AliasForm({ productId, t }: { productId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.aliasAdd} onSubmit={(form) => browserApi.POST("/api/v1/admin/catalog/products/{product_id}/aliases", { params: { path: { product_id: productId } }, body: { alias: text(form, "alias") } })}>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.alias}</span><input name="alias" required maxLength={160} className={field} /></label>
+    </StaffForm>
+  );
+}
+
+export function RemoveAliasButton({ productId, aliasId, t }: { productId: string; aliasId: string; t: T }) {
+  return (
+    <StaffForm t={t} label={t.admin.aliasRemove} onSubmit={() => browserApi.DELETE("/api/v1/admin/catalog/products/{product_id}/aliases/{alias_id}", { params: { path: { product_id: productId, alias_id: aliasId } } })}>
+      {null}
+    </StaffForm>
+  );
+}

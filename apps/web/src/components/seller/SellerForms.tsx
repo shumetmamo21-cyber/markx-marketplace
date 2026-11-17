@@ -228,6 +228,9 @@ export function LegalForm({ sellerId, legal, t }: { sellerId: string; legal: Sch
             licence_number: optional(form, "licence_number"),
             contact_phone: text(form, "contact_phone"),
             shop_address: text(form, "shop_address"),
+            // Both or neither: the API refuses half a pin (pin_incomplete).
+            shop_latitude: text(form, "latitude") ? Number(text(form, "latitude")) : null,
+            shop_longitude: text(form, "longitude") ? Number(text(form, "longitude")) : null,
           },
         })
       }
@@ -238,6 +241,63 @@ export function LegalForm({ sellerId, legal, t }: { sellerId: string; legal: Sch
       <Field label={s.licence}><input name="licence_number" maxLength={60} defaultValue={legal.licence_number ?? ""} className={field} /></Field>
       <Field label={s.contactPhone}><input name="contact_phone" type="tel" required minLength={9} maxLength={24} defaultValue={legal.contact_phone} className={field} /></Field>
       <Field label={s.shopAddress}><textarea name="shop_address" required minLength={3} maxLength={500} rows={2} defaultValue={legal.shop_address} className={area} /></Field>
+      <LocationFields latitude={legal.shop_latitude ?? null} longitude={legal.shop_longitude ?? null} t={t} />
+    </SellerForm>
+  );
+}
+
+/** The shop's pin: typed, or taken from the phone while standing in the shop. */
+function LocationFields({ latitude, longitude, t }: { latitude: number | null; longitude: number | null; t: T }) {
+  const s = t.seller;
+  const [lat, setLat] = useState(latitude === null ? "" : String(latitude));
+  const [lon, setLon] = useState(longitude === null ? "" : String(longitude));
+  const [failed, setFailed] = useState(false);
+  return (
+    <fieldset className="space-y-2 rounded-card border border-line p-3">
+      <legend className="px-1 text-sm font-semibold">{s.locationTitle}</legend>
+      <p className="text-sm text-slate">{s.locationHint}</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label={s.latitude}><input name="latitude" type="number" step="any" min={-90} max={90} inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} className={field} /></Field>
+        <Field label={s.longitude}><input name="longitude" type="number" step="any" min={-180} max={180} inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} className={field} /></Field>
+      </div>
+      <button
+        type="button"
+        className="min-h-12 rounded-card border border-ink px-4 text-sm font-semibold"
+        onClick={() => {
+          setFailed(false);
+          if (!("geolocation" in navigator)) return setFailed(true);
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              setLat(position.coords.latitude.toFixed(6));
+              setLon(position.coords.longitude.toFixed(6));
+            },
+            () => setFailed(true),
+            { enableHighAccuracy: true, timeout: 15_000 },
+          );
+        }}
+      >
+        {s.useLocation}
+      </button>
+      {failed ? <p role="alert" className="text-sm font-semibold text-clay">{s.locationFailed}</p> : null}
+    </fieldset>
+  );
+}
+
+export function CloseShopForm({ lang, sellerId, t }: { lang: string; sellerId: string; t: T }) {
+  const router = useRouter();
+  const s = t.seller;
+  return (
+    <SellerForm
+      t={t}
+      label={s.closeSend}
+      onSubmit={async () => {
+        const { data, error } = await browserApi.POST("/api/v1/seller/{seller_id}/close", { params: { path: { seller_id: sellerId } } });
+        if (data) router.push(`/${lang}`);
+        return { error };
+      }}
+    >
+      <p className="text-sm">{s.closeLead}</p>
+      <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="confirm" required className="h-5 w-5" />{s.closeConfirm}</label>
     </SellerForm>
   );
 }

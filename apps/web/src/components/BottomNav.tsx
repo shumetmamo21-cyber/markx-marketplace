@@ -9,7 +9,7 @@ export function BottomNav({ lang, t }: { lang: Locale; t: Messages }) {
     { href: `/${lang}/search`, label: t.nav.categories, icon: "M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z" },
     { href: `/${lang}/cart`, label: t.nav.cart, icon: "M3 4h2l2 11h11l2-8H6M9 20a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z" },
     { href: `/${lang}/orders`, label: t.nav.orders, icon: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" },
-    { href: `/${lang}/sign-in`, label: t.nav.account, icon: "M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9a7 7 0 0114 0" },
+    { href: `/${lang}/account`, label: t.nav.account, icon: "M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9a7 7 0 0114 0" },
   ];
   return (
     <nav

@@ -30,6 +30,7 @@ export default async function SignInPage({ params, searchParams }: PageProps<"/[
           <p>{fill(t.auth.signedInAs, { phone: me.phone })}</p>
           <p className="flex flex-wrap gap-3">
             <Link href={`/${lang}/orders`} className="inline-flex min-h-12 items-center rounded-card bg-adey px-5 font-bold">{t.nav.orders}</Link>
+            <Link href={`/${lang}/account`} className="inline-flex min-h-12 items-center rounded-card border border-ink px-4 font-semibold">{t.account.title}</Link>
             <SignOutButton label={t.auth.signOut} home={`/${lang}`} />
           </p>
         </div>

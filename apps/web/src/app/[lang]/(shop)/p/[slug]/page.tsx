@@ -131,7 +131,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
     <div className="space-y-8 pb-6">
       <section className="space-y-2">
         <p className="text-sm text-slate">
-          <Link href={`/${lang}/search?category=${product.category.slug}`} className="underline">{product.category.name}</Link>
+          <Link href={`/${lang}/c/${product.category.slug}`} className="underline">{product.category.name}</Link>
           {product.brand ? ` · ${product.brand.name}` : ""}
         </p>
         <h1 className="text-2xl font-extrabold md:text-3xl">{product.name}</h1>

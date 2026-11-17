@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 
-import { DocumentReview, SellerDecision } from "@/components/admin/StaffActions";
+import { DocumentReview, SellerDecision, SellerStanding } from "@/components/admin/StaffActions";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime } from "@/lib/format";
-import { fill, isLocale } from "@/lib/i18n";
+import { fill, isLocale, type Messages } from "@/lib/i18n";
 import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 
@@ -37,12 +37,30 @@ export default async function SellerReviewPage({ params }: PageProps<"/[lang]/ad
         <ul className="grid gap-3 md:grid-cols-2">
           {seller.documents.map((document) => (
             <li key={document.id} className="space-y-2 rounded-card border border-line bg-white p-4">
-              <p className="font-semibold">{document.doc_type}</p>
+              <p className="font-semibold">{codeLabel(t, "docType", document.doc_type)}</p>
               <p className="text-sm text-slate">{fill(a.docStatus, { status: codeLabel(t, "documentStatus", document.review_status) })}{document.review_note ? ` · ${document.review_note}` : ""}</p>
               <DocumentReview sellerId={seller.id} documentId={document.id} t={text} />
             </li>
           ))}
         </ul>
+      </section>
+      <section aria-labelledby="standing" className="space-y-3 rounded-card border border-line bg-white p-4">
+        <h2 id="standing" className="text-lg font-bold">{a.standingTitle}</h2>
+        <p className="text-sm">
+          {fill(a.levelNow, { level: seller.verification_level })}
+          {seller.verified_at ? ` · ${fill(a.verifiedAt, { time: formatDateTime(seller.verified_at, lang) })}` : ""}
+          {seller.shop_visited_at ? ` · ${fill(a.visitedAt, { time: formatDateTime(seller.shop_visited_at, lang) })}` : ""}
+          {seller.recheck_due_on ? ` · ${fill(a.recheckDue, { date: seller.recheck_due_on })}` : ""}
+        </p>
+        <div>
+          <h3 className="text-sm font-semibold">{a.checksTitle}</h3>
+          <ul className="grid gap-1 text-sm sm:grid-cols-2">
+            {Object.entries(seller.checks).map(([key, done]) => (
+              <li key={key}>{t.store[`check_${key}` as keyof Messages["store"]] ?? key}: {done ? a.checkDone : a.checkNotDone}</li>
+            ))}
+          </ul>
+        </div>
+        <SellerStanding sellerId={seller.id} status={seller.status} approved={seller.review_state === "approved"} level={seller.verification_level} t={text} />
       </section>
       {seller.review_state === "pending" || seller.review_state === "needs_documents" ? (
         <section className="rounded-card border border-ink bg-white p-4">

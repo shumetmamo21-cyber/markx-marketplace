@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { SubmitApplicationForm } from "@/components/seller/SellerForms";
+import { CloseShopForm, SubmitApplicationForm } from "@/components/seller/SellerForms";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime } from "@/lib/format";
 import { fill, isLocale, type Messages } from "@/lib/i18n";
@@ -85,6 +85,13 @@ export default async function SellerOverview({ params }: PageProps<"/[lang]/sell
             {checks.map((key) => <li key={key}>{t.store[`check_${key}` as keyof Messages["store"]] ?? key}</li>)}
           </ul>
         </section>
+      ) : null}
+
+      {shop.capabilities.includes("transfer_or_close") && shop.status !== "closed" ? (
+        <details className="rounded-card border border-clay bg-white p-4">
+          <summary className="flex min-h-12 cursor-pointer items-center font-semibold text-clay">{s.closeTitle}</summary>
+          <CloseShopForm lang={lang} sellerId={sellerId} t={{ seller: t.seller, apiErrors: t.apiErrors }} />
+        </details>
       ) : null}
 
       <nav aria-labelledby="screens" className="space-y-2">

@@ -24,12 +24,12 @@ const CAPABILITIES: Record<string, string[]> = {
 
 const EXPECTED: Record<string, string[]> = {
   super_admin: [
-    "problems", "orders", "dispatch", "dashboard", "sellers", "invitations", "catalog", "listings",
-    "pictures", "reviews", "reports", "search", "audit", "exports", "ops", "settings", "staff",
+    "problems", "orders", "dispatch", "dashboard", "sellers", "invitations", "catalog", "products", "setup", "listings",
+    "pictures", "reviews", "reports", "search", "audit", "exports", "ops", "delivery", "settings", "staff",
   ],
-  operations: ["problems", "orders", "dispatch", "dashboard", "sellers", "invitations", "listings", "pictures", "reviews", "reports", "ops", "settings"],
+  operations: ["problems", "orders", "dispatch", "dashboard", "sellers", "invitations", "listings", "pictures", "reviews", "reports", "ops", "delivery", "settings"],
   support: ["problems", "orders", "dashboard", "reviews", "reports", "ops"],
-  catalogue: ["catalog", "listings", "pictures", "reviews", "reports", "search"],
+  catalogue: ["catalog", "products", "setup", "listings", "pictures", "reviews", "reports", "search"],
   finance: ["orders", "dashboard", "audit", "exports", "ops"],
 };
 

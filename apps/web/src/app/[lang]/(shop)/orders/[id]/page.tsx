@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { AddToCart } from "@/components/AddToCart";
 import { OrderActions } from "@/components/OrderActions";
 import { PhotoUpload } from "@/components/PhotoUpload";
 import { ProblemMessageForm } from "@/components/ProblemMessageForm";
@@ -31,6 +32,18 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
   // Items the API says are waiting for a review (completed, window open).
   const toRate = new Set((pending.data ?? []).filter((item) => item.order_id === order.id).map((item) => item.order_item_id));
   const reviewText = { reviews: t.reviews, apiErrors: t.apiErrors };
+  // The next-best offer for each line of a part the shop declined or let
+  // expire (C-26, D-049); the API returns none for any other part.
+  const alternatives = new Map(
+    await Promise.all(
+      order.seller_orders.filter((part) => part.status === "declined" || part.status === "expired").map(async (part) => {
+        const { data } = await api.GET("/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/alternatives", {
+          params: { path: { order_id: order.id, seller_order_id: part.id } },
+        });
+        return [part.id, data ?? []] as const;
+      }),
+    ),
+  );
   // Evidence photos, each link signed for this buyer (C-16, D-062).
   const photos = new Map(
     await Promise.all(
@@ -141,6 +154,39 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
                   />
                 </div>
               ) : null}
+            </div>
+          ) : null}
+
+          {(alternatives.get(part.id) ?? []).length ? (
+            <div className="space-y-3 rounded-card border border-adey bg-paper p-3">
+              <h3 className="font-bold">{o.alternativesTitle}</h3>
+              <p className="text-sm">{o.alternativesLead}</p>
+              <ul className="space-y-3">
+                {(alternatives.get(part.id) ?? []).map((alternative) => {
+                  const item = part.items.find((line) => line.id === alternative.order_item_id);
+                  const offer = alternative.offer;
+                  return (
+                    <li key={alternative.order_item_id} className="space-y-2 rounded-card border border-line bg-white p-3 text-sm">
+                      <p className="text-slate">{fill(o.alternativeFor, { quantity: alternative.quantity, title: item?.title ?? "" })}</p>
+                      <p className="flex flex-wrap items-baseline justify-between gap-2">
+                        <Link href={`/${lang}/s/${offer.store_slug}`} className="font-bold underline">{offer.store_name}</Link>
+                        <span className="price text-lg">{formatPrice(offer.price_santim, lang)}</span>
+                      </p>
+                      <p className="text-slate">
+                        {fill(t.card.level, { level: offer.seller_verification_level })} · {t.condition[offer.condition as keyof typeof t.condition] ?? offer.condition} · {offer.warranty_months > 0 ? fill(t.product.warrantyMonths, { months: offer.warranty_months }) : t.product.noWarranty}
+                      </p>
+                      <div className="max-w-xs">
+                        <AddToCart
+                          offerId={offer.id}
+                          quantity={alternative.quantity}
+                          cartHref={`/${lang}/cart`}
+                          labels={{ add: o.alternativeAdd, adding: t.product.adding, added: t.product.added, failed: t.product.addFailed, cart: t.nav.cart }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           ) : null}
 

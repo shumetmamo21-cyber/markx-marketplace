@@ -219,10 +219,10 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
   );
 }
 
-function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<Messages, "checkout" | "apiErrors">; zones: Zone[]; onSaved: (address: Address) => void }) {
+export function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<Messages, "checkout" | "apiErrors">; zones: Zone[]; onSaved: (address: Address) => void }) {
   const c = t.checkout;
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   return (
     <form
       className="grid gap-3"
@@ -231,7 +231,7 @@ function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<Message
         const form = new FormData(event.currentTarget);
         const text = (name: string) => String(form.get(name) ?? "").trim();
         setBusy(true);
-        setFailed(false);
+        setFailed(null);
         const { data, error } = await browserApi.POST("/api/v1/me/addresses", {
           body: {
             recipient_name: text("recipient"),
@@ -242,7 +242,7 @@ function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<Message
           },
         });
         setBusy(false);
-        if (error || !data) return setFailed(true);
+        if (error || !data) return setFailed(apiErrorText(t, errorCode(error)));
         onSaved(data);
       }}
     >
@@ -276,7 +276,7 @@ function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<Message
         <span className="block text-sm font-semibold">{c.notes}</span>
         <input name="notes" className="min-h-12 w-full rounded-card border border-line bg-white px-3" />
       </label>
-      {failed ? <p role="alert" className="text-clay">{t.apiErrors.unknown}</p> : null}
+      {failed ? <p role="alert" className="text-clay">{failed}</p> : null}
       <button type="submit" disabled={busy} className="min-h-12 rounded-card bg-ink font-bold text-paper disabled:opacity-60">{c.saveAddress}</button>
     </form>
   );
