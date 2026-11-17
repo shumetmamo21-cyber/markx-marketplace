@@ -38,3 +38,9 @@ export function formatDateTime(iso: string, locale: Locale): string {
     timeStyle: "short",
   }).format(new Date(iso));
 }
+
+/** Whether a moment has passed. For server pages rendered per request, where
+ * "now" is the moment of that request. */
+export function isPast(iso: string, now: Date = new Date()): boolean {
+  return new Date(iso).getTime() < now.getTime();
+}

@@ -34,3 +34,12 @@ describe("fill", () => {
     expect(fill("{missing}", {})).toBe("{missing}");
   });
 });
+
+describe("isPast", () => {
+  it("compares with the given moment", async () => {
+    const { isPast } = await import("./format");
+    const now = new Date("2026-11-17T12:00:00Z");
+    expect(isPast("2026-11-17T11:59:00Z", now)).toBe(true);
+    expect(isPast("2026-11-17T12:01:00Z", now)).toBe(false);
+  });
+});

@@ -77,12 +77,17 @@ async function code(page, phone) {
   await shop.getByRole('button', { name: 'Accept the order' }).click();
   await shop.getByText('Confirmed by the shop').first().waitFor();
   await shop.getByRole('button', { name: 'Mark as packed' }).click();
-  await shop.getByRole('button', { name: 'Send with a rider' }).waitFor();
-  await shop.getByRole('button', { name: 'Send with a rider' }).click();
-  await shop.fill('input[name=name]', 'Demo Rider');
-  await shop.locator('form button[type=submit]').click();
-  await shop.getByText('On the way').first().waitFor();
-  console.log('  shop: accepted, packed, sent with a rider');
+  const next = shop.getByRole('button', { name: /Send with a rider|Enter the buyer's code/ });
+  await next.first().waitFor();
+  if ((await next.first().innerText()).startsWith('Send')) {
+    await next.first().click();
+    await shop.fill('input[name=name]', 'Demo Rider');
+    await shop.locator('form button[type=submit]').click();
+    await shop.getByText('On the way').first().waitFor();
+    console.log('  shop: accepted, packed, sent with a rider');
+  } else {
+    console.log('  shop: accepted, packed; the buyer collects at the shop');
+  }
   // 5. The buyer sees the code; the shop enters it at the door, wrong first.
   await buyer.reload();
   const handover = (await buyer.locator('p.price.text-4xl').innerText()).trim();
