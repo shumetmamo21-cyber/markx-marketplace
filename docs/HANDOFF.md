@@ -23,12 +23,14 @@ apps/web` is empty). It started from `96fddf6` and reproduced the baseline
 first: **858 passed**, lint, formatting, strict types and the migration
 check clean, the API image built.
 
-**Final checks, on `6fe1ce6`:** `uv run pytest` **910 passed** in 625 s;
-ruff clean; 160 files formatted; strict mypy clean over 106 source files;
+**Final checks, on `2c89323`:** `uv run pytest` **923 passed** in 623 s;
+ruff clean; 171 files formatted; strict mypy clean over 115 source files;
 `alembic check` no difference; `apps/api/openapi.json` exact; the web
-app's copy true with 52 additions; the restore drill passed on the demo
-data; the API image built and the Compose stack rendered an uploaded
-picture in the worker container. Migrations added: `0008`, `0009`.
+app's copy true with 80 additions. Earlier, on `6fe1ce6`: the restore
+drill passed on the demo data, and the API image built and the Compose
+stack rendered an uploaded picture in the worker container; CI runs the
+drill and the container build on every push. Migrations added: `0008` to
+`0011`.
 
 | Commit | What |
 | --- | --- |
@@ -39,9 +41,11 @@ picture in the worker container. Migrations added: `0008`, `0009`.
 | `2b7ba94` | **Backups** (D-063): an encrypted dump, a restore that never overwrites, and a restore drill that CI runs on every push |
 | `403e101` | **Monitoring** (D-064, migration `0009`): the marketplace checks itself every five minutes and reconciles its money and stock daily; alerts open and close once each and go to the founder's Telegram group when one is configured; a worker health check for an outside monitor |
 | `51f4af8` | **The rest of the admin back end** (D-065): the audit-log viewer, switches and risk limits, staff accounts, the dispatch board, the business dashboard |
+| `c26e8cb` | **Reviews and ratings** (D-066, migration `0010`): the buyer of a completed item reviews it once within 60 days; suspicious reviews (contact details, many reviews of one seller) wait for staff; the seller replies but cannot remove; staff publish or hide with a reason; rating totals per product and seller follow in the background |
+| `2c89323` | **Reports on listings, stores and reviews** (D-067, migration `0011`): anyone flags what they can see; one open report per person and target; staff work the queue and resolve every report on a target with a note; reporters are told the outcome |
 | `6fe1ce6` | **A flaky test fixed**: `test_checkouts_race_the_seller_editing_the_offer_without_deadlock` failed once on GitHub (push run #27) because a buyer whose order won the first round had an empty cart in the next; every cart is now refilled before each round. Its allowed outcomes are unchanged |
 
-**What the web app's owner needs to know:** the API gained 52 routes and
+**What the web app's owner needs to know:** the API gained 80 routes and
 schemas the web app does not use yet (listed by `uv run python -m
 scripts.check_openapi_copy ../web/src/lib/api/openapi.json`). Nothing the
 web app already uses changed. To use them: `cd apps/api && uv run python -m
@@ -251,7 +255,7 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-065; D-043, D-050, D-053 and parts of D-062 to D-065 are
+(D-001 to D-067; D-043, D-050, D-053 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
@@ -263,7 +267,7 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 910, eight to ten minutes
+uv run pytest                  # expect 923 passed, eight to ten minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json
@@ -325,11 +329,11 @@ printed.
 | P8 Search | Mostly done on the API, **with the evaluator**; on the web: search, filters, "did you mean", request form. Golden set needs real queries |
 | P9 Cart and checkout | **Done on the API and the web** |
 | P10 Multi-seller orders | Done on the API, **and on the web for both buyer and seller** |
-| P11 Admin operations | **On the web: problems, orders desk, seller review, search tools. On the API also: audit-log viewer, settings and risk limits, staff accounts, dispatch board, dashboard, picture moderation, operations status**; their screens, reports queue, review moderation, data export missing |
+| P11 Admin operations | **On the web: problems, orders desk, seller review, search tools. On the API also: audit-log viewer, settings and risk limits, staff accounts, dispatch board, dashboard, picture moderation, operations status, review moderation, the reports queue**; their screens and data export missing |
 | P12 onwards | Not started |
 
-**Numbers:** 910 API tests, 9 web unit tests, two browser
-journeys; 67 tables; migrations `0001` to `0009`; 106 typed API source files.
+**Numbers:** 923 API tests, 9 web unit tests, two browser
+journeys; 68 tables; migrations `0001` to `0011`; 115 typed API source files.
 
 **Traps already paid for:** see `docs/DEVELOPMENT_STATUS.md` ("Lessons" and
 the rules at its end), plus the sixth session's three: two test sessions
