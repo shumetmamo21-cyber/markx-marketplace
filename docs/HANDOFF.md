@@ -13,6 +13,32 @@ the checks actually printed.
 
 ---
 
+# Part A.0 — A parallel backend session (17 November 2026)
+
+While the web-app session was paused, a second session worked on the
+back end only. **It did not touch `apps/web`** (no page, component, route,
+style, dependency or configuration there), and the API's OpenAPI
+description did not change, so the web app's generated types are still
+current. It worked on `claude/project-scaffold` on top of `eab7c21`.
+
+| Commit | What |
+| --- | --- |
+| `37ed483` | Search review fixes (D-057): the typo match now uses its trigram index instead of reading every document (322 ms down to 41 ms on 50,000 synthetic rows, the condition alone); two rebuilds of one product take turns, so a stale "from" price can no longer be written last; the golden-set evaluator counts a repeated query once towards the 100. A new test for each, each shown to fail without its fix |
+| `1db65c5` | Containers for a laptop (D-058): one image for the API and the worker, `infra/compose/compose.yaml` with PostgreSQL 17, migrations, API and worker, and a CI job that builds them. Nothing deployed |
+
+Reviewed with no defect found: disputes, the next-best offer, seller
+isolation, the worker's job and outbox locking. Noted for later: `GET
+/search` logs every first page and has no rate limit.
+
+Checks run (from `apps/api`, with no other test run active):
+`uv run pytest` -> **858 passed** in 518 s; `ruff check` clean; `ruff
+format --check` 138 files formatted; `mypy markx` no issues in 90 files;
+`alembic check` no difference. The container stack was brought up and
+checked end to end, then removed. **No real search query exists yet; the
+85% target is still unmeasured.**
+
+---
+
 # Part A — Report for the founder
 
 ## A.1 Where the work is
@@ -194,7 +220,7 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 854 passed, six to seven minutes
+uv run pytest                  # expect 858 passed, seven to nine minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 cd ../web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
@@ -248,7 +274,7 @@ printed.
 | P11 Admin operations | **On the web: problems, orders desk, seller review, search tools**; dispatch board, catalogue curation, audit trail missing |
 | P12 onwards | Not started |
 
-**Numbers:** 854 API tests, 9 web unit tests, two browser
+**Numbers:** 858 API tests, 9 web unit tests, two browser
 journeys; 65 tables; migrations `0001` to `0007`; 90 typed API source files.
 
 **Traps already paid for:** see `docs/DEVELOPMENT_STATUS.md` ("Lessons" and
