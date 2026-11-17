@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
-import { browserApi, errorCode } from "@/lib/api/browser";
-import { apiErrorText, type Messages } from "@/lib/i18n";
+import { browserApi, errorCode, sendForm } from "@/lib/api/browser";
+import { apiErrorText, fill, type Messages } from "@/lib/i18n";
 
 type T = Pick<Messages, "admin" | "apiErrors">;
 type Result = { error?: unknown };
@@ -290,6 +290,225 @@ export function LiftHoldForm({ offerId, t }: { offerId: string; t: T }) {
   return (
     <StaffForm t={t} label={a.liftHold} onSubmit={(form) => browserApi.POST("/api/v1/admin/offers/{offer_id}/restore", { params: { path: { offer_id: offerId } }, body: { reason: text(form, "reason") } })}>
       <label className="block space-y-1"><span className="text-sm font-semibold">{a.liftReason}</span><input name="reason" required minLength={3} maxLength={1000} className={field} /></label>
+    </StaffForm>
+  );
+}
+
+// -- reviews and reports (AD-12, AD-16; D-066, D-067) ----------------------------
+
+export function ModerateReviewForm({ reviewId, status, t }: { reviewId: string; status: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.moderate}
+      onSubmit={(form) =>
+        browserApi.POST("/api/v1/admin/reviews/{review_id}/moderate", {
+          params: { path: { review_id: reviewId } },
+          body: { action: text(form, "action") as "publish" | "hide", reason: text(form, "reason") },
+        })
+      }
+    >
+      <div className="flex flex-wrap gap-4">
+        <label className="flex min-h-12 items-center gap-2"><input type="radio" name="action" value="publish" defaultChecked={status !== "published"} className="h-5 w-5" />{a.publish}</label>
+        <label className="flex min-h-12 items-center gap-2"><input type="radio" name="action" value="hide" defaultChecked={status === "published"} className="h-5 w-5" />{a.hide}</label>
+      </div>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.moderationReason}</span><input name="reason" required minLength={3} maxLength={500} className={field} /></label>
+    </StaffForm>
+  );
+}
+
+export function ResolveReportForm({ reportId, t }: { reportId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.resolve}
+      onSubmit={(form) =>
+        browserApi.POST("/api/v1/admin/reports/{report_id}/resolve", {
+          params: { path: { report_id: reportId } },
+          body: { outcome: text(form, "outcome") as "actioned" | "dismissed", note: text(form, "note"), all_on_target: form.get("all") === "on" },
+        })
+      }
+    >
+      <fieldset className="flex flex-wrap gap-4">
+        <legend className="sr-only">{a.outcome}</legend>
+        <label className="flex min-h-12 items-center gap-2"><input type="radio" name="outcome" value="actioned" className="h-5 w-5" />{a.actioned}</label>
+        <label className="flex min-h-12 items-center gap-2"><input type="radio" name="outcome" value="dismissed" defaultChecked className="h-5 w-5" />{a.dismissed}</label>
+      </fieldset>
+      <label className="flex min-h-12 items-center gap-2"><input type="checkbox" name="all" defaultChecked className="h-5 w-5" />{a.allOnTarget}</label>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.resolutionNote}</span><input name="note" required minLength={3} maxLength={500} className={field} /></label>
+    </StaffForm>
+  );
+}
+
+// -- settings and staff accounts (AD-06, AD-13; D-065) ------------------------------
+
+type SettingValue = boolean | number | string;
+
+export function SettingForm({ settingKey, kind, value, t }: { settingKey: string; kind: string; value: SettingValue; t: T }) {
+  const a = t.admin;
+  const typed = (form: FormData): SettingValue => {
+    const raw = text(form, "value");
+    if (kind === "bool") return raw === "true";
+    if (kind === "int") return Number(raw);
+    return raw;
+  };
+  return (
+    <StaffForm t={t} label={a.save} onSubmit={(form) => browserApi.PUT("/api/v1/admin/settings/{key}", { params: { path: { key: settingKey } }, body: { value: typed(form) } })}>
+      {kind === "bool" ? (
+        <select name="value" defaultValue={String(value)} aria-label={settingKey} className={field}>
+          <option value="true">{a.on}</option>
+          <option value="false">{a.off}</option>
+        </select>
+      ) : (
+        <input name="value" aria-label={settingKey} type={kind === "int" ? "number" : "text"} step={kind === "int" ? 1 : undefined} required defaultValue={String(value)} className={field} />
+      )}
+    </StaffForm>
+  );
+}
+
+const STAFF_ROLES = ["super_admin", "operations", "support", "catalogue", "finance"] as const;
+type StaffRole = (typeof STAFF_ROLES)[number];
+
+export function CreateStaffForm({ t, roleLabels }: { t: T; roleLabels: Record<StaffRole, string> }) {
+  const a = t.admin;
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Shown once, from the API's answer; never stored or sent anywhere else.
+  const [secret, setSecret] = useState<{ secret: string; uri: string } | null>(null);
+  return (
+    <div className="space-y-3">
+      <form
+        className="space-y-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          setBusy(true);
+          setError(null);
+          setSecret(null);
+          const { data, error: refused } = await browserApi.POST("/api/v1/admin/staff", {
+            body: { phone: text(form, "phone"), name: text(form, "name"), role: text(form, "role") as StaffRole, password: String(form.get("password") ?? "") },
+          });
+          setBusy(false);
+          if (refused || !data) setError(apiErrorText(t, errorCode(refused)));
+          else {
+            setSecret({ secret: data.totp_secret, uri: data.provisioning_uri });
+            router.refresh();
+          }
+        }}
+      >
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="space-y-1"><span className="block text-sm font-semibold">{a.staffName}</span><input name="name" required minLength={2} maxLength={100} className={field} /></label>
+          <label className="space-y-1"><span className="block text-sm font-semibold">{a.staffPhone}</span><input name="phone" type="tel" required minLength={9} maxLength={24} className={field} /></label>
+          <label className="space-y-1">
+            <span className="block text-sm font-semibold">{a.staffRole}</span>
+            <select name="role" defaultValue="support" className={field}>
+              {STAFF_ROLES.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1"><span className="block text-sm font-semibold">{a.staffPassword}</span><input name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={200} className={field} /></label>
+        </div>
+        <button type="submit" disabled={busy} className={button}>{a.createStaff}</button>
+        {error ? <p role="alert" className="font-semibold text-clay">{error}</p> : null}
+      </form>
+      {secret ? (
+        <section role="status" className="space-y-2 rounded-card border-2 border-ink bg-white p-4">
+          <h3 className="font-bold">{a.secretTitle}</h3>
+          <p className="text-sm">{a.secretLead}</p>
+          <p><code className="break-all text-lg font-bold">{secret.secret}</code></p>
+          <p className="text-sm">{a.secretUri} <code className="break-all">{secret.uri}</code></p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+export function StaffRoleForm({ staffId, role, t, roleLabels }: { staffId: string; role: string; t: T; roleLabels: Record<StaffRole, string> }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.changeRole} onSubmit={(form) => browserApi.POST("/api/v1/admin/staff/{staff_id}/role", { params: { path: { staff_id: staffId } }, body: { role: text(form, "role") as StaffRole } })}>
+      <select name="role" defaultValue={role} aria-label={a.staffRole} className={field}>
+        {STAFF_ROLES.map((r) => <option key={r} value={r}>{roleLabels[r]}</option>)}
+      </select>
+    </StaffForm>
+  );
+}
+
+export function StaffActiveForm({ staffId, active, t }: { staffId: string; active: boolean; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={active ? a.switchOff : a.switchOn} onSubmit={(form) => browserApi.POST("/api/v1/admin/staff/{staff_id}/active", { params: { path: { staff_id: staffId } }, body: { active: !active, reason: text(form, "reason") } })}>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.switchReason}</span><input name="reason" required minLength={3} maxLength={500} className={field} /></label>
+    </StaffForm>
+  );
+}
+
+// -- exports (C.4, D.21; D-068) ---------------------------------------------------
+
+export function ExportButton({ kind, firstDay, lastDay, t }: { kind: string; firstDay: string; lastDay: string; t: T }) {
+  const a = t.admin;
+  const [state, setState] = useState<{ busy: boolean; text: string | null; ok: boolean }>({ busy: false, text: null, ok: true });
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        disabled={state.busy}
+        className={button}
+        onClick={async () => {
+          setState({ busy: true, text: a.downloading, ok: true });
+          const query = new URLSearchParams({ first_day: firstDay, last_day: lastDay });
+          // A GET with the staff cookie; the API decides the period and the role.
+          const response = await fetch(`/api/v1/admin/exports/${kind}?${query}`, { credentials: "same-origin" });
+          if (!response.ok) {
+            const body: unknown = await response.json().catch(() => null);
+            setState({ busy: false, text: apiErrorText(t, errorCode(body)), ok: false });
+            return;
+          }
+          const name = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? `markx-${kind}.csv`;
+          const url = URL.createObjectURL(await response.blob());
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = name;
+          link.click();
+          URL.revokeObjectURL(url);
+          setState({ busy: false, text: fill(a.downloaded, { file: name }), ok: true });
+        }}
+      >
+        {a.download}
+      </button>
+      {state.text ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "text-sm" : "text-sm font-semibold text-clay"}>{state.text}</p> : null}
+    </div>
+  );
+}
+
+// -- pictures (AD-03; D-062) -------------------------------------------------------
+
+export function UploadPictureForm({ productId, t }: { productId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm
+      t={t}
+      label={a.upload}
+      onSubmit={async (form) => {
+        const sent = await sendForm(`/api/v1/admin/catalog/products/${encodeURIComponent(productId)}/images`, form);
+        return sent.ok ? {} : { error: sent.body ?? { error: { code: "unknown" } } };
+      }}
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="space-y-1"><span className="block text-sm font-semibold">{a.pictureFile}</span><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required className={field} /></label>
+        <label className="space-y-1"><span className="block text-sm font-semibold">{a.picturePosition}</span><input name="position" type="number" min={0} max={100} defaultValue={0} className={field} /></label>
+      </div>
+    </StaffForm>
+  );
+}
+
+export function RemovePictureForm({ imageId, t }: { imageId: string; t: T }) {
+  const a = t.admin;
+  return (
+    <StaffForm t={t} label={a.removePicture} onSubmit={(form) => browserApi.POST("/api/v1/admin/catalog/images/{image_id}/remove", { params: { path: { image_id: imageId } }, body: { reason: text(form, "reason") } })}>
+      <label className="block space-y-1"><span className="text-sm font-semibold">{a.removeReason}</span><input name="reason" required minLength={3} maxLength={500} className={field} /></label>
     </StaffForm>
   );
 }

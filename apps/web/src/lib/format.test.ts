@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatPrice, formatShare, timeAgo } from "./format";
+import { addisDay, formatPrice, formatShare, timeAgo } from "./format";
 import { fill } from "./i18n";
 
 describe("formatPrice", () => {
@@ -54,5 +54,13 @@ describe("formatShare", () => {
   it("never shows more than all or less than none", () => {
     expect(formatShare(1.2)).toBe("100%");
     expect(formatShare(-0.1)).toBe("0%");
+  });
+});
+
+describe("addisDay", () => {
+  it("is the day in Addis Ababa, three hours ahead of UTC", () => {
+    expect(addisDay(new Date("2026-11-17T12:00:00Z"))).toBe("2026-11-17");
+    expect(addisDay(new Date("2026-11-17T21:30:00Z"))).toBe("2026-11-18");
+    expect(addisDay(new Date("2026-12-31T20:59:00Z"))).toBe("2026-12-31");
   });
 });

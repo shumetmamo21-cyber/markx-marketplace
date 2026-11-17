@@ -1611,6 +1611,43 @@ app uses.
 - The Amharic text was drafted by an AI, like the rest; it needs the
   native-speaker review the blueprint already requires (I.3).
 
+## D-071 The rest of the admin screens: read the API, act through it, refuse in words
+
+**Follows** blueprint D.18 (AD-05, AD-06, AD-12, AD-13, AD-14, AD-16), C.4,
+D-055, D-064 to D-068 and D-070. **Accepted.** No API change.
+
+Screens added in the ninth session's second half, each behind the
+capability the API checks (`menu.ts`, tested per role in `menu.test.ts`):
+
+| Screen | Capability | What it does |
+| --- | --- | --- |
+| Dashboard | `find_orders` | The API's figures for 1, 7, 30 or 90 days; shares written as percentages (`formatShare`), nothing computed |
+| Dispatch board | `intervene_in_orders` | Parts waiting to leave a shop, late ones marked; each opens in the orders desk, where dispatching already works |
+| Operations | `find_orders` | Open alerts, scheduled jobs, the outbox, recent resolved alerts |
+| Reviews | `moderate_reviews` | Held first; publish or hide with a reason |
+| Reports | `moderate_reviews` | Open first, by what was reported; acted on or dismissed with a note, by default for every open report on the same thing |
+| Settings | `manage_staff_and_settings` or `change_delivery_and_risk` | The API says which rows this person may change (`may_change`); the rest are shown read-only |
+| Staff accounts | `manage_staff_and_settings` | Create, change a role, switch off and on; the API's refusals (your own role, the last super administrator) shown in words |
+| Exports | `export_data` | Pick the days and download one of four CSV files |
+| Pictures | `moderate_listings` (upload: `curate_catalogue`) | Every picture of a product in every state with its thumbnail; upload a catalogue picture (the worker renders it); take any picture down with a reason |
+
+- **The authenticator secret of a new staff account is shown once**, on the
+  screen that created it, from the API's answer; the web app does not store
+  it. The browser journey proves the shown secret signs the person in.
+- **A download is fetched by the page**, so a refused period comes back as
+  the API's reason in words (`period_invalid`, `period_too_long`), not as raw
+  JSON in a new tab. The API decides the period's limits; the page checks
+  only that a date looks like a date.
+- **Setting descriptions are the API's own English text** (`settings_store`),
+  shown with `lang="en"` on the Amharic page too. Translating them would
+  mean either duplicating the API's text in the web app or adding a
+  translation to the API; neither is done yet (Known problems).
+- The menu's items may now name either of two capabilities (settings).
+- **Uploads** go through `sendForm` in `src/lib/api/browser.ts`: a multipart
+  POST with the app's header and the session's CSRF token, the browser
+  setting the boundary. The upload form shows only to roles that curate the
+  catalogue; the API checks again.
+
 ---
 
 ## Decisions that need the founder

@@ -38,3 +38,14 @@ export function errorCode(error: unknown): string {
   }
   return "unknown";
 }
+
+/** A multipart upload (a photo) with the same headers as every other change.
+ * The browser sets the multipart boundary itself. */
+export async function sendForm(path: string, form: FormData): Promise<{ ok: boolean; body: unknown }> {
+  const headers: Record<string, string> = { "X-MarkX-Client": "web" };
+  const csrf = readCookie(CSRF_COOKIE);
+  if (csrf) headers["X-CSRF-Token"] = decodeURIComponent(csrf);
+  const response = await fetch(path, { method: "POST", body: form, headers, credentials: "same-origin" });
+  const body: unknown = await response.json().catch(() => null);
+  return { ok: response.ok, body };
+}

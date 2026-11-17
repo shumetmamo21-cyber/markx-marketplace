@@ -50,3 +50,8 @@ export function isPast(iso: string, now: Date = new Date()): boolean {
 export function formatShare(share: number): string {
   return `${Math.round(Math.min(Math.max(share, 0), 1) * 100)}%`;
 }
+
+/** The calendar day in Addis Ababa as YYYY-MM-DD, for date fields. */
+export function addisDay(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Addis_Ababa", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}

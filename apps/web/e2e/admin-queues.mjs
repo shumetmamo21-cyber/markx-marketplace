@@ -7,9 +7,16 @@
 // script computes the current code itself. A super administrator invites and
 // withdraws, approves and turns down proposals, takes a listing down and lifts
 // it, reads it all in the audit trail in English and Amharic, sees a packed
-// rider order on the dispatch board, and reads the dashboard and operations.
+// rider order on the dispatch board, reads the dashboard and operations,
+// publishes a held review, dismisses a report, changes a setting and puts it
+// back, creates, re-roles and switches off a staff account, downloads an
+// export, and uploads, sees rendered and takes down a picture.
 // Then a catalogue curator is created and must see only its own queues.
+import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -72,6 +79,9 @@ async function noOverflow(browser, cookies, path) {
   if (wide > 0) throw new Error(`${path} is ${wide}px wider than a 360px screen`);
 }
 
+// A 120 x 90 PNG for the picture upload.
+const PICTURE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAHgAAABaCAIAAAD8YgW4AAAA4UlEQVR4nO3QQRHAIADAMEDIdCIRWVOx8liioNf57DP43rod8BdGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjL6p6AhINcwbMAAAAAElFTkSuQmCC';
+
 function expect(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -79,18 +89,43 @@ function expect(condition, message) {
 (async () => {
   const browser = await chromium.launch();
   const errors = [];
+  // Only during the one deliberate refusal (step 12): the browser logs every
+  // non-2xx response, even one the page handles and shows in words.
+  let refusalExpected = false;
   const watch = (page, who) => page.on('console', (m) => {
-    if (m.type() === 'error' && !/_rsc=/.test(m.text())) errors.push(`${who}: ${m.text().slice(0, 140)}`);
+    if (m.type() !== 'error' || /_rsc=/.test(m.text())) return;
+    if (refusalExpected && /status of 422/.test(m.text())) return;
+    errors.push(`${who}: ${m.text().slice(0, 140)}`);
   });
   const run = Date.now() % 1_000_000;
   const phone = (offset) => `0911${String((run + offset) % 1_000_000).padStart(6, '0')}`;
+  // Each demo phone signs in once per run and the session is reused: the API
+  // allows five sign-in codes per phone per hour (auth.otp_per_phone_per_hour).
+  const sessions = new Map();
+  async function sessionFor(phoneNumber) {
+    if (!sessions.has(phoneNumber)) {
+      const page = await (await browser.newContext()).newPage();
+      watch(page, phoneNumber);
+      sessions.set(phoneNumber, { page, call: await signInByCode(page, phoneNumber) });
+    }
+    return sessions.get(phoneNumber);
+  }
+  /** The demo shop's signed-in API caller, by its link name. */
+  async function sellerFor(storeSlug) {
+    for (const sellerPhone of ['0911000901', '0911000902', '0911000903']) {
+      const { call } = await sessionFor(sellerPhone);
+      const membership = (await call('GET', '/api/v1/me')).body.sellers.find((m) => m.store_slug === storeSlug);
+      if (membership) return { call, sellerId: membership.seller_id };
+    }
+    throw new Error(`no demo seller owns ${storeSlug}`);
+  }
 
   // 1. The super administrator signs in and lands on the first queue: problems.
   const staff = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   watch(staff, 'staff');
   await staffSignIn(staff, '0911000900', process.env.MARKX_DEMO_STAFF_PASSWORD || 'demo-only-staff-password-1', SECRET, /\/en\/admin\/problems$/);
   const items = await menu(staff);
-  expect(items.join('|') === 'Problems|Orders desk|Dispatch board|Dashboard|Seller applications|Invitations|Product proposals|Listing takedowns|Search|Audit trail|Operations', `menu: ${items}`);
+  expect(items.join('|') === 'Problems|Orders desk|Dispatch board|Dashboard|Seller applications|Invitations|Product proposals|Listing takedowns|Pictures|Reviews|Reports|Search|Audit trail|Exports|Operations|Settings|Staff accounts', `menu: ${items}`);
   await staff.getByText('Role: Super administrator').waitFor();
   console.log('1 super administrator: lands on problems; menu', items.length, 'queues; role in words');
   const asStaff = caller(staff);
@@ -108,9 +143,7 @@ function expect(condition, message) {
   console.log('2 invitation sent and withdrawn:', await row.locator('p').nth(1).innerText());
 
   // 3. Proposals: a shop proposes two products; staff approve one, turn one down.
-  const shop = await (await browser.newContext()).newPage();
-  watch(shop, 'shop');
-  const asShop = await signInByCode(shop, '0911000901');
+  const asShop = (await sessionFor('0911000901')).call;
   const sellerId = (await asShop('GET', '/api/v1/me')).body.sellers[0].seller_id;
   const phones = (await asShop('GET', '/api/v1/catalog/categories')).body.flatMap((c) => [c, ...(c.children || [])]).find((c) => c.slug === 'phones');
   const proposal = (name) => asShop('POST', `/api/v1/seller/${sellerId}/product-proposals`, {
@@ -138,7 +171,10 @@ function expect(condition, message) {
   expect(statuses.join(',') === 'Drop=archived,Keep=approved', `proposal statuses ${statuses}`);
   console.log('3 proposals decided:', statuses.join(', '));
 
-  // 4. Takedowns: find a product's offers, take one down, see it held, lift it.
+  // 4. Takedowns: find a product's offers, take one down, see it held, lift it;
+  // lifting publishes nothing (D-032), so the shop then lists it again.
+  const target = (await asStaff('GET', '/api/v1/catalog/products/xiaomi-redmi-13c/offers')).body.offers[0];
+  expect(target, 'a live demo offer to take down');
   await staff.goto(`${BASE}/en/admin/listings?product=xiaomi-redmi-13c`);
   const live = staff.locator('main section').first().locator('li').first();
   const store = (await live.locator('p').first().innerText()).split(' · ')[0];
@@ -150,7 +186,19 @@ function expect(condition, message) {
   await heldRow.locator('input[name=reason]').fill('Invoice checked: genuine stock.');
   await heldRow.getByRole('button', { name: 'Lift the takedown' }).click();
   await staff.getByText('No listing is taken down.').waitFor();
-  console.log('  hold lifted; the queue is empty again');
+  const owner = await sellerFor(target.store_slug);
+  const removed = (await owner.call('GET', `/api/v1/seller/${owner.sellerId}/offers?status=removed&lang=en`)).body.find((o) => o.id === target.id);
+  expect(removed, 'the lifted offer is still removed until the shop lists it again');
+  const relisted = await owner.call('POST', `/api/v1/seller/${owner.sellerId}/offers?lang=en`, {
+    variant_id: removed.variant_id, condition: removed.condition, price_santim: removed.price_santim,
+    quantity: Math.max(removed.on_hand, 5), warranty_months: removed.warranty_months,
+    delivers_by_seller_rider: removed.delivers_by_seller_rider, delivers_by_partner_courier: removed.delivers_by_partner_courier,
+    offers_shop_collection: removed.offers_shop_collection,
+  });
+  expect(relisted.status === 201 && relisted.body.id === target.id, `relist ${relisted.status} ${JSON.stringify(relisted.body)}`);
+  const back = (await asStaff('GET', '/api/v1/catalog/products/xiaomi-redmi-13c/offers')).body.offers.some((o) => o.id === target.id);
+  expect(back, 'the relisted offer is not back on the product page');
+  console.log('  hold lifted; the queue is empty again; the shop relisted it and buyers see it again');
 
   // 5. The audit trail shows all of it, in English and in Amharic.
   await staff.goto(`${BASE}/en/admin/audit?action=offer.`);
@@ -165,15 +213,18 @@ function expect(condition, message) {
   if (shots) await staff.screenshot({ path: `${shots}/admin-audit.png`, fullPage: true });
 
   // 6. The dispatch board: a rider order, packed by the shop, waits to leave.
-  const buyer = await (await browser.newContext()).newPage();
-  watch(buyer, 'buyer');
-  const asBuyer = await signInByCode(buyer, '0911000950');
+  const asBuyer = (await sessionFor('0911000950')).call;
   for (const o of (await asBuyer('GET', '/api/v1/me/orders')).body) {
     for (const part of o.seller_orders) if (part.can_cancel) await asBuyer('POST', `/api/v1/me/orders/${o.id}/seller-orders/${part.id}/cancel`, {});
   }
-  const riderOffer = (await asBuyer('GET', '/api/v1/catalog/products/xiaomi-redmi-13c/offers')).body.offers
-    .find((o) => o.in_stock && o.delivers_by_seller_rider);
-  expect(riderOffer, 'a demo offer delivered by the shop\'s rider');
+  // Each run sells one unit, so look across the demo catalogue for stock.
+  let riderOffer = null;
+  for (const slug of ['xiaomi-redmi-13c', 'infinix-hot-40i', 'tecno-spark-20', 'samsung-galaxy-a16', 'apple-iphone-13']) {
+    riderOffer = (await asBuyer('GET', `/api/v1/catalog/products/${slug}/offers`)).body.offers
+      .find((o) => o.in_stock && o.delivers_by_seller_rider);
+    if (riderOffer) break;
+  }
+  expect(riderOffer, 'a demo offer in stock and delivered by the shop\'s rider');
   await asBuyer('DELETE', '/api/v1/cart');
   await asBuyer('PUT', `/api/v1/cart/items/${riderOffer.id}`, { quantity: 1 });
   const address = (await asBuyer('GET', '/api/v1/me/addresses')).body[0];
@@ -186,22 +237,13 @@ function expect(condition, message) {
   });
   expect(placed.status === 201, `checkout ${placed.status} ${JSON.stringify(placed.body)}`);
   const part = placed.body.seller_orders[0];
-  let packedBy = null;
-  for (const sellerPhone of ['0911000901', '0911000902', '0911000903']) {
-    const page = await (await browser.newContext()).newPage();
-    const asSeller = await signInByCode(page, sellerPhone);
-    const membership = (await asSeller('GET', '/api/v1/me')).body.sellers.find((m) => m.store_slug === riderOffer.store_slug);
-    if (membership) {
-      for (const step of ['confirm', 'ready']) {
-        const moved = await asSeller('POST', `/api/v1/seller/${membership.seller_id}/orders/${part.id}/${step}`, {});
-        expect(moved.status === 200, `${step} ${moved.status} ${JSON.stringify(moved.body)}`);
-      }
-      packedBy = sellerPhone;
-    }
-    await page.context().close();
-    if (packedBy) break;
+  const packer = await sellerFor(riderOffer.store_slug);
+  const asPacker = packer.call;
+  const packerSellerId = packer.sellerId;
+  for (const step of ['confirm', 'ready']) {
+    const moved = await asPacker('POST', `/api/v1/seller/${packerSellerId}/orders/${part.id}/${step}`, {});
+    expect(moved.status === 200, `${step} ${moved.status} ${JSON.stringify(moved.body)}`);
   }
-  expect(packedBy, `no demo seller owns ${riderOffer.store_slug}`);
   await staff.goto(`${BASE}/en/admin/dispatch`);
   const waiting = staff.locator('main li', { hasText: placed.body.code });
   await waiting.getByText("The shop's rider", { exact: false }).waitFor();
@@ -222,14 +264,142 @@ function expect(condition, message) {
   expect(jobs > 0, 'no scheduled job listed');
   console.log('7 dashboard: 13 figures, orders in 30 days =', orders, '; operations: ', jobs, 'scheduled jobs listed');
 
-  // 8. No new page is wider than a 360px phone.
+  // 8. Reviews: the order is delivered and received; the buyer's review has a
+  // phone number in it, so the API holds it for staff, who publish it.
+  const sellerOrder = `/api/v1/seller/${packerSellerId}/orders/${part.id}`;
+  const sent = await asPacker('POST', `${sellerOrder}/dispatch`, { rider_name: 'Demo Rider' });
+  expect(sent.status === 200, `dispatch ${sent.status} ${JSON.stringify(sent.body)}`);
+  const mine = (await asBuyer('GET', `/api/v1/me/orders/${placed.body.id}`)).body.seller_orders[0];
+  const handed = await asPacker('POST', `${sellerOrder}/handover`, { code: mine.handover_code });
+  expect(handed.status === 200, `handover ${handed.status} ${JSON.stringify(handed.body)}`);
+  const received = await asBuyer('POST', `/api/v1/me/orders/${placed.body.id}/seller-orders/${part.id}/confirm-received`, {});
+  expect(received.status === 200, `received ${received.status} ${JSON.stringify(received.body)}`);
+  const itemId = mine.items[0].id;
+  const reviewText = `Good phone, call me on 0911222333 for more (${run})`;
+  const reviewed = await asBuyer('POST', `/api/v1/me/orders/${placed.body.id}/items/${itemId}/review`, { product_rating: 4, seller_rating: 5, body: reviewText });
+  expect(reviewed.status === 201 || reviewed.status === 200, `review ${reviewed.status} ${JSON.stringify(reviewed.body)}`);
+  await staff.goto(`${BASE}/en/admin/reviews`);
+  const held = staff.locator('main li', { hasText: `(${run})` });
+  await held.getByText('Held: contains a phone number or a link').waitFor();
+  await held.locator('input[name=reason]').fill('A shop phone number in a review is allowed here.');
+  await held.getByRole('button', { name: 'Record the decision' }).click();
+  await held.waitFor({ state: 'detached' });
+  await staff.goto(`${BASE}/en/admin/reviews?status=published`);
+  await staff.locator('main li', { hasText: `(${run})` }).getByText('Last decision: A shop phone number in a review is allowed here.').waitFor();
+  console.log('8 review held for its phone number, published by staff; now under "Published"');
+
+  // 9. Reports: the buyer reports the shop; staff dismiss it with a note.
+  const reported = await asBuyer('POST', '/api/v1/reports', { target_type: 'store', store_slug: riderOffer.store_slug, reason: 'spam', note: `Too many messages (${run})` });
+  expect(reported.status === 201 || reported.status === 200, `report ${reported.status} ${JSON.stringify(reported.body)}`);
+  await staff.goto(`${BASE}/en/admin/reports?target_type=store`);
+  const flag = staff.locator('main li', { hasText: `Too many messages (${run})` });
+  await flag.getByText('A shop · Reason: Spam').waitFor();
+  await flag.locator('input[name=note]').fill('No messages found from this shop.');
+  await flag.getByRole('button', { name: 'Close the report' }).click();
+  await flag.waitFor({ state: 'detached' });
+  await staff.goto(`${BASE}/en/admin/reports?status=dismissed&target_type=store`);
+  await staff.locator('main li', { hasText: `Too many messages (${run})` }).getByText(/: No messages found from this shop\.$/).waitFor();
+  console.log('9 shop reported by the buyer; dismissed by staff with a note; now under "Dismissed"');
+
+  // 10. Settings: change a limit, see it marked, find it in the audit trail, put it back.
+  const key = 'search.suggestions_per_ip_per_minute';
+  const before = (await asStaff('GET', '/api/v1/admin/settings')).body.find((x) => x.key === key);
+  expect(before && before.may_change, `${key} is not changeable by the super administrator`);
+  await staff.goto(`${BASE}/en/admin/settings`);
+  const settingRow = (k) => staff.locator('main li').filter({ has: staff.locator('code', { hasText: k }) });
+  await settingRow(key).locator('input[name=value]').fill(String(before.value + 1));
+  await settingRow(key).getByRole('button', { name: 'Save' }).click();
+  await settingRow(key).getByText('Done').waitFor();
+  const changed = (await asStaff('GET', '/api/v1/admin/settings')).body.find((x) => x.key === key);
+  expect(changed.value === before.value + 1, `setting is ${changed.value}`);
+  await staff.goto(`${BASE}/en/admin/audit?action=setting.`);
+  await staff.getByText(key, { exact: false }).first().waitFor();
+  await staff.goto(`${BASE}/en/admin/settings`);
+  await settingRow(key).locator('input[name=value]').fill(String(before.value));
+  await settingRow(key).getByRole('button', { name: 'Save' }).click();
+  await settingRow(key).getByText('Done').waitFor();
+  const restored = (await asStaff('GET', '/api/v1/admin/settings')).body.find((x) => x.key === key);
+  expect(restored.value === before.value, `setting not restored: ${restored.value}`);
+  console.log(`10 setting ${key}: ${before.value} -> ${changed.value} -> ${restored.value}; the change is in the audit trail`);
+
+  // 11. Staff accounts: create one through the form, sign in with the secret it
+  // showed, change the role (the session ends), switch the account off.
+  const newPhone = phone(3);
+  await staff.goto(`${BASE}/en/admin/staff`);
+  await staff.fill('input[name=name]', `Demo Support ${run}`);
+  await staff.fill('input[name=phone]', newPhone);
+  await staff.selectOption('select[name=role]', 'support');
+  await staff.fill('input[name=password]', 'demo-only-support-password-1');
+  await staff.getByRole('button', { name: 'Create the account' }).click();
+  const shown = staff.getByRole('status').filter({ hasText: 'shown once' });
+  await shown.waitFor();
+  const newSecret = (await shown.locator('code').first().innerText()).trim();
+  expect(/^[A-Z2-7]{16,}$/.test(newSecret), 'the shown secret is not a base-32 secret');
+  const helper = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+  watch(helper, 'support');
+  await staffSignIn(helper, newPhone, 'demo-only-support-password-1', newSecret, /\/en\/admin\/problems$/);
+  const supportMenu = await menu(helper);
+  expect(supportMenu.join('|') === 'Problems|Orders desk|Dashboard|Reviews|Reports|Operations', `support menu: ${supportMenu}`);
+  const member = staff.locator('main li', { hasText: `Demo Support ${run}` });
+  await staff.reload();
+  await member.locator('select[name=role]').selectOption('finance');
+  await member.getByRole('button', { name: 'Change the role' }).click();
+  await member.getByText('Finance', { exact: false }).first().waitFor();
+  await helper.goto(`${BASE}/en/admin/orders`);
+  await helper.waitForURL(/\/en\/admin\/sign-in$/);
+  await member.locator('input[name=reason]').fill('Left the support team.');
+  await member.getByRole('button', { name: 'Switch off' }).click();
+  await member.getByText('Switched off').waitFor();
+  console.log('11 staff account created through the form; its shown secret signed it in (support menu: 6 screens);',
+    'a new role ended its session; switched off');
+
+  // 12. Exports: a file for this month downloads; an impossible period is
+  // refused by the API, in words.
+  await staff.goto(`${BASE}/en/admin/exports`);
+  const feesRow = staff.locator('main li', { hasText: 'Fees charged on completed shop orders' });
+  const [download] = await Promise.all([staff.waitForEvent('download'), feesRow.getByRole('button', { name: 'Download' }).click()]);
+  const fileName = download.suggestedFilename();
+  expect(/^markx-fees-\d{4}-\d{2}-01-to-\d{4}-\d{2}-\d{2}\.csv$/.test(fileName), `export file name ${fileName}`);
+  const firstLine = (await (await download.createReadStream()).toArray()).map(String).join('').split('\n')[0].replace(/^\uFEFF/, '');
+  await staff.goto(`${BASE}/en/admin/exports?first_day=2026-11-10&last_day=2026-11-01`);
+  refusalExpected = true;
+  await staff.locator('main li', { hasText: 'Every ledger entry' }).getByRole('button', { name: 'Download' }).click();
+  await staff.getByText('Choose a last day on or after the first day.').waitFor();
+  refusalExpected = false;
+  console.log('12 export downloaded:', fileName, '(columns:', firstLine.split(',').length, '); a reversed period is refused in words');
+
+  // 13. Pictures: upload through the form, the worker renders it, it is shown,
+  // then staff take it down with a reason.
+  const picturePath = join(mkdtempSync(join(tmpdir(), 'markx-e2e-')), 'demo-picture.png');
+  writeFileSync(picturePath, Buffer.from(PICTURE_PNG, 'base64'));
+  await staff.goto(`${BASE}/en/admin/pictures?product=xiaomi-redmi-13c`);
+  const countBefore = await staff.locator('main ul > li').count();
+  await staff.setInputFiles('input[name=file]', picturePath);
+  await staff.getByRole('button', { name: 'Upload' }).click();
+  await staff.locator('main form').filter({ has: staff.locator('input[name=file]') }).getByText('Done').waitFor();
+  await staff.locator('main ul > li').nth(countBefore).waitFor();
+  const newest = staff.locator('main ul > li', { hasText: 'Being prepared' }).last();
+  await newest.waitFor();
+  // The worker renders it (on a laptop it runs only when started; here, once).
+  execFileSync('uv', ['run', 'python', '-m', 'markx.worker', '--once'], { cwd: new URL('../../api/', import.meta.url), stdio: 'ignore' });
+  await staff.reload();
+  const shownPicture = staff.locator('main ul > li', { hasText: 'Shown to buyers' }).last();
+  await shownPicture.locator('img').waitFor();
+  const loaded = await shownPicture.locator('img').evaluate((img) => img.complete && img.naturalWidth > 0);
+  expect(loaded, 'the rendered thumbnail did not load');
+  await shownPicture.locator('input[name=reason]').fill('A test picture, not the real phone.');
+  await shownPicture.getByRole('button', { name: 'Take the picture down' }).click();
+  await staff.getByText('Taken down: A test picture, not the real phone.').last().waitFor();
+  console.log('13 picture uploaded, rendered by the worker, shown with its thumbnail, taken down with a reason');
+
+  // 14. No new page is wider than a 360px phone.
   const cookies = await staff.context().cookies();
-  for (const path of ['/en/admin/invitations', '/en/admin/catalog', '/en/admin/listings?product=xiaomi-redmi-13c', '/en/admin/audit', '/am/admin/audit', '/en/admin/dispatch', '/en/admin/dashboard', '/am/admin/dashboard', '/en/admin/ops']) {
+  for (const path of ['/en/admin/invitations', '/en/admin/catalog', '/en/admin/listings?product=xiaomi-redmi-13c', '/en/admin/audit', '/am/admin/audit', '/en/admin/dispatch', '/en/admin/dashboard', '/am/admin/dashboard', '/en/admin/ops', '/en/admin/reviews?status=published', '/en/admin/reports?status=dismissed', '/am/admin/reports?status=dismissed', '/en/admin/settings', '/am/admin/settings', '/en/admin/staff', '/en/admin/exports', '/am/admin/exports', '/en/admin/pictures?product=xiaomi-redmi-13c']) {
     await noOverflow(browser, cookies, path);
   }
-  console.log('8 every new admin page fits a 360px screen');
+  console.log('14 every new admin page fits a 360px screen');
 
-  // 9. A catalogue curator sees only its own queues, and is told so elsewhere.
+  // 15. A catalogue curator sees only its own queues, and is told so elsewhere.
   const curatorPhone = phone(2);
   const created = await asStaff('POST', '/api/v1/admin/staff', {
     phone: curatorPhone, name: 'Demo Curator', role: 'catalogue', password: 'demo-only-curator-password-1',
@@ -239,13 +409,17 @@ function expect(condition, message) {
   watch(curator, 'curator');
   await staffSignIn(curator, curatorPhone, 'demo-only-curator-password-1', created.body.totp_secret, /\/en\/admin\/catalog$/);
   const own = await menu(curator);
-  expect(own.join('|') === 'Product proposals|Listing takedowns|Search', `curator menu: ${own}`);
+  expect(own.join('|') === 'Product proposals|Listing takedowns|Pictures|Reviews|Reports|Search', `curator menu: ${own}`);
   await curator.getByText('Role: Catalogue curator').waitFor();
   await curator.goto(`${BASE}/en/admin/audit`);
   await curator.getByText('Your role may not open this page.').waitFor();
   await curator.goto(`${BASE}/en/admin/invitations`);
   await curator.getByText('Your role may not open this page.').waitFor();
-  console.log('9 curator: lands on proposals; menu', own.join(', '), '; audit and invitations refused in words');
+  for (const path of ['settings', 'staff', 'exports', 'dashboard', 'dispatch']) {
+    await curator.goto(`${BASE}/en/admin/${path}`);
+    await curator.getByText('Your role may not open this page.').waitFor();
+  }
+  console.log('15 curator: lands on proposals; menu', own.join(', '), '; audit, invitations, settings, staff, exports, dashboard and dispatch refused in words');
 
   await browser.close();
   console.log('console errors:', errors.length ? errors.join(' | ') : 'none');
