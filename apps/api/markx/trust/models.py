@@ -13,6 +13,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -155,15 +156,51 @@ class RatingSummary(Base):
     )
 
 
+class ReportReason(StrEnum):
+    """Why someone flags a listing, store or review (C-30; D-067)."""
+
+    COUNTERFEIT = "counterfeit"
+    PROHIBITED = "prohibited"
+    WRONG_INFORMATION = "wrong_information"
+    OFFENSIVE = "offensive"
+    FRAUD = "fraud"
+    SPAM = "spam"
+    OTHER = "other"
+
+
+class ReportStatus(StrEnum):
+    OPEN = "open"
+    ACTIONED = "actioned"
+    DISMISSED = "dismissed"
+
+
 class Report(UUIDPrimaryKey, CreatedAt, Base):
-    """A flag on a listing, store or review, feeding the staff queue (C-30, AD-16)."""
+    """A flag on a product, an offer, a store or a review, feeding the staff
+    queue (C-30, AD-16; D-067). Staff resolve it as actioned or dismissed
+    with a written note; nothing is deleted."""
 
     __tablename__ = "reports"
     __table_args__ = (
         in_check("target_type", ReportTarget),
-        in_check("status", ("open", "actioned", "dismissed")),
+        in_check("status", ReportStatus),
+        in_check("reason", ReportReason, name="reason_allowed"),
         CheckConstraint("length(btrim(reason)) > 0", name="reason_present"),
+        CheckConstraint("note is null or length(note) <= 500", name="note_length"),
+        CheckConstraint("(status = 'open') = (resolved_at is null)", name="resolved_when_closed"),
+        CheckConstraint(
+            "status = 'open' or length(btrim(resolution_note)) > 0", name="resolution_has_note"
+        ),
         Index("ix_reports_status_created", "status", "created_at"),
+        Index("ix_reports_target", "target_type", "target_id", "status"),
+        # One open report per person and target: a second tap is not a second voice.
+        Index(
+            "uq_reports_open_per_reporter",
+            "target_type",
+            "target_id",
+            "reporter_user_id",
+            unique=True,
+            postgresql_where=text("status = 'open' and reporter_user_id is not null"),
+        ),
     )
 
     target_type: Mapped[str] = mapped_column(Text, nullable=False)
@@ -172,6 +209,7 @@ class Report(UUIDPrimaryKey, CreatedAt, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="open")
     resolution_note: Mapped[str | None] = mapped_column(Text)
     resolved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

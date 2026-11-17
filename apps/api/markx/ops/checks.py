@@ -30,6 +30,8 @@ from markx.payments.models import FeeCharge, LedgerEntry
 from markx.trust.models import (
     CaseStatus,
     DisputeCase,
+    Report,
+    ReportStatus,
     Review,
     ReviewStatus,
 )
@@ -325,6 +327,28 @@ def held_reviews(db: Session, now: datetime) -> list[Finding]:
     ]
 
 
+def waiting_reports(db: Session, now: datetime) -> list[Finding]:
+    """Reports on listings, stores or reviews open for more than two days
+    (AD-16): something buyers flagged is still up, unexamined (D-067)."""
+    count, targets = db.execute(
+        select(
+            func.count(),
+            func.count(func.distinct(func.concat(Report.target_type, ":", Report.target_id))),
+        ).where(Report.status == ReportStatus.OPEN, Report.created_at < now - timedelta(days=2))
+    ).one()
+    if not count:
+        return []
+    return [
+        Finding(
+            key="reports.waiting",
+            severity="warning",
+            summary=f"{count} report(s) on {targets} listing(s), store(s) or review(s) have "
+            "waited more than two days for staff.",
+            details={"count": count, "targets": targets},
+        )
+    ]
+
+
 WATCH: tuple[Check, ...] = (
     failing_jobs,
     overdue_jobs,
@@ -334,6 +358,7 @@ WATCH: tuple[Check, ...] = (
     sms_budget,
     stuck_images,
     held_reviews,
+    waiting_reports,
 )
 
 

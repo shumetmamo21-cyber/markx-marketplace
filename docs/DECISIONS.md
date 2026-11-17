@@ -1497,6 +1497,43 @@ with no behaviour.
   and in search ranking and filters (they change existing schemas, D-061),
   the seller rating feeding the trust level.
 
+## D-067 Reports on listings, stores and reviews: anyone flags, staff resolve with a note
+
+**Follows** blueprint C-30 ("a report link on every listing, review and
+store"), AD-16 (the queue), C.4 and H.4. **Accepted.** Migration `0011`.
+The `reports` table existed since `0001` with no behaviour.
+
+- **Who reports what.** Anyone, signed in or not, flags a product, an
+  offer, a store (by its id or its link name, as on its page) or a review,
+  with a reason from a fixed list (counterfeit, prohibited, wrong
+  information, offensive, fraud, spam, other) and an optional note of up to
+  500 characters. Only what a buyer can see can be reported: an approved
+  product, an offer that is up from an active store, an active store, a
+  published review; anything else answers "not found", so the form cannot
+  be used to probe for hidden things. Staff sessions are refused: staff
+  act with their own tools.
+- **Limits.** One open report per signed-in person and target (a unique
+  index; a second tap answers `already_reported`); 10 reports an hour per
+  network address and 20 a day per person. The reporter learns only that
+  the report was received. A visitor's report records no identity at all.
+- **The queue** (`GET /admin/reports`), for staff who "moderate reviews
+  and handle reports" (C.4: super administrator, operations, support,
+  catalogue): open reports oldest first, each with what its target is
+  (product and store link names, a review's first words) and how many open
+  reports that target has, so a much-flagged listing stands out.
+- **Resolving.** Staff act with the tools that exist (take an offer down,
+  hide a review, archive a product, suspend a store), then resolve the
+  report as `actioned` or `dismissed` with a written note, by default for
+  every open report on the same target. Audit-logged with the list of
+  reports closed; every signed-in reporter is told the outcome
+  (`report.resolved`). Nothing is deleted. The ops watch warns about
+  reports open more than two days.
+- **PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH:** the reason list,
+  letting visitors report without signing in, and the limits.
+- **Not done:** acting on a report from the queue in one step (staff use
+  the existing takedown, hide and suspend routes); a report link in the
+  web app (its owner's, D-061).
+
 ---
 
 ## Decisions that need the founder

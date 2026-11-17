@@ -5989,6 +5989,110 @@
         "title": "RemoveImageIn",
         "type": "object"
       },
+      "ReportIn": {
+        "description": "What is reported, and why. A store is named by its id or its link\nname (`store_slug`, as on its page); everything else by its id.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReportReason"
+          },
+          "store_slug": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Slug"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/ReportTarget"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason"
+        ],
+        "title": "ReportIn",
+        "type": "object"
+      },
+      "ReportOut": {
+        "description": "The reporter learns only that the report was received.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at"
+        ],
+        "title": "ReportOut",
+        "type": "object"
+      },
+      "ReportReason": {
+        "description": "Why someone flags a listing, store or review (C-30; D-067).",
+        "enum": [
+          "counterfeit",
+          "prohibited",
+          "wrong_information",
+          "offensive",
+          "fraud",
+          "spam",
+          "other"
+        ],
+        "title": "ReportReason",
+        "type": "string"
+      },
+      "ReportTarget": {
+        "enum": [
+          "product",
+          "offer",
+          "store",
+          "review"
+        ],
+        "title": "ReportTarget",
+        "type": "string"
+      },
       "ResolveProblemIn": {
         "additionalProperties": false,
         "properties": {
@@ -6017,6 +6121,35 @@
           "reason"
         ],
         "title": "ResolveProblemIn",
+        "type": "object"
+      },
+      "ResolveReportIn": {
+        "properties": {
+          "all_on_target": {
+            "default": true,
+            "title": "All On Target",
+            "type": "boolean"
+          },
+          "note": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Note",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "actioned",
+              "dismissed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "note"
+        ],
+        "title": "ResolveReportIn",
         "type": "object"
       },
       "RestrictedTermIn": {
@@ -7820,6 +7953,130 @@
           "created_at"
         ],
         "title": "StaffProductRow",
+        "type": "object"
+      },
+      "StaffReportOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "from_signed_in_person": {
+            "title": "From Signed In Person",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "open_reports_on_target": {
+            "title": "Open Reports On Target",
+            "type": "integer"
+          },
+          "product_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Slug"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "store_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Slug"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_type",
+          "target_id",
+          "product_slug",
+          "store_slug",
+          "excerpt",
+          "reason",
+          "note",
+          "from_signed_in_person",
+          "status",
+          "open_reports_on_target",
+          "created_at",
+          "resolution_note",
+          "resolved_at"
+        ],
+        "title": "StaffReportOut",
         "type": "object"
       },
       "StaffRole": {
@@ -10904,6 +11161,159 @@
         "summary": "Staff Read Order",
         "tags": [
           "admin: orders"
+        ]
+      }
+    },
+    "/api/v1/admin/reports": {
+      "get": {
+        "description": "Open reports oldest first (page with `before` = the last id: the next\nones after it); closed ones newest first (AD-16).",
+        "operationId": "report_queue_api_v1_admin_reports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "pattern": "^(open|actioned|dismissed)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(product|offer|store|review)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StaffReportOut"
+                  },
+                  "title": "Response Report Queue Api V1 Admin Reports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Queue",
+        "tags": [
+          "admin: reports"
+        ]
+      }
+    },
+    "/api/v1/admin/reports/{report_id}/resolve": {
+      "post": {
+        "description": "`actioned` or `dismissed`, with a note; by default every open report on\nthe same target. Returns the reports it closed.",
+        "operationId": "resolve_report_api_v1_admin_reports__report_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveReportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StaffReportOut"
+                  },
+                  "title": "Response Resolve Report Api V1 Admin Reports  Report Id  Resolve Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Report",
+        "tags": [
+          "admin: reports"
         ]
       }
     },
@@ -14892,6 +15302,48 @@
         "summary": "Request A Product",
         "tags": [
           "search"
+        ]
+      }
+    },
+    "/api/v1/reports": {
+      "post": {
+        "description": "Flag a product, an offer, a store or a review (C-30). Signed in or not;\nlimited per network address, and per person when signed in.",
+        "operationId": "report_api_v1_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report",
+        "tags": [
+          "reports"
         ]
       }
     },
