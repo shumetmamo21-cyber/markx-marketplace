@@ -24,6 +24,7 @@ from markx.audit.service import Actor
 from markx.core.db import session_scope
 from markx.core.errors import AppError
 from markx.offers import service as offers
+from markx.offers.models import Offer
 from markx.orders import service
 from markx.orders.models import Order, OrderStatusEvent, SellerOrder
 from markx.sellers.models import Seller, SellerMember
@@ -169,6 +170,8 @@ def test_checkouts_race_the_seller_editing_the_offer_without_deadlock(
     offer_id = uuid.UUID(bazaar.a128["id"])
     seller_id = uuid.UUID(bazaar.a_id)
 
+    price = {"seen": 1_850_000}
+
     def task(index: int) -> Any:
         if index % 4 == 1:
             with session_scope() as session:
@@ -184,9 +187,18 @@ def test_checkouts_race_the_seller_editing_the_offer_without_deadlock(
                 assert seller is not None
                 offers.set_stock(session, ACTOR, seller, offer_id, on_hand=20 - index % 5)
                 return "counted"
-        return crowd.order(index, {"alpha": "shop_collection"}, 1_850_000)
+        return crowd.order(index, {"alpha": "shop_collection"}, price["seen"])
 
     for _ in range(3):
+        # Every buyer starts each round with the item in the cart at today's
+        # price: a buyer whose order won the round before has an empty cart,
+        # and would otherwise be refused for that alone ("cart_empty"), which
+        # is no part of the race this test is about.
+        for index in range(40):
+            if index % 4 in (0, 2):
+                crowd.fill(db, index, bazaar.a128["id"], 1)
+        price["seen"] = int(db.scalar(select(Offer.price_santim).where(Offer.id == offer_id)) or 0)
+        db.rollback()
         results = _race(40, task)
         codes = {r.code for r in results if isinstance(r, AppError)}
         # Only the refusals the rules call for: never a deadlock or a timeout.
