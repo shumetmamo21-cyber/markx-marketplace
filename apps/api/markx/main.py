@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from markx.accounts.router import router as accounts_router
 from markx.accounts.schemas import DevSmsOut
+from markx.admin.router import router as admin_router
 from markx.catalog.router import admin_router as catalog_admin_router
 from markx.catalog.router import router as catalog_router
 from markx.core.config import get_config
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     api.include_router(images_buyer_router)
     api.include_router(ops_public_router)
     api.include_router(ops_admin_router)
+    api.include_router(admin_router)
     if config.dev_tools_enabled:
         api.include_router(_dev_router())
         api.include_router(images_media_router)

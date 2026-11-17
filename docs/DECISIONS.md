@@ -1411,6 +1411,42 @@ and P2. **Accepted.** Migration `0009`.
   data removed) needs an account; the cloud spending alarm belongs to the
   AWS setup the founder has not approved.
 
+## D-065 The rest of the admin back end: audit log, switches, staff, dispatch board, dashboard
+
+**Follows** blueprint D.18, C.4 and P11 (AD-05, AD-06, AD-13, AD-14,
+AD-17). **Accepted.** No migration. The web screens are the web app's
+owner's to build on these routes (D-061 lists them as additions).
+
+| Route | What | Who (C.4) |
+| --- | --- | --- |
+| `GET /admin/audit-log` | The audit-log viewer: newest first, paged by id, filtered by action (a prefix ending in a dot matches a family), target, actor and time | super administrator, finance (`read_audit_log`) |
+| `GET /admin/settings`, `PUT /admin/settings/{key}` | Every switch and limit with its default, value and whether this person may change it | the super administrator changes any; operations change the risk limits (AD-13) |
+| `GET/POST /admin/staff`, `POST /admin/staff/{id}/role`, `POST /admin/staff/{id}/active` | Staff accounts: create (the authenticator secret is shown once), change a role, switch off and on | super administrator (`manage_staff_and_settings`) |
+| `GET /admin/dispatch-board` | Parts waiting to leave a shop by rider or courier, oldest first, with the promised time and whether it is late; collection orders never appear | super administrator, operations (`intervene_in_orders`) |
+| `GET /admin/dashboard?days=N` | AD-14: orders, parts by status, completed value and fees, median minutes to confirm, the share answered, delivery success, problems, live offers per product, the share of fresh prices, and the funnel from searches to orders | every role that finds orders: super administrator, operations, support, finance |
+
+- **Risk limits** (operations may change them, C.4 "delivery zones, rates
+  and risk limits"): the order value cap and open pay-at-the-door orders,
+  the publishing level, the sign-in code limits and SMS budget, and the
+  search throttles. Every other setting is the super administrator's.
+  PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH: which settings count as
+  risk limits.
+- **Every change is audit-logged** with before and after values: setting
+  changes, staff creation, role changes, switching off and on (with the
+  reason).
+- **Privilege changes end sessions.** A new role or a switched-off account
+  ends that person's staff sessions at once (H.2, "a new session at any
+  change of privilege"). Nobody changes their own role or switches
+  themselves off, and the last active super administrator can never be
+  removed; staff changes take turns under an advisory lock, so two at once
+  cannot leave MarkX without one.
+- **No personal data on the dashboard:** counts and amounts only. The staff
+  list shows a member's name and the last four digits of their phone.
+- **Not done:** the problem-case log already exists (`/admin/orders/problems`);
+  the reports queue (AD-16) waits for the buyer's "report a listing" form;
+  review moderation (AD-12) waits for reviews; data export (C.4) and the
+  weekly seller message are not built.
+
 ---
 
 ## Decisions that need the founder
