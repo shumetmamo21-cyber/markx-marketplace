@@ -43,9 +43,11 @@ product with the offers table, shop page, sign-in by code, cart, checkout,
 orders with the handover code, cancel, "the goods are right", "report a
 problem", and the tracking page by secure link; and **the seller dashboard**:
 the order inbox with the answer countdown and every fulfilment step, and the
-offers list with quick price and stock edits. **CI** runs every API and web
-check on every push. **Not built:** the admin dashboard on the web, seller
-onboarding screens, reviews, the bot, deployment. Nothing is deployed
+offers list with quick price and stock edits; and **the admin dashboard**:
+staff sign-in, the problem queue and decisions, the orders desk, seller
+applications with documents, and the search tools. **CI** runs every API and
+web check on every push. **Not built:** seller onboarding and "add an offer"
+screens, images, reviews, the bot, deployment. Nothing is deployed
 anywhere.
 
 ## Sessions so far
@@ -542,6 +544,15 @@ API types are generated from the API's OpenAPI description.
   counts, one-tap "still right", in-place price and stock edits, pause and
   resume. Seller isolation stays the API's: every call is checked by
   `require_seller`.
+- **Admin dashboard** (`[lang]/admin`): staff sign-in with password and
+  authenticator; a side menu showing only what the role may do (C.4); the
+  problem queue (overdue marked); the orders desk (any order by code, full
+  timelines, decide a problem, dispatch, a new handover code); seller
+  applications (documents through five-minute links, accept or reject each,
+  approve, ask again, reject); search tools (zero results, synonyms).
+  `e2e/staff-journey.mjs` runs a problem from the buyer's report to the
+  staff decision and checks isolation at both layers (another shop's
+  dashboard and API: 404; the admin area and API for a buyer: 403).
 - **Demo data:** `apps/api/scripts/seed_demo.py` (D-056), laptop only.
 - **Known gaps:** variants show their codes ("black · 128gb") in the cart
   and the seller's offers, because those API responses carry codes, not
@@ -682,9 +693,10 @@ $ uv run alembic check        ->  No new upgrade operations detected.
 $ cd apps/web
 $ npm run lint                ->  no problems
 $ npm run typecheck           ->  strict tsc clean
-$ npm test                    ->  8 passed
+$ npm test                    ->  9 passed
 $ npm run build               ->  11 routes, all rendered per request
 $ node e2e/buyer-journey.mjs  ->  completed, "console errors: none"
+$ node e2e/staff-journey.mjs  ->  refund decided; isolation 404/403; "console errors: none"
 ```
 
 Run on 17 November 2026 against PostgreSQL 17 in Docker, with nothing else
@@ -762,11 +774,9 @@ Work in this order. Finish and push each step before starting the next.
    `apps/web`: `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`,
    `npm run build`) and report the real numbers. Check that the latest CI
    run on GitHub passed.
-2. **The admin dashboard on the web** (I.4: a side menu, queues first):
-   seller applications with documents, product proposals, the orders desk
-   (find by code, dispatch, reissue a handover code), open problems with
-   the decision form, the zero-result report and synonyms. Staff sign-in
-   with password and authenticator.
+2. **The rest of the admin dashboard:** product proposals and catalogue
+   curation, invitations, offer takedowns, the audit trail; labels instead
+   of codes for roles and review states.
 3. **The rest of the seller dashboard:** add an offer by searching the
    catalogue (I.6 workflow 4), the application and documents screens, team
    and store settings. Return variant labels from the API so the cart and

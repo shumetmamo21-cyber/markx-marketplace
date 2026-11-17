@@ -82,12 +82,23 @@ the checks actually printed.
    problem); the offers list with one-tap "still right" and in-place price
    and stock edits. A shop can only act for itself: the API checks it on
    every call.
-9. **Proof in a browser.** A script drives the whole journey in Chromium:
+9. **The admin dashboard** (`a2106c7`): staff sign in with a password and
+   an authenticator code; the problem queue with overdue cases marked; the
+   orders desk to find any order by its code, read every step, record a
+   problem decision with a written reason, send a rider for a shop or issue
+   a buyer a new handover code; seller applications with each document
+   opened through a five-minute link, then approve or reject; and the
+   search tools. The menu shows only what each staff role may do, and the
+   API checks again on every action.
+10. **Proof in a browser.** A script drives the whole journey in Chromium:
    sign in with a code, add the best offer, check out; **the shop, in its
    own dashboard,** accepts, packs and sends a rider; the buyer sees the
    six-digit code; the shop types a wrong code (refused: "4 attempts
-   left"), then the right one; the buyer confirms the goods. **It passes
-   with no errors.** It also
+   left"), then the right one; the buyer confirms the goods. A second
+   script has a buyer report a problem and staff decide it (refund, goods
+   back at the shop), and checks that one shop cannot open another's
+   dashboard and a buyer cannot reach the admin area, on screen and at the
+   API. **Both pass with no errors.** It also
    showed the API's protections working as designed: five codes per phone
    an hour, and no more than three open pay-at-the-door orders per buyer.
 
@@ -108,9 +119,10 @@ Web app, from `apps/web`:
 ```
 npm run lint                  ->  no problems
 npm run typecheck             ->  route types generated; strict tsc clean
-npm test                      ->  8 passed
+npm test                      ->  9 passed
 npm run build                 ->  compiled; 11 routes, all rendered per request
 node e2e/buyer-journey.mjs    ->  the whole journey, "console errors: none"
+node e2e/staff-journey.mjs    ->  problem decided; isolation refused; no errors
 ```
 
 Page weight, measured once on the production build: about 140 KB of
@@ -119,9 +131,9 @@ milestone records this baseline; see D-055).
 
 ## A.4 What is NOT built
 
-- **The admin dashboard on the web** (the next task), and the seller's
-  onboarding, "add an offer", team and settings screens. Their API exists
-  and is tested.
+- The seller's onboarding, "add an offer", team and settings screens, and
+  the admin screens for catalogue curation, invitations, takedowns and the
+  audit trail. Their API exists and is tested.
 - Product photos (no image pipeline yet), reviews, listing reports.
 - The Telegram bot and Mini App shell; real SMS, Telegram and storage
   adapters (F-01 still blocks onboarding a real seller).
@@ -195,9 +207,8 @@ laptop only), `uv run uvicorn markx.main:app --port 8000`, and in
 `GET /api/v1/dev/sms-inbox?phone=...`. `node e2e/buyer-journey.mjs` replays
 the buyer's journey.
 
-**5. Task: the admin dashboard on the web**, then the rest of the seller
-dashboard, exactly as "The exact next task" in `docs/DEVELOPMENT_STATUS.md`
-lists them. The API for both exists and enforces roles and seller isolation;
+**5. Task:** the rest of the admin and seller dashboards, exactly as "The
+exact next task" in `docs/DEVELOPMENT_STATUS.md` lists them. The API for both exists and enforces roles and seller isolation;
 the web app only shows what the API returns and sends the member's
 choices. Every text in both message files; client components receive only
 the message sections they use. Test at 360 pixels. Extend
@@ -231,11 +242,11 @@ printed.
 | P8 Search | Mostly done on the API, **with the evaluator**; on the web: search, filters, "did you mean", request form. Golden set needs real queries |
 | P9 Cart and checkout | **Done on the API and the web** |
 | P10 Multi-seller orders | Done on the API, **and on the web for both buyer and seller** |
-| P11 Admin operations | Six API routes; web screens missing |
+| P11 Admin operations | **On the web: problems, orders desk, seller review, search tools**; dispatch board, catalogue curation, audit trail missing |
 | P12 onwards | Not started |
 
-**Numbers:** 853 API tests, 8 web unit tests, one browser
-journey; 65 tables; migrations `0001` to `0007`; 90 typed API source files.
+**Numbers:** 853 API tests, 9 web unit tests, two browser
+journeys; 65 tables; migrations `0001` to `0007`; 90 typed API source files.
 
 **Traps already paid for:** see `docs/DEVELOPMENT_STATUS.md` ("Lessons" and
 the rules at its end), plus this session's three: two test sessions at once
