@@ -60,6 +60,10 @@ async function allLoaded(locator) {
   return sizes.length > 0 && sizes.every(Boolean);
 }
 
+// True while staff sign in: a code already used in this 30-second step is
+// refused once (replay protection) and the next code is tried.
+let signingIn = false;
+
 function expect(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -102,6 +106,7 @@ async function staffSignIn(page) {
   await page.waitForURL(/\/en\/admin\/sign-in$/);
   await page.fill('input[name=phone]', '0911000900');
   await page.fill('input[name=password]', 'demo-only-staff-password-1');
+  signingIn = true;
   for (let attempt = 1; ; attempt++) {
     await page.fill('input[name=totp]', totp(SECRET));
     await page.getByRole('button', { name: 'Sign in' }).click();
@@ -111,7 +116,10 @@ async function staffSignIn(page) {
       page.waitForURL(/\/en\/admin\/(?!sign-in)/, { waitUntil: 'commit' }).then(() => 'in'),
       refusal.waitFor().then(() => 'refused'),
     ]);
-    if (outcome === 'in') return caller(page);
+    if (outcome === 'in') {
+      signingIn = false;
+      return caller(page);
+    }
     expect(attempt < 2, `staff sign-in refused: ${await refusal.innerText()}`);
     await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 1_000);
   }
@@ -136,6 +144,7 @@ async function decideLeftovers(asStaff) {
   let refusalExpected = false;
   const watch = (page, who) => page.on('console', (m) => {
     if (m.type() !== 'error' || /_rsc=|404 \(Not Found\)/.test(m.text())) return;
+    if (signingIn && /401 \(Unauthorized\)/.test(m.text())) return;
     if (refusalExpected && /409 \(Conflict\)/.test(m.text())) return;
     errors.push(`${who}: ${m.text().slice(0, 140)}`);
   });

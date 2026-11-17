@@ -29,6 +29,7 @@ export default async function SellerLayout({ children, params }: LayoutProps<"/[
     );
   }
   const items = sellerMenu(lang, sellerId, membership, t);
+  const bar = items.filter((item) => item.primary);
   return (
     <>
       <header className="sticky top-0 z-20 border-b border-line bg-ink text-paper">
@@ -41,7 +42,7 @@ export default async function SellerLayout({ children, params }: LayoutProps<"/[
             <LanguageSwitch lang={lang} label={t.nav.language} title={t.nav.languageLabel} />
           </Suspense>
         </div>
-        <nav aria-label={t.seller.title} className="mx-auto hidden max-w-5xl gap-1 px-4 pb-2 md:flex">
+        <nav aria-label={t.seller.title} className="mx-auto hidden max-w-5xl flex-wrap gap-1 px-4 pb-2 md:flex">
           {items.map((item) => (
             <Link key={item.href} href={item.href} className="rounded-full px-3 py-2 font-semibold hover:bg-white/10">{item.label}</Link>
           ))}
@@ -50,8 +51,8 @@ export default async function SellerLayout({ children, params }: LayoutProps<"/[
       </header>
       <main id="main" className="mx-auto max-w-5xl px-4 py-6 pb-24 md:pb-6">{children}</main>
       <nav aria-label={t.seller.title} className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
-        <ul className="grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
-          {items.map((item) => (
+        <ul className="grid" style={{ gridTemplateColumns: `repeat(${bar.length}, minmax(0, 1fr))` }}>
+          {bar.map((item) => (
             <li key={item.href}>
               <Link href={item.href} className="flex min-h-14 items-center justify-center px-1 text-center text-sm font-semibold">{item.label}</Link>
             </li>

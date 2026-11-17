@@ -26,6 +26,11 @@ const CODES = {
   imageKind: ["catalogue", "seller_real_photo"],
   imageStatus: ["processing", "ready", "failed", "removed"],
   author: ["buyer", "seller", "staff"],
+  docType: ["owner_id", "business_licence", "tin_certificate", "shop_photo", "other"],
+  payoutStatus: ["pending", "active", "replaced"],
+  payoutKind: ["bank", "wallet"],
+  sellerRole: ["owner", "manager", "catalogue", "orders", "finance"],
+  sellerKind: ["business", "individual"],
 } as const;
 
 describe("code labels", () => {

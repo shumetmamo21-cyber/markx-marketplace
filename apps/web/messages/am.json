@@ -63,7 +63,8 @@
   "condition": {
     "new": "አዲስ",
     "used": "ያገለገለ",
-    "refurbished": "የታደሰ"
+    "refurbished": "የታደሰ",
+    "open_box": "የተከፈተ ሳጥን"
   },
   "home": {
     "heading": "ከታመኑ ሱቆች ዋጋ ያወዳድሩ",
@@ -389,7 +390,6 @@
   "seller": {
     "title": "የሻጭ ዳሽቦርድ",
     "notSeller": "ይህ መለያ በማርክኤክስ ላይ ሱቅ አያስተዳድርም።",
-    "apply": "ሱቆች ማርክኤክስን የሚቀላቀሉት በግብዣ ነው። ማርክኤክስን ይጠይቁ።",
     "notMember": "የዚህ ሱቅ አባል አይደሉም።",
     "navOrders": "ትዕዛዞች",
     "navOffers": "ቅናሾች",
@@ -490,7 +490,6 @@
     "navLegal": "ሕጋዊ ዝርዝሮች",
     "navPayout": "የክፍያ መቀበያ ሂሳብ",
     "navAddOffer": "ቅናሽ ጨምር",
-    "homeTitle": "ሱቅዎ",
     "homeStatus": "ሱቅ፦ {status} · ማመልከቻ፦ {review}",
     "homeLevel": "የማረጋገጫ ደረጃ {level}",
     "homeRole": "ሚናዎ፦ {role}",
@@ -572,7 +571,36 @@
     "addOfferCollection": "ገዢው ከሱቁ ይወስዳል",
     "addOfferLowStock": "ክምችቱ ይህን ያህል ወይም ከዚያ በታች ሲሆን አሳውቀኝ",
     "addOfferSend": "ቅናሹን አትም",
-    "addOfferAnother": "ሌላ ምርት ይምረጡ"
+    "addOfferAnother": "ሌላ ምርት ይምረጡ",
+    "navPerformance": "አፈጻጸም",
+    "performanceTitle": "ሱቅዎ እንዴት እየሠራ ነው",
+    "performanceLead": "የማርክኤክስ የሱቅዎ አሃዞች። የተቀበሉት ትዕዛዞች በጊዜው የታዘዙት ናቸው፤ ሌሎቹ በዚያ ጊዜ የተከሰቱት ናቸው።",
+    "performanceDays": "ያለፉት {days} ቀናት",
+    "perfReceived": "የተቀበሏቸው ትዕዛዞች",
+    "perfConfirmed": "የተቀበሏቸው",
+    "perfDeclined": "ያልተቀበሏቸው",
+    "perfUnanswered": "በጊዜው ያልተመለሱ",
+    "perfCancelled": "በገዢው የተሰረዙ",
+    "perfConfirmShare": "የተቀበሉት ድርሻ",
+    "perfMedianConfirm": "ለመቀበል የሚወስደው የተለመደ ጊዜ",
+    "perfMinutes": "{minutes} ደቂቃ",
+    "perfDelivered": "የደረሱ",
+    "perfDeliveryFailed": "ማድረስ ያልተሳካ",
+    "perfDeliveryShare": "የማድረስ ስኬት",
+    "perfCompleted": "የተጠናቀቁ",
+    "perfCompletedValue": "የተጠናቀቁ ትዕዛዞች ዋጋ",
+    "perfProblems": "የተመዘገቡ ችግሮች",
+    "perfRefunded": "ገንዘብ የተመለሰላቸው",
+    "perfNewReviews": "አዲስ ግምገማዎች",
+    "perfRating": "የሱቅዎ ደረጃ",
+    "perfOffers": "ንቁ ቅናሾች",
+    "perfStale": "የሚረጋገጡ ዋጋዎች",
+    "perfLowStock": "ክምችቱ ያነሰ",
+    "perfNone": "ገና የለም",
+    "weeklyTitle": "ማርክኤክስ የላከልዎት ሳምንታዊ መልዕክቶች",
+    "weeklyNone": "እስካሁን ሳምንታዊ መልዕክት የለም።",
+    "weeklyLine": "የ{date} ሳምንት፦ {received} ትዕዛዞች፣ {completed} የተጠናቀቁ፣ {problems} ችግሮች",
+    "exit": "ወደ ገበያው ይመለሱ"
   },
   "admin": {
     "title": "የማርክኤክስ ሰራተኞች",

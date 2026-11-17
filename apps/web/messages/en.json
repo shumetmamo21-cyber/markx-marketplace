@@ -63,7 +63,8 @@
   "condition": {
     "new": "New",
     "used": "Used",
-    "refurbished": "Refurbished"
+    "refurbished": "Refurbished",
+    "open_box": "Open box"
   },
   "home": {
     "heading": "Compare prices from trusted shops",
@@ -389,7 +390,6 @@
   "seller": {
     "title": "Seller dashboard",
     "notSeller": "This account does not run a shop on MarkX.",
-    "apply": "Shops join MarkX by invitation. Ask MarkX for one.",
     "notMember": "You are not a member of this shop.",
     "navOrders": "Orders",
     "navOffers": "Offers",
@@ -490,7 +490,6 @@
     "navLegal": "Legal details",
     "navPayout": "Payout account",
     "navAddOffer": "Add an offer",
-    "homeTitle": "Your shop",
     "homeStatus": "Shop: {status} · Application: {review}",
     "homeLevel": "Verification level {level}",
     "homeRole": "Your role: {role}",
@@ -572,7 +571,36 @@
     "addOfferCollection": "The buyer collects at the shop",
     "addOfferLowStock": "Warn me when stock is at or below",
     "addOfferSend": "Publish the offer",
-    "addOfferAnother": "Choose another product"
+    "addOfferAnother": "Choose another product",
+    "navPerformance": "Performance",
+    "performanceTitle": "How your shop is doing",
+    "performanceLead": "MarkX's own figures for your shop. Orders received are those placed in the period; the rest is what happened in it.",
+    "performanceDays": "Last {days} days",
+    "perfReceived": "Orders received",
+    "perfConfirmed": "Accepted",
+    "perfDeclined": "Declined",
+    "perfUnanswered": "Not answered in time",
+    "perfCancelled": "Cancelled by the buyer",
+    "perfConfirmShare": "Share accepted",
+    "perfMedianConfirm": "Typical time to accept",
+    "perfMinutes": "{minutes} min",
+    "perfDelivered": "Delivered",
+    "perfDeliveryFailed": "Delivery failed",
+    "perfDeliveryShare": "Delivery success",
+    "perfCompleted": "Completed",
+    "perfCompletedValue": "Value of completed orders",
+    "perfProblems": "Problems reported",
+    "perfRefunded": "Refunded",
+    "perfNewReviews": "New reviews",
+    "perfRating": "Your shop's rating",
+    "perfOffers": "Active offers",
+    "perfStale": "Prices to confirm",
+    "perfLowStock": "Low on stock",
+    "perfNone": "None yet",
+    "weeklyTitle": "Weekly messages MarkX sent you",
+    "weeklyNone": "No weekly message yet.",
+    "weeklyLine": "Week of {date}: {received} orders, {completed} completed, {problems} problems",
+    "exit": "Back to the marketplace"
   },
   "admin": {
     "title": "MarkX staff",

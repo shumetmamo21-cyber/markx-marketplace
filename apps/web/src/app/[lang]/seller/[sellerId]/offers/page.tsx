@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CheckInButton } from "@/components/CheckInButton";
@@ -28,6 +29,9 @@ export default async function SellerOffersPage({ params }: PageProps<"/[lang]/se
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">{s.offersTitle}</h1>
       {d ? <p className="text-slate">{fill(s.counts, { active: d.active_offers, paused: d.paused_offers, stale: d.prices_to_confirm, low: d.low_stock_offers })}</p> : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <Link href={`/${lang}/seller/${sellerId}/offers/new`} className="inline-flex min-h-12 items-center rounded-card bg-adey px-5 font-bold">{s.navAddOffer}</Link>
+      </div>
       <CheckInButton sellerId={sellerId} label={s.checkIn} doneText={s.checkedIn} />
       {list.length === 0 ? <p className="text-slate">{s.noOffers}</p> : null}
       <ul className="space-y-3">

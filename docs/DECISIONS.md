@@ -1742,6 +1742,48 @@ gains `thumb_url`.
   not as codes.
 - Uploads go through `PhotoUpload`, which uses `sendForm` (D-071).
 
+
+## D-075 The rest of the seller dashboard: the API's answers, the member's choices
+
+**Follows** blueprint I.4, I.5, C.2, C.3, D.3, S-05, S-13, S-26 and D-073
+(the performance figures). **Accepted.** No API change.
+
+Screens, each behind the capability the API checks (`seller/[sellerId]/menu.ts`,
+tested per role in `menu.test.ts`):
+
+| Screen | Capability | What it does |
+| --- | --- | --- |
+| Overview | any member | Shop and application state in words, level, role, MarkX's note, what is still missing (the API's `missing` list, linked to the screen that fixes each), the send-for-review button, today's offer counts, what MarkX checked, every screen the role opens |
+| Performance | `see_performance` | The API's figures for 7, 30 or 90 days and the weekly messages it sent (D-073) |
+| Add an offer | `manage_offers` | Search the catalogue, pick the product and version, then condition, price, stock, warranty and delivery |
+| Store settings | `edit_store` | Name, link, about, hours, areas, returns, Telegram; shown on the public shop page |
+| Team | `manage_staff` | Members with their roles; add by phone; remove (not offered for the owner) |
+| Documents | `change_legal_details` | Every document with MarkX's decision and note; upload a photo of one; open one behind a link the API signs for this member |
+| Legal details | `change_legal_details` | The owner's legal details, until they are sent for checking |
+| Payout account | `change_payout_account` | The accounts by their last four digits and state; add one |
+
+And `/seller` for someone without a shop: the application form when the API
+says they may apply (`/seller/eligibility`: invite-only at launch), otherwise
+how to get an invitation. A new application lands on the overview.
+
+- **Where the page still tests a state** it does what the existing problem
+  forms do: it shows the send button only to an owner while the shop is
+  `applied` and the application `draft` or `needs_documents`, and no remove
+  button on the owner's row. The API refuses anything else
+  (`application_not_editable`, `owner_cannot_be_removed`) and the refusal is
+  shown in words. A `can_submit` flag would remove even that; not added.
+- **Roles offered for the team** are the four the API's schema accepts; the
+  API gives only `manager` today and says so (`role_not_available`). There
+  is no route that lists the roles available now.
+- **Defaults are the API's.** The low-stock warning is prefilled from the
+  default the API's description declares (`OfferIn.low_stock_threshold`),
+  read on the server, not a number in the web app.
+- **The phone's bottom bar** holds the overview and up to three work screens
+  (`primary`); every other screen is on the overview and in the wide menu.
+- **Not built:** product proposals from a seller (`POST
+  /seller/{id}/product-proposals` needs the category's attribute options for
+  its variants), closing the shop, and a map pin for the shop's location.
+
 ---
 
 ## Decisions that need the founder
