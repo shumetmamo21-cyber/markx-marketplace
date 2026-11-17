@@ -47,6 +47,7 @@ from markx.core.security import constant_time_equal, encrypt_text, sign
 from markx.core.slugs import slugify
 from markx.core.storage import StoredFileMissing, get_private_storage
 from markx.notifications import service as notifications
+from markx.orders.models import SellerOrder, SellerOrderStatus
 from markx.sellers.models import (
     DocumentType,
     ReviewState,
@@ -1019,12 +1020,45 @@ def reinstate_seller(db: Session, actor: Actor, seller_id: uuid.UUID, *, reason:
     return seller
 
 
+# Orders a store still has to act on: everything but the final states.
+OPEN_ORDER_STATUSES = frozenset(
+    {
+        SellerOrderStatus.PLACED,
+        SellerOrderStatus.CONFIRMED,
+        SellerOrderStatus.PAID,
+        SellerOrderStatus.READY,
+        SellerOrderStatus.OUT_FOR_DELIVERY,
+        SellerOrderStatus.DELIVERED,
+        SellerOrderStatus.DELIVERY_FAILED,
+        SellerOrderStatus.DISPUTED,
+    }
+)
+
+
 def close_seller(db: Session, actor: Actor, seller: Seller) -> Seller:
     """The owner withdraws an application or closes the store. It is final:
     the seller is archived, never deleted (blueprint G.1)."""
     seller = _lock(db, seller)
     if seller.status == SellerStatus.CLOSED:
         raise Conflict("seller_closed", "This store is already closed.")
+    # A closed store can no longer act on its orders, so every order still in
+    # progress must be finished first (D-076). The seller row is locked, and
+    # checkout locks the same row before it places an order, so no order can
+    # slip in between this count and the close.
+    in_progress = db.scalar(
+        select(func.count())
+        .select_from(SellerOrder)
+        .where(
+            SellerOrder.seller_id == seller.id,
+            SellerOrder.status.in_([status.value for status in OPEN_ORDER_STATUSES]),
+        )
+    )
+    if in_progress:
+        raise Conflict(
+            "open_orders_remain",
+            "Finish, decline or cancel the store's open orders before closing it.",
+            details={"open_orders": int(in_progress)},
+        )
     before = _seller_snapshot(seller)
     seller.status = SellerStatus.CLOSED
     db.flush()
