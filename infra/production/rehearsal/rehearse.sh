@@ -49,12 +49,16 @@ https_port=18443
 
 export MARKX_COMPOSE_ENV="$work/compose.env"
 export MARKX_COMPOSE_OVERRIDE="$here/compose.rehearsal.yaml"
+compose_files=(-f "$prod/compose.yaml" -f "$here/compose.rehearsal.yaml")
+if [[ -n "${MARKX_BUILD_CA:-}" ]]; then
+  MARKX_COMPOSE_OVERRIDE+=":$here/compose.build-ca.yaml"
+  compose_files+=(-f "$here/compose.build-ca.yaml")
+fi
 export MARKX_DEPLOY_REHEARSAL=1
 export MARKX_DEPENDENCY_SERVICES="postgres minio"
-export MARKX_BUILD_CA="${MARKX_BUILD_CA:-/dev/null}"
 
 compose() {
-  docker compose -f "$prod/compose.yaml" -f "$MARKX_COMPOSE_OVERRIDE" --env-file "$MARKX_COMPOSE_ENV" "$@"
+  docker compose "${compose_files[@]}" --env-file "$MARKX_COMPOSE_ENV" "$@"
 }
 
 passed=0

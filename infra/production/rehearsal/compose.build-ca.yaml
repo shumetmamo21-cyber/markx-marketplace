@@ -1,0 +1,17 @@
+# Added by rehearse.sh only when MARKX_BUILD_CA names a file: an extra
+# certificate authority for builders behind a TLS-inspecting proxy, given to
+# the image builds as a BuildKit secret and never written into an image
+# (D-091). Not used on GitHub's runners.
+services:
+  api:
+    build:
+      secrets:
+        - build_ca
+  web:
+    build:
+      secrets:
+        - build_ca
+
+secrets:
+  build_ca:
+    file: ${MARKX_BUILD_CA:?MARKX_BUILD_CA must name the certificate file}

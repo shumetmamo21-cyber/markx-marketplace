@@ -1312,6 +1312,18 @@ rehearsal: 67 passed, 0 failed
 # backup schedule, load. See "What exists but is NOT tested".
 ```
 
+**On GitHub, on `6d97cb1`:** CI #113 (push) failed in one job only, the new
+"Production stack rehearsal": GitHub's newer Docker Buildx refuses to read
+a build secret outside the project (`/dev/null`, the rehearsal's "no extra
+CA" default) without an extra entitlement. API (1487 tests, the drill),
+web, security and containers passed in the same run; CI #114 (the pull
+request event) is the same commit. Browser journeys #17 passed. Fixed in
+the next commit: the build-CA secret lives in its own override file
+(`rehearsal/compose.build-ca.yaml`), added only when `MARKX_BUILD_CA` is set,
+and `MARKX_COMPOSE_OVERRIDE` takes several files. The rehearsal passed again
+locally after the fix (67 passed, 0 failed). Its result on GitHub is in the
+final report of this session, and must be confirmed by the next one.
+
 Earlier runs of the rehearsal in this session failed on the rehearsal's own
 mistakes and on two real defects, all fixed before the final run: MinIO
 not started by `run --no-deps` (deploy.sh now takes

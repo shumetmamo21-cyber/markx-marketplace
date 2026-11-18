@@ -9,8 +9,8 @@
 # - MinIO stands in for the buckets, on the internal backend network.
 # - A self-signed certificate for markx.example.invalid; ports 18080/18443
 #   on 127.0.0.1 only.
-# - An optional extra certificate authority for builders behind a
-#   TLS-inspecting proxy (MARKX_BUILD_CA); empty by default.
+# - Only when MARKX_BUILD_CA is set (a builder behind a TLS-inspecting
+#   proxy): compose.build-ca.yaml hands that certificate to the builds.
 # Everything else (images, networks, users, limits, health checks, the
 # proxy, the migration step, the backups) is the production file unchanged.
 services:
@@ -29,9 +29,6 @@ services:
       retries: 40
 
   api:
-    build:
-      secrets:
-        - build_ca
     depends_on:
       minio:
         condition: service_healthy
@@ -40,12 +37,3 @@ services:
     depends_on:
       minio:
         condition: service_healthy
-
-  web:
-    build:
-      secrets:
-        - build_ca
-
-secrets:
-  build_ca:
-    file: ${MARKX_BUILD_CA:-/dev/null}

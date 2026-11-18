@@ -16,8 +16,8 @@
 # deployed is appended to $MARKX_CONFIG_DIR/releases.log.
 #
 # Settings: MARKX_COMPOSE_ENV (default /etc/markx/compose.env) and the files
-# it points to in MARKX_CONFIG_DIR. MARKX_COMPOSE_OVERRIDE adds one more
-# Compose file (the rehearsal uses it), and MARKX_DEPENDENCY_SERVICES the
+# it points to in MARKX_CONFIG_DIR. MARKX_COMPOSE_OVERRIDE adds more Compose
+# files, separated by ":" (the rehearsal uses it), and MARKX_DEPENDENCY_SERVICES the
 # services started before the checks (default: postgres). It never prints a secret, never runs
 # `down -v`, never removes a volume or a backup, and never downgrades the
 # database: migrations only go forward.
@@ -54,7 +54,10 @@ esac
 
 compose() {
   local files=(-f "$here/compose.yaml")
-  [[ -n "${MARKX_COMPOSE_OVERRIDE:-}" ]] && files+=(-f "$MARKX_COMPOSE_OVERRIDE")
+  local extra
+  # MARKX_COMPOSE_OVERRIDE: one or more extra Compose files, separated by ":".
+  IFS=: read -r -a extra <<< "${MARKX_COMPOSE_OVERRIDE:-}"
+  for f in "${extra[@]}"; do [[ -n "$f" ]] && files+=(-f "$f"); done
   docker compose "${files[@]}" --env-file "$compose_env" "$@"
 }
 
