@@ -36,6 +36,8 @@ os.environ["MARKX_STORAGE_DIR"] = str(_STORAGE)
 os.environ["MARKX_PUBLIC_ORIGIN"] = "http://testserver"
 os.environ["MARKX_TELEGRAM_BOT_TOKEN"] = "123456:TEST-ONLY-bot-token-not-a-real-secret"
 os.environ["MARKX_LOG_LEVEL"] = "WARNING"
+# A documentation-range address (RFC 5737) plays the reverse proxy (SEC-3).
+os.environ["MARKX_TRUSTED_PROXIES"] = "127.0.0.1,::1,192.0.2.1"
 
 from alembic import command  # noqa: E402
 from alembic.config import Config as AlembicConfig  # noqa: E402

@@ -46,4 +46,7 @@ USER markx
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
     CMD ["python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz', timeout=2).status == 200 else 1)"]
-CMD ["uvicorn", "markx.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-proxy-headers: the app reads X-Forwarded-For itself, from the proxies
+# in MARKX_TRUSTED_PROXIES only (SEC-3, D-084); uvicorn's own copy would trust
+# whatever FORWARDED_ALLOW_IPS says, including "*".
+CMD ["uvicorn", "markx.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

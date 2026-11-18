@@ -25,7 +25,7 @@ from markx.accounts.permissions import (
 )
 from markx.audit.service import Actor
 from markx.core.errors import NotAuthenticated, NotFound, PermissionDenied
-from markx.core.http import CSRF_EXEMPT_PREFIXES, SAFE_METHODS, Db, client_ip
+from markx.core.http import CSRF_EXEMPT_PATHS, SAFE_METHODS, Db, client_ip
 from markx.core.security import constant_time_equal
 from markx.sellers.models import Seller, SellerMember, SellerStatus
 
@@ -86,7 +86,7 @@ def get_optional_principal(request: Request, db: Db) -> Principal | None:
     if (
         transport == "cookie"
         and request.method not in SAFE_METHODS
-        and not request.url.path.startswith(CSRF_EXEMPT_PREFIXES)
+        and request.url.path not in CSRF_EXEMPT_PATHS
     ):
         supplied = request.headers.get(CSRF_HEADER, "")
         if not supplied or not constant_time_equal(supplied, service.csrf_token_for(token)):

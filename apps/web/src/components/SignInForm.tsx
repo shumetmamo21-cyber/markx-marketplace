@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { browserApi, errorCode } from "@/lib/api/browser";
 import { fill, type Locale, type Messages } from "@/lib/i18n";
+import { safeNext } from "@/lib/safe-next";
 
 type Step = { kind: "phone" } | { kind: "code"; masked: string; minutes: number };
 
@@ -69,7 +70,8 @@ export function SignInForm({ lang, t, next, dev }: { lang: Locale; t: Messages["
           setBusy(false);
           return fail(error);
         }
-        router.replace(next);
+        // Checked again here, so this form is safe whoever renders it (SEC-1).
+        router.replace(safeNext(next, `/${lang}/orders`));
         router.refresh();
       }}
     >

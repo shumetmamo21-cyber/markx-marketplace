@@ -6,15 +6,10 @@ import { SignInForm } from "@/components/SignInForm";
 import { SignOutButton } from "@/components/SignOutButton";
 import { fill, isLocale } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
+import { safeNext } from "@/lib/safe-next";
 import { getMe } from "@/lib/session";
 
 export const metadata: Metadata = { robots: { index: false } };
-
-/** Only a path on this site, never another origin. */
-function safeNext(value: string | string[] | undefined, fallback: string): string {
-  const next = Array.isArray(value) ? value[0] : value;
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : fallback;
-}
 
 export default async function SignInPage({ params, searchParams }: PageProps<"/[lang]/sign-in">) {
   const { lang } = await params;

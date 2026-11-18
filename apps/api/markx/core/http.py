@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from markx.core.config import get_config
 from markx.core.db import get_session_factory
@@ -25,8 +26,13 @@ logger = logging.getLogger("markx.http")
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 CLIENT_HEADER = "x-markx-client"
-# Routes called by outside services, authenticated by signature or secret.
-CSRF_EXEMPT_PREFIXES = ("/api/v1/webhooks/", "/api/v1/telegram/webhook")
+# Routes called by outside services and authenticated by their own signature
+# or secret, listed by exact path (SEC-6, D-084). None exists yet: the Telegram
+# bot and payment webhooks are not built. A prefix would also exempt every
+# route added under it later, so add each webhook's full path here, together
+# with the test that its signature check refuses an unsigned call.
+CSRF_EXEMPT_PATHS: frozenset[str] = frozenset()
+_DOCS_PATHS = ("/api/v1/docs",)
 
 
 def get_db() -> Iterator[Session]:
@@ -52,8 +58,10 @@ Db = Annotated[Session, Depends(get_db, scope="function")]
 def client_ip(request: Request) -> str | None:
     """The caller's network address, or None when it is not a valid one.
 
-    uvicorn resolves X-Forwarded-For when started with --proxy-headers. The
-    value is validated because it is stored in `inet` columns and used as a
+    Behind a reverse proxy listed in MARKX_TRUSTED_PROXIES, this is the
+    address the proxy saw, taken from X-Forwarded-For by the outermost
+    middleware (`install_middleware`); from any other peer, forwarded headers
+    are ignored (SEC-3, D-084). The value is validated because it is stored in `inet` columns and used as a
     rate-limit key: a unix socket or a test client reports no real address.
     """
     host = request.client.host if request.client else None
@@ -101,6 +109,18 @@ async def _request_context_middleware(
     # unless a route opts in.
     response.headers.setdefault("Cache-Control", "no-store")
     response.headers["X-Frame-Options"] = "DENY"
+    # SEC-5 (D-084). API responses are data and pictures, never pages, so they
+    # may load nothing. The interactive docs (laptop only) need their scripts.
+    if not request.url.path.startswith(_DOCS_PATHS):
+        response.headers.setdefault(
+            "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
+        )
+    # HTTPS only from now on, for a year. Sent only where the configuration
+    # has already refused to start without an https:// origin and secure
+    # cookies. No includeSubDomains or preload: those bind every subdomain and
+    # are the founder's decision with the domain.
+    if get_config().is_real_environment:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     # Paths only: query strings can carry search terms and are never logged.
     logger.info(
         "request",
@@ -126,7 +146,7 @@ def enforce_request_origin(request: Request) -> None:
     """
     if request.method in SAFE_METHODS:
         return
-    if request.url.path.startswith(CSRF_EXEMPT_PREFIXES):
+    if request.url.path in CSRF_EXEMPT_PATHS:
         return
     if not request.headers.get(CLIENT_HEADER):
         raise PermissionDenied("csrf_header_missing", "This request was not sent by the MarkX app.")
@@ -175,3 +195,9 @@ def install_error_handlers(app: FastAPI) -> None:
 
 def install_middleware(app: FastAPI) -> None:
     app.middleware("http")(_request_context_middleware)
+    # Added last, so it runs first: every later layer sees the real caller.
+    # Only the configured proxies are believed, the nearest untrusted address
+    # in the X-Forwarded-For chain wins, and "*" is refused by the config.
+    # The container runs uvicorn with --no-proxy-headers, so this is the one
+    # place forwarded headers are read.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=get_config().trusted_proxy_list)

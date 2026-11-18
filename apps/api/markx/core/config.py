@@ -6,11 +6,12 @@ real values are set in the host's secret store or a protected env file.
 
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
@@ -42,6 +43,13 @@ class Config(BaseSettings):
     public_origin: str = "http://localhost:3000"
     cookie_secure: bool = False
 
+    # The reverse proxies whose X-Forwarded-For and X-Forwarded-Proto headers
+    # are believed (SEC-3, D-084): comma-separated addresses or networks, such
+    # as "10.0.0.5" or "172.18.0.0/16". A request from any other peer keeps its
+    # own address, whatever headers it sends, so a visitor cannot pick the
+    # address the rate limits count. Empty trusts no one; "*" is refused.
+    trusted_proxies: str = "127.0.0.1,::1"
+
     storage_dir: Path = Path("./var/storage")
     # Where browsers load product pictures from (F.6): on a real server the
     # CDN's own cookieless domain; on a laptop the API's media route.
@@ -71,6 +79,24 @@ class Config(BaseSettings):
 
     log_level: str = "INFO"
 
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _trusted_proxies_are_exact(cls, value: str) -> str:
+        for item in _split(value):
+            try:
+                network = ipaddress.ip_network(item, strict=True)
+            except ValueError as exc:
+                raise ValueError(
+                    f"MARKX_TRUSTED_PROXIES: {item!r} is not an address or network"
+                ) from exc
+            if network.prefixlen == 0:
+                raise ValueError(f"MARKX_TRUSTED_PROXIES: {item!r} would trust every caller")
+        return value
+
+    @property
+    def trusted_proxy_list(self) -> list[str]:
+        return _split(self.trusted_proxies)
+
     @property
     def is_real_environment(self) -> bool:
         return self.env in ("staging", "production")
@@ -95,9 +121,16 @@ class Config(BaseSettings):
             problems.append("MARKX_COOKIE_SECURE must be true")
         if not self.public_origin.startswith("https://"):
             problems.append("MARKX_PUBLIC_ORIGIN must be an https:// origin")
+        # SEC-2 (D-084): the fake bot check accepts any token, even none.
+        if self.bot_check_provider == "fake":
+            problems.append("MARKX_BOT_CHECK_PROVIDER must be a real bot check, not the fake")
         if problems:
             raise ValueError("unsafe configuration for a real environment: " + "; ".join(problems))
         return self
+
+
+def _split(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 @lru_cache
