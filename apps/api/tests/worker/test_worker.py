@@ -101,6 +101,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
         "search.rebuild_all": 1,  # the one approved product
         "sellers.weekly_report": 0,  # the seller did not exist last week (D-069)
         "reviews.recount_all": 0,  # no review yet (D-066)
+        "retention.prune": 0,  # nothing old enough (F-08, D-083)
         "ops.reconcile": 0,  # nothing out of line (D-064)
         "ops.watch": 0,
     }
@@ -108,7 +109,13 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
     # Fifteen days on, the price is unconfirmed and the cooling-off has passed.
     later = now + timedelta(days=15)
     report = run_once(later)
-    assert {o.name: (o.ok, o.result) for o in report.jobs} == {
+    outcomes = {o.name: (o.ok, o.result) for o in report.jobs}
+    # The rate-limit counters this test's requests left are now old (F-08).
+    pruned_ok, pruned = outcomes.pop("retention.prune")
+    assert pruned_ok
+    assert pruned is not None
+    assert pruned >= 1
+    assert outcomes == {
         "orders.expire_unanswered": (True, 0),
         "orders.complete_after_problem_window": (True, 0),
         "orders.cancel_overdue_fulfilment": (True, 0),

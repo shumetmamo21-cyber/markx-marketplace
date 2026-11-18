@@ -112,12 +112,30 @@ tests fail on the old code and pass now; 953 API tests pass; the admin
 journey, given a backlog of 196 messages, passed with one worker pass that
 handled 225 and left none.
 
+**Fifth round** (the founder: "for F-01 to F-08 fill with your intelligence
+guess, but comment that it must change for real live"). Each now has a
+PROVISIONAL answer, the recommendation already written under it (D-083).
+**Every one must be confirmed or changed by the founder before MarkX goes
+live**; each is marked `PROVISIONAL (F-0n, D-083)` in the code where it
+lives, and a test fails if a marker disappears. Only F-08 needed new code:
+a daily job deletes search logs older than 180 days and rate-limit counters
+a day after their window, the periods are two settings staff can change
+(described as provisional on the settings screen in both languages), and
+each deletion is counted in the audit log. F-01 (a private Cloudflare R2
+bucket for identity documents) is recorded but not created: that is a paid
+account holding Ethiopian personal data, which only the founder can open,
+and a real environment still refuses to store a document until it exists.
+F-02 and F-06 apply to features not built yet (transfer, merging products
+with offers); F-03, F-04, F-05 and F-07 keep what the code already does.
+
 **Still to build on the web:** Telegram sign-in and the Mini App once the
 founder creates the bot; delivery speed as a search filter and "total cost
 to the door" as a sort (they need the buyer's delivery zone in search).
 The Amharic text of this session is AI-drafted and needs a native speaker.
 
-**Waiting on the founder:** unchanged — F-01 to F-08 in `docs/DECISIONS.md`.
+**Waiting on the founder:** to confirm or change the PROVISIONAL answers
+to F-01 to F-08 (D-083) before going live; F-01 also needs the founder to
+create the private document store.
 
 ---
 
@@ -399,8 +417,9 @@ milestone records this baseline; see D-055).
   Amharic typed in Latin letters. The template explains the columns.
 - **A native Amharic editor** for every Amharic text, in the API and now
   the web app (`apps/web/messages/am.json`).
-- F-01 to F-07 in `docs/DECISIONS.md` are unchanged; only F-01 blocks the
-  launch.
+- F-01 to F-08 in `docs/DECISIONS.md` now have PROVISIONAL answers
+  (D-083), to be confirmed or changed before going live; F-01 still blocks
+  the launch until the founder creates the private document store.
 
 ## A.6 Boundaries kept
 
@@ -432,8 +451,9 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-082; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
-provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
+(D-001 to D-083; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
+provisional; F-01 to F-08 have PROVISIONAL answers in D-083 that the founder
+must confirm before going live), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
 
@@ -444,7 +464,7 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 953 passed, ten to fourteen minutes
+uv run pytest                  # expect 966 passed, ten to fourteen minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json

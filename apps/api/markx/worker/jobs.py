@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from markx.core.db import session_scope
 from markx.offers import service as offers
+from markx.ops import retention
 from markx.ops import service as ops
 from markx.orders import service as orders
 from markx.performance import service as performance
@@ -88,6 +89,9 @@ JOBS: tuple[Job, ...] = (
     Job("sellers.weekly_report", timedelta(hours=1), performance.send_weekly_reports),
     # The safety net behind the queued rating recounts (D-066).
     Job("reviews.recount_all", timedelta(days=1), lambda db, now: reviews.recount_all(db)),
+    # Deleting old search logs and rate-limit counters (H.2). PROVISIONAL
+    # periods (F-08, D-083): the founder must confirm them before going live.
+    Job("retention.prune", timedelta(days=1), retention.prune),
     # Last, so they see what the jobs above just did (F.12; D-064); the watch
     # after the reconciliation, so it never calls a job overdue that this
     # very pass is about to run.

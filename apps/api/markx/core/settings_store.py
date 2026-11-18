@@ -258,6 +258,28 @@ _SPECS: tuple[SettingSpec, ...] = (
         10,
         100_000,
     ),
+    # Retention. PROVISIONAL (F-08, D-083): search logs 180 days, rate-limit
+    # counters a day after their window; the job is `retention.prune`.
+    #   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM
+    #   OR CHANGE BOTH BEFORE MARKX GOES LIVE.
+    SettingSpec(
+        "retention.search_queries_days",
+        180,
+        "int",
+        "PROVISIONAL (F-08), to be confirmed before going live: days a search is kept for "
+        "the zero-result report; a daily job deletes older ones.",
+        30,
+        3650,
+    ),
+    SettingSpec(
+        "retention.rate_limit_counters_days",
+        1,
+        "int",
+        "PROVISIONAL (F-08), to be confirmed before going live: days a rate-limit counter "
+        "is kept after its window has ended; a daily job deletes older ones.",
+        1,
+        30,
+    ),
     # Sign-in
     SettingSpec(
         "auth.otp_per_phone_per_hour",

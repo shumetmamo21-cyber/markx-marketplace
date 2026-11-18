@@ -27,7 +27,15 @@ _PEEK = text(
 )
 
 
+# The longest window any limit may use. The retention job (F-08) deletes a
+# counter only once this much time, and a margin, has passed since its window
+# began, so it never deletes a count that is still being used.
+LONGEST_WINDOW = timedelta(days=1)
+
+
 def _window_start(now: datetime, window: timedelta) -> datetime:
+    if window > LONGEST_WINDOW:
+        raise ValueError(f"a rate-limit window may be at most {LONGEST_WINDOW}, not {window}")
     seconds = int(window.total_seconds())
     return datetime.fromtimestamp(int(now.timestamp()) // seconds * seconds, UTC)
 

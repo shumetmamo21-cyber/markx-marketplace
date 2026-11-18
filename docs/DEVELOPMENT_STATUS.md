@@ -10,7 +10,9 @@ the staff's trust actions, delivery zones and catalogue setup (D-076 to
 D-078); in a third round, a store's track record on its page, search by
 rating and seller level, a worker pass that reports failure, and the
 browser journeys on GitHub (D-079 to D-081); then the cause of the "worker
-pass that handled nothing", fixed (D-082)). The ninth session built every admin screen (D-069 to
+pass that handled nothing", fixed (D-082); then, at the founder's request,
+PROVISIONAL answers to F-01 to F-08, marked in the code and to be confirmed
+before going live, and the retention job of F-08 (D-083)). The ninth session built every admin screen (D-069 to
 D-071); a back-end-only continuation in parallel added the seller
 performance figures and the weekly seller message (D-073), merged in this
 session.
@@ -919,14 +921,31 @@ Be careful with these. They were written and never exercised.
   group and bot** and sets `MARKX_TELEGRAM_BOT_TOKEN` and
   `MARKX_ALERT_TELEGRAM_CHAT_ID`. A dead worker is only noticed by an
   outside monitor polling `/api/v1/healthz/worker`, which is not set up.
-- **Search logs and rate-limit counters are never pruned** (F-08 asks the
-  founder for retention periods).
-- **Decisions waiting for the founder** (`docs/DECISIONS.md`, F-01 to F-08).
-  Each has a recommendation and none is implemented as policy. Only F-01, a
-  private store for identity documents (and now pictures), blocks the
-  launch.
+- **F-01 to F-08 have PROVISIONAL answers only** (D-083, the engineer's
+  guess at the founder's request). **Each must be confirmed or changed by
+  the founder before MarkX goes live**; treat `docs/DECISIONS.md`,
+  "Decisions that need the founder", as part of the launch checklist. Each
+  is marked `PROVISIONAL (F-0n, D-083)` in the code, and
+  `tests/unit/test_provisional_decisions.py` keeps the markers in place.
+  F-01 still blocks the launch: the private document store does not exist
+  until the founder creates the account (a real environment refuses to store
+  a document until then).
+- **Search logs and rate-limit counters are now deleted daily**
+  (`retention.prune`, provisional periods of 180 days and one day; F-08,
+  D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Tenth session, fifth round** (D-083, provisional answers to F-01 to F-08):
+
+```text
+$ uv run pytest tests/api/test_retention.py tests/unit/test_settings_am.py tests/worker -> 32 passed
+$ uv run pytest tests/unit/test_provisional_decisions.py -> 8 passed (one marker per F- item)
+$ uv run pytest -> 966 passed in 550.82s (0:09:10)
+  ruff check -> All checks passed!; ruff format --check -> 187 files already formatted
+  mypy markx -> no issues found in 124 source files; alembic check -> no new upgrade operations
+  check_openapi_copy --exact, openapi.json and the web copy -> both match the API exactly
+```
 
 **Tenth session, fourth round** (D-082, the worker pass that "handled nothing"):
 
@@ -946,6 +965,8 @@ $ 246 messages waiting 35 minutes, the eight jobs due; one --once -> exit 0,
   outbox_done 247 (with the alert ops.watch opened), none left
 $ 196 waiting, then node e2e/admin-queues.mjs (one worker pass for its picture)
   -> 15 steps passed, "console errors: none"; that pass handled 225, none left
+# on GitHub, on 00d9ba3
+  Browser journeys run #7: success, all six; CI run #85: success
 ```
 
 **Tenth session, third round** (D-079 to D-081):
@@ -1134,7 +1155,7 @@ application code contains no `type: ignore`; the suite treats warnings as
 errors. **Never run two test sessions at once**: they share `markx_test`
 (session five lost one run to that).
 
-Recounted by the tenth session from `pytest --collect-only` (953 tests, 48 files):
+Recounted by the tenth session from `pytest --collect-only` (966 tests, 50 files):
 
 | File | Tests |
 | --- | --- |
@@ -1147,6 +1168,7 @@ Recounted by the tenth session from `pytest --collect-only` (953 tests, 48 files
 | `tests/unit/test_permissions.py` | 144 |
 | `tests/unit/test_phone.py` | 31 |
 | `tests/unit/test_settings_am.py` | 2 |
+| `tests/unit/test_provisional_decisions.py` | 8 |
 | `tests/db/test_checkout_contention.py` | 5 |
 | `tests/db/test_dispute_contention.py` | 2 |
 | `tests/db/test_fulfilment_contention.py` | 4 |
@@ -1174,6 +1196,7 @@ Recounted by the tenth session from `pytest --collect-only` (953 tests, 48 files
 | `tests/api/test_performance.py` | 5 |
 | `tests/api/test_pictures.py` | 15 |
 | `tests/api/test_reports.py` | 4 |
+| `tests/api/test_retention.py` | 5 |
 | `tests/api/test_reviews.py` | 10 |
 | `tests/api/test_search.py` | 30 |
 | `tests/api/test_seller_closing.py` | 2 |
@@ -1186,7 +1209,7 @@ Recounted by the tenth session from `pytest --collect-only` (953 tests, 48 files
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_tracking.py` | 2 |
 | `tests/worker/test_worker.py` | 25 |
-| **Total** | **953** |
+| **Total** | **966** |
 
 Counted by `uv run pytest --collect-only -q` on the final head.
 
@@ -1241,8 +1264,11 @@ end. Work in this order within each. Finish and push each step first.
 
 **The back end:**
 
-1. F-08 once the founder answers: a retention job for search logs and
-   rate-limit counters.
+1. When the founder confirms or changes an F- item (D-083): record it as a
+   `D-` entry, change the code if the answer differs, and remove its
+   `PROVISIONAL` marker and its line in `test_provisional_decisions.py`.
+   F-01 then needs the private store adapter (one class behind
+   `PrivateStorage`), once the founder has created the account.
 2. Photos on reviews (C-18), following the problem-photo pipeline (D-062).
 3. Ratings in search ranking (D.8; the rating filter exists, D-080), and
    the seller rating in the product page's offer ranking, as one change

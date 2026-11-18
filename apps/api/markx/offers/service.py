@@ -53,7 +53,12 @@ from markx.sellers.models import Seller, SellerMember, SellerRole, SellerStatus
 
 MAX_PRICE_SANTIM = 10_000_000_000  # ETB 100 million: a typing mistake, not a price
 MAX_STOCK = 1_000_000
-USED_GOODS_MIN_LEVEL = 2  # blueprint D.3: used phones only from Level 2 upward
+# Blueprint D.3: used phones only from Level 2 upward.
+# PROVISIONAL (F-04, D-083): every used item needs Level 2, in every category,
+# not only phones; narrow it per category later if one needs it.
+#   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM OR
+#   CHANGE IT BEFORE MARKX GOES LIVE.
+USED_GOODS_MIN_LEVEL = 2
 
 
 def _now() -> datetime:

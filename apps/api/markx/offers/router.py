@@ -47,6 +47,12 @@ admin_router = APIRouter(prefix="/admin/offers", tags=["admin: offers"])
 AnyMember = Annotated[SellerContext, Depends(require_seller())]
 OfferManager = Annotated[SellerContext, Depends(require_seller(SellerCapability.MANAGE_OFFERS))]
 Proposer = Annotated[SellerContext, Depends(require_seller(SellerCapability.PROPOSE_PRODUCTS))]
+# Takes a listing down and lifts the hold again.
+# PROVISIONAL (F-07, D-083): every role that may take a listing down (super
+# administrator, operations, catalogue) may also lift the hold, with a reason;
+# read the audit log for `offer.staff_restore` now and then.
+#   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM OR
+#   CHANGE IT BEFORE MARKX GOES LIVE.
 ListingModerator = Annotated[Principal, Depends(require_staff(StaffCapability.MODERATE_LISTINGS))]
 
 LangQuery = Annotated[str, Query(pattern="^(am|en)$")]

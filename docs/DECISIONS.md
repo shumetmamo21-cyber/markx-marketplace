@@ -1967,17 +1967,47 @@ running worker handles 100 and `--once` the other 120; and a message a job
 queues goes out in the same pass. The admin journey is back to one worker
 pass for its picture, without the retries added while the cause was unknown.
 
+## D-083 Provisional answers to F-01 to F-08, until the founder decides
+
+**The founder's request** (18 November 2026): "For F-01 to F-08 fill with
+your intelligence guess, but comment with it must change for real live."
+**Accepted as PROVISIONAL.** Every answer below is the engineer's guess
+(the recommendation already written under each item). **Each must be
+confirmed or changed by the founder before MarkX goes live.** Each is marked
+in the code with `PROVISIONAL (F-0n, D-083)` where it lives, and
+`tests/unit/test_provisional_decisions.py` fails if a marker disappears;
+when the founder decides one, it becomes a `D-` entry, and its marker and
+test line go.
+
+| Item | Provisional answer | What it changed |
+| --- | --- | --- |
+| F-01 identity documents | A private, encrypted Cloudflare R2 bucket, no public access, the existing five-minute signed links | Nothing yet: the account must be created by the founder (a paid service, Ethiopian personal data). Until then a real environment still refuses to store a document. Marked in `core/storage.py` |
+| F-02 transfer of ownership | The store drops to Level 0; its business documents stay accepted; the new owner supplies an identity document | Nothing yet: transfer is not built. The rule waits beside `TRANSFER_OR_CLOSE` in `accounts/permissions.py` |
+| F-03 TIN length | Exactly ten digits, as today; staff check it against the licence | Nothing; marked at `_TIN` in `sellers/service.py`. Check one real licence |
+| F-04 used items | Every used item needs Level 2, in every category, as today | Nothing; marked at `USED_GOODS_MIN_LEVEL` |
+| F-05 rejected applicant | Needs a fresh invitation, as today | Nothing; marked at `reject_application` |
+| F-06 merging products with offers | When built: the survivor's offer stays, the other is removed (not deleted), both prices audited, the seller told | Nothing yet: merging a product with offers is still refused. Marked in `merge_product` |
+| F-07 lifting a takedown | The three roles that take listings down may lift the hold, with a reason, as today | Nothing; marked at `ListingModerator` |
+| F-08 retention | Search logs 180 days; rate-limit counters one day after their window could end | **New:** the daily job `retention.prune` (`markx/ops/retention.py`) and two staff-adjustable settings, `retention.search_queries_days` (180) and `retention.rate_limit_counters_days` (1), both described as PROVISIONAL on the settings screen in both languages. It deletes only those two tables, writes the counts to the audit log when it deleted anything, and is refused nothing by the database (neither table is protected). A rate limit may no longer use a window longer than a day (`ratelimit.LONGEST_WINDOW`), so the job never deletes a count in use. Five tests |
+
+Nothing in this entry creates an account, a cloud resource or a cost.
+
 ---
 
 ## Decisions that need the founder
 
-**Nothing below is implemented as policy.** Each item says what the code does
-today, what the engineer recommends and why, what it blocks, and whether the
-founder's approval is required. An engineer may implement a recommendation only
-after the founder says so in writing; the answer then becomes a `D-` entry
-above and this item is removed.
+**All eight have PROVISIONAL answers (D-083), given at the founder's request
+on 18 November 2026: the engineer's guess, which the founder must confirm or
+change before MarkX goes live.** Treat this list as part of the launch
+checklist. Each item says what the code does, what the engineer recommends
+(now the provisional answer) and why, what it blocks, and whether the
+founder's approval is required. When the founder decides one, it becomes a
+`D-` entry above, this item is removed, and its `PROVISIONAL` marker in the
+code and its line in `tests/unit/test_provisional_decisions.py` go.
 
 ### F-01 Where sellers' identity documents are stored
+
+- **Provisional answer (D-083):** Cloudflare R2, private and encrypted. Not created: the founder must create the account and confirm before going live.
 
 - **Today:** `markx/core/storage.py` has one adapter, local disk, and it
   raises on a `staging` or `production` configuration (D-020). No document has
@@ -2001,6 +2031,8 @@ above and this item is removed.
 
 ### F-02 Whether a transfer of ownership drops the seller to Level 0
 
+- **Provisional answer (D-083):** yes, back to Level 0, business documents kept. Applies when transfer is built; confirm before going live.
+
 - **Today:** transfer is not built (D-022). Nothing depends on the answer.
 - **Recommendation:** yes, drop to Level 0 on transfer, and keep the business
   documents (licence, TIN certificate, shop photo) accepted, because they
@@ -2022,6 +2054,8 @@ above and this item is removed.
 
 ### F-03 Whether an Ethiopian TIN always has exactly ten digits
 
+- **Provisional answer (D-083):** ten digits, as today. Confirm against a real licence before going live.
+
 - **Today:** the application form accepts exactly ten digits and rejects
   everything else (`_TIN` in `markx/sellers/service.py`). That came from the
   engineer, not from the blueprint, and it is recorded as a known limitation
@@ -2041,6 +2075,8 @@ above and this item is removed.
 
 ### F-04 Whether every used item needs Level 2, or only used phones
 
+- **Provisional answer (D-083):** every used item, as today. Confirm before going live.
+
 - **Today:** every offer with condition `used` needs Level 2, in every
   category (D-025). The blueprint says it of used phones.
 - **Recommendation:** keep it as it is for the pilot. The launch wedge is
@@ -2055,6 +2091,8 @@ above and this item is removed.
   before MarkX opens categories beyond phones and accessories.
 
 ### F-05 Whether a rejected applicant needs a fresh invitation
+
+- **Provisional answer (D-083):** yes, as today. Confirm before going live.
 
 - **Today:** yes. An invitation is used once (D-019), so a rejected applicant
   cannot reopen an application without staff issuing another one.
@@ -2073,6 +2111,8 @@ above and this item is removed.
   invite-only rule. It is written here so the founder can overrule it.
 
 ### F-06 What happens to a seller's two offers when products are merged
+
+- **Provisional answer (D-083):** the survivor's offer stays. Applies when the merge path is built; confirm before going live.
 
 - **Today:** merging a product that has any offers is refused with a clear
   message (D-026). Merging a product with no offers works and is tested.
@@ -2094,6 +2134,8 @@ above and this item is removed.
 
 ### F-07 Who may lift a staff takedown of a listing
 
+- **Provisional answer (D-083):** the three moderating roles, as today. Confirm before going live.
+
 - **Today:** any staff member who may take a listing down (super
   administrator, operations, catalogue) may also lift the hold, with a
   reason, through `POST /admin/offers/{id}/restore` (D-032). The seller
@@ -2112,10 +2154,13 @@ above and this item is removed.
 
 ### F-08 How long search logs and rate-limit counters are kept
 
-- **Today:** kept for ever. `search_queries` gains one row per first page of
-  a search (bounded per address by D-059); `rate_limit_counters` gains one
-  row per address and window. Nothing deletes either, because deleting data
-  needs the founder's written approval (`AGENTS.md`).
+- **Provisional answer (D-083), implemented:** 180 days and one day, as settings, deleted daily by `retention.prune`. Confirm or change the periods before going live.
+
+- **Before D-083:** kept for ever. `search_queries` gains one row per first
+  page of a search (bounded per address by D-059); `rate_limit_counters`
+  gains one row per address and window. Nothing deleted either, because
+  deleting data needs the founder's written approval (`AGENTS.md`); the
+  founder's request of 18 November 2026 gave it, provisionally.
 - **Recommendation (PROVISIONAL — FOUNDER MAY CHANGE BEFORE LAUNCH):** keep
   search queries 180 days (enough for two seasons of the zero-result
   report; they hold no name or phone number, but may hold a signed-in

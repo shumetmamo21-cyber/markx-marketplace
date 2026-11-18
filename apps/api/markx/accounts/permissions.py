@@ -26,6 +26,13 @@ class SellerCapability(StrEnum):
     MANAGE_STAFF = "manage_staff"
     CHANGE_PAYOUT_ACCOUNT = "change_payout_account"
     CHANGE_LEGAL_DETAILS = "change_legal_details"
+    # Closing is built; a transfer of ownership is not (D-022).
+    # PROVISIONAL (F-02, D-083), for when transfer is built: the store drops to
+    # Level 0, its business documents (licence, TIN certificate, shop photo)
+    # stay accepted, and the new owner supplies an identity document before
+    # staff restore its level. Its offers are hidden until then.
+    #   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM
+    #   OR CHANGE IT BEFORE MARKX GOES LIVE.
     TRANSFER_OR_CLOSE = "transfer_or_close"
 
 

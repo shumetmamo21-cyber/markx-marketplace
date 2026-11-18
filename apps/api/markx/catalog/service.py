@@ -701,6 +701,12 @@ def merge_product(db: Session, actor: Actor, source_id: uuid.UUID, into_id: uuid
     # Moving offers to the survivor means mapping each variant of the duplicate
     # onto a variant of the survivor, and two sellers' offers may then collide.
     # That mapping is not built, so a product that has offers cannot be merged.
+    # PROVISIONAL (F-06, D-083), for when it is built: map each variant, move
+    # the offers, and where one seller ends up with two offers for the same
+    # variant and condition keep the one already on the survivor, remove (not
+    # delete) the other, audit both prices and tell the seller.
+    #   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM
+    #   OR CHANGE IT BEFORE MARKX GOES LIVE.
     has_offers = db.scalar(
         select(func.count())
         .select_from(Offer)

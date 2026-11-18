@@ -59,6 +59,11 @@ class LocalPrivateStorage:
 
 
 def get_private_storage() -> PrivateStorage:
+    # PROVISIONAL (F-01, D-083): sellers' identity documents go to a private,
+    # encrypted Cloudflare R2 bucket (no public access, five-minute signed links),
+    # one new class behind `PrivateStorage`. It does not exist yet: the founder
+    # must create the account and confirm the provider before going live. Until
+    # then a real environment refuses to store a document, as below.
     config = get_config()
     if config.is_real_environment:
         raise RuntimeError(

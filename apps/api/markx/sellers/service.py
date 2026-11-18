@@ -64,6 +64,11 @@ from markx.sellers.models import (
 
 DOCUMENT_LINK_SECONDS = 300  # blueprint D.3: links expire within five minutes
 MAX_DOCUMENTS_PER_SELLER = 40
+# PROVISIONAL (F-03, D-083): an Ethiopian TIN has exactly ten digits; staff
+# still check it against the licence at review. Check a real licence; if the
+# length varies, relax this to 9 to 13 digits.
+#   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM OR
+#   CHANGE IT BEFORE MARKX GOES LIVE.
 _TIN = re.compile(r"^[0-9]{10}$")
 _ACCOUNT_NUMBER = re.compile(r"^[0-9]{6,30}$")
 _SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -912,6 +917,11 @@ def approve_application(
     return seller
 
 
+# PROVISIONAL (F-05, D-083): a rejected applicant needs a fresh invitation (an
+# invitation is used once); staff ask for better documents instead of rejecting
+# when the answer is not "no".
+#   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM OR
+#   CHANGE IT BEFORE MARKX GOES LIVE.
 def reject_application(db: Session, actor: Actor, seller_id: uuid.UUID, *, reason: str) -> Seller:
     seller = _staff_seller(db, actor, seller_id)
     if seller.status != SellerStatus.APPLIED or seller.review_state not in (
