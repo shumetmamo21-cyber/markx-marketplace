@@ -185,10 +185,13 @@ def dump(
         raise DumpFailed(f"pg_restore_list_exit_{list_rc}")
     toc_text = toc_path.read_text(encoding="utf-8", errors="replace")
     in_archive = set(re.findall(r"\bTABLE public (\S+) ", toc_text))
-    missing = sorted(set(expected_tables) - in_archive)
+    expected = set(expected_tables)
+    missing = sorted(expected - in_archive)
     if missing:
         raise DumpFailed(f"tables_missing_from_archive:{len(missing)}")
-    if not re.search(r"\bTABLE DATA public alembic_version ", toc_text):
+    if "alembic_version" in expected and not re.search(
+        r"\bTABLE DATA public alembic_version ", toc_text
+    ):
         raise DumpFailed("alembic_version_data_missing")
     return DumpResult(digest, len(in_archive), tool_version(pg_dump_command, server))
 

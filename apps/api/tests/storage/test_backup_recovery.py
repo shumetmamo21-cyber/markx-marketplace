@@ -363,6 +363,27 @@ def test_a_missing_referenced_file_makes_the_set_incomplete_and_unrestorable(
     assert {"backup.incomplete", "backup.stale"} <= keys
 
 
+def test_a_database_not_yet_migrated_backs_up_and_restores_as_empty(
+    setup: Setup, restored_db: str
+) -> None:
+    """deploy.sh takes a set before the first migration, of an empty database."""
+    from markx.backup.database import create_database
+
+    empty = f"markx_test_empty_{uuid.uuid4().hex[:6]}"
+    create_database(SUPERUSER, empty, bootstrap_script=BOOTSTRAP, psql_command=setup.tools.psql)
+    try:
+        config = setup.ctx.config.model_copy(update={"database": empty})
+        ctx = replace(setup.ctx, config=config, recorder=Recorder(MIGRATOR, empty))
+        outcome = run_backup(ctx)  # its record cannot be written: no table yet
+        assert outcome.status == "succeeded", outcome.error_code
+        assert outcome.manifest["database"]["tables"] == 0
+        assert outcome.manifest["application"]["alembic_revision"] is None
+        report = _restore(setup, str(outcome.backup_id), restored_db, None)
+        assert report.passed, report.text()
+    finally:
+        drop_database(SUPERUSER, empty)
+
+
 def test_a_damaged_source_file_is_never_backed_up_as_good(
     setup: Setup, db: DbSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

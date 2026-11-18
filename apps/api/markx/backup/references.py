@@ -35,7 +35,14 @@ class FileReference:
     kind: str
 
 
+def _has_schema(conn: Connection[Any]) -> bool:
+    row = conn.execute("select to_regclass('public.product_images') is not null").fetchone()
+    return bool(row and row[0])
+
+
 def file_references(conn: Connection[Any]) -> list[FileReference]:
+    if not _has_schema(conn):
+        return []  # not migrated yet: no row can refer to a file
     refs: list[FileReference] = []
     rows: Iterable[tuple[Any, ...]] = conn.execute(
         "select file_key from seller_documents order by id"
@@ -56,6 +63,8 @@ def file_references(conn: Connection[Any]) -> list[FileReference]:
 
 
 def unclassified_references(conn: Connection[Any]) -> int:
+    if not _has_schema(conn):
+        return 0
     row = conn.execute(
         "select (select count(*) from stores where logo_key is not null)"
         " + (select count(*) from order_items where image_key is not null)"
@@ -81,6 +90,11 @@ def row_counts(conn: Connection[Any]) -> dict[str, int]:
 
 
 def alembic_revision(conn: Connection[Any]) -> str | None:
+    """The migration the database is at; None before the first migration (a
+    first deployment backs up the empty database before migrating it)."""
+    exists = conn.execute("select to_regclass('public.alembic_version') is not null").fetchone()
+    if not (exists and exists[0]):
+        return None
     row = conn.execute("select version_num from alembic_version").fetchone()
     return str(row[0]) if row else None
 

@@ -433,7 +433,14 @@ def _verify_database(
         )
         problems = schema_problems(conn)
         report.check("indexes valid and constraints validated", not problems, "; ".join(problems))
-        report.check("audit log still protected from the application role", _audit_protected(conn))
+        if revision is None:
+            report.check(
+                "audit log protection", True, "not applicable: the set holds an unmigrated database"
+            )
+        else:
+            report.check(
+                "audit log still protected from the application role", _audit_protected(conn)
+            )
         refs = file_references(conn)
         unclassified = unclassified_references(conn)
         report.check("no unclassified file references", unclassified == 0, str(unclassified))
