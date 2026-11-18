@@ -1,6 +1,11 @@
 # Development status
 
-**Last updated:** 18 November 2026, tenth engineering session (the web app's
+**Last updated:** 18 November 2026, by the **security and CI session** (the
+independent audit's P0-1 and P0-2; D-084): five security fixes (SEC-1, -2,
+-3, -5, -6), a secret scan and dependency audits in CI, the browser journeys
+on every code push against Compose, and an automated page-weight check. See
+"Security and CI session (D-084)" below and in "Tests executed". Before it:
+the tenth engineering session (the web app's
 owner: the buyer's and the seller's screens — reviews and report links
 (D-072), pictures and problem evidence (D-074), the rest of the seller
 dashboard (D-075) — and, in a second round, every remaining screen the API
@@ -96,6 +101,7 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| Security and CI (D-084) | `1698082`, `3a829d0` and the status commit | The audit's P0-1: sign-in open redirect (SEC-1), the fake bot check refused on real servers (SEC-2), trusted proxies only for forwarded addresses (SEC-3), security headers (SEC-5), exact-path anti-forgery exemptions (SEC-6); P0-2: Gitleaks, pip-audit, an npm audit gate with a reviewed allow-list, journeys on every code push against Compose, Playwright as a dev dependency, the page-weight check. 997 API tests, 64 web unit tests |
 | 10 (web owner) | `b2e11ce`, `1920e55`, the merge `d015261`, `ae10c83`, `326ae26`, `af02d59`, `ffa2720`; second round `822f564`, `751e2b0`, `47e9fec` and the documentation commit; third round `c6b7a29`, `3511e0e`, `8dc0264`, `94d5bd3`, `b4bff76`, `876c1d9` and the documentation commits; see `docs/HANDOFF.md`, Part A.0000 | Reviews and report links for buyers, the shop's replies, `can_edit`/`can_reply` (D-072); thumbnails on the product card (`thumb_url`), the product page gallery, shops' photos, problem evidence (D-074); the rest of the seller dashboard and the application (D-075); then a store with open orders cannot close (D-076), every remaining screen the API supports (D-077) and the settings in Amharic (D-078); `e2e/shop-screens.mjs`, `e2e/seller-dashboard.mjs`, `e2e/setup-and-account.mjs`; then a store's track record on its page and search by rating and seller level (D-080), a worker pass that reports failure (D-079) and the browser journeys on GitHub (D-081). 951 API tests, 33 web unit tests |
 
 ## Blueprint phase tracking
@@ -684,6 +690,13 @@ current) and the web job (lint, strict types, unit tests, production
 build, and a check that the generated API types are current). First runs:
 #1 to #4 passed.
 
+**Since D-084:** a `security` job (Gitleaks, pip-audit, the npm audit
+gate) runs with the others, the containers job also checks the CI Compose
+override and that the image starts uvicorn with `--no-proxy-headers`, and
+`journeys.yml` runs the page-weight check and all six journeys on **every
+push that changes `apps/`, `infra/` or the workflow**, against PostgreSQL,
+the migrations and the API from Compose. The history below describes D-081.
+
 `.github/workflows/journeys.yml` (D-081) runs the six browser journeys in
 Chromium against a fresh demo database, only on a push whose message
 contains `[journeys]` (or, once on the default branch, from the Actions
@@ -696,6 +709,32 @@ console error, like the other four) passed too, in seven minutes. GitHub warns t
 actions it uses (`checkout`, `setup-node`, `upload-artifact`, `setup-uv`)
 target Node.js 20 and are forced onto Node.js 24; a warning only, the same
 in `ci.yml`.
+
+### Security and CI session (D-084)
+
+What it changed, in plain words:
+
+- **SEC-1 (high), fixed.** A sign-in link could send a person to another
+  website after signing in (`/sign-in?next=/\evil.example`). One helper,
+  `apps/web/src/lib/safe-next.ts`, now allows only paths on MarkX, used by
+  `sign-in/page.tsx` and checked again in `SignInForm.tsx`. 31 unit tests.
+- **SEC-2 (high), fixed.** The pretend bot check accepted anything, on every
+  server. Staging and production now refuse to start with it, and refuse
+  every sign-in code if they somehow run with it (`core/botcheck.py`,
+  `core/config.py`). **A real bot check (Turnstile) must be built before any
+  real server can start.**
+- **SEC-3 (medium), fixed.** Visitors' addresses behind a proxy: only proxies
+  listed in `MARKX_TRUSTED_PROXIES` are believed (`core/http.py`,
+  `core/config.py`, `Dockerfile` with `--no-proxy-headers`), so rate limits
+  count each real visitor and nobody can pick their own address.
+- **SEC-5 (medium), fixed where safe.** Content Security Policy and the usual
+  headers on API responses and web pages (`core/http.py`, `next.config.ts`);
+  HSTS on real servers only. Inline scripts are still allowed in the web
+  CSP (Next.js needs them without per-request nonces): open.
+- **SEC-6 (low), fixed.** Anti-forgery exemptions by exact path; none today.
+- **CI.** A `security` job (Gitleaks over all history, pip-audit, an npm
+  audit gate), journeys on every code push against Compose, and the
+  page-weight check. Details and the reasoning: D-084.
 
 ### The search evaluator (P8 criteria; D-054)
 
@@ -785,7 +824,8 @@ Be careful with these. They were written and never exercised.
 - The seller Telegram bot and the real push adapter: the worker delivers
   pushes to a fake.
 - A real private-storage adapter (F-01), a real SMS adapter, a bot-check
-  adapter.
+  adapter. **Without the bot-check adapter a real server now refuses to
+  start** (D-084, SEC-2).
 - The reverse proxy, error tracking, the nightly backup schedule and the
   off-server copy, an outside uptime monitor, a real public-storage bucket
   and CDN. (Containers, backups, the drill and alerting exist; demo seed
@@ -838,6 +878,23 @@ Be careful with these. They were written and never exercised.
   (D-074 here).
 
 ## Known problems
+
+- **The page weight is over the blueprint's 150 KB target** (D-084): 157 KB
+  (home) to 195 KB (product page) before images; script 142 to 147 KB. The
+  check in CI stops it growing (ceilings 210 KB and 170 KB); bringing it
+  down (link prefetching, the RSC payload) is open work.
+- **One reviewed audit finding is tolerated in development tools only**:
+  picomatch GHSA-fc5q-39xc-vjpf (no fixed version exists). Its allow-list
+  entry expires on 31 December 2026, when CI fails until it is reviewed
+  again (`.github/security/npm-audit-allowlist.json`).
+- **`shop-screens.mjs` flaked once** in a local rehearsal on 18 November
+  2026: the review was saved (the API answered 201) but the journey did
+  not see "Your review is saved" within 30 seconds; the same journey,
+  re-run straight after, passed every step with no console errors. Watch
+  for it in CI; the likely cause is the page refreshing as the message
+  appears.
+- **The web CSP still allows inline scripts** (D-084): per-request nonces
+  would make every page dynamic; measure before changing.
 
 - **The browser journeys use the demo phones' sign-in codes**, five per phone
   per hour (`auth.otp_per_phone_per_hour`, working as designed). The admin
@@ -935,6 +992,54 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Security and CI session** (D-084), on `3a829d0`:
+
+```text
+# before any change, on c6be8ad
+$ uv run pytest -> 966 passed in 735.00s (0:12:15)
+# the new tests on the OLD code (fixes stashed, tests kept)
+$ uv run pytest tests/api/test_security_hardening.py -> 28 failed, 3 passed
+# the old sign-in check, given the attack values
+  "/\evil.example" -> browser goes to https://evil.example/ ; "/<tab>/evil.example" -> same
+# on the fixed code
+$ uv run pytest tests/api/test_security_hardening.py -> 31 passed
+$ uv run pytest -> 997 passed in 473.98s (0:07:53)
+  ruff check -> All checks passed!; ruff format --check -> 188 files already formatted
+  mypy markx -> no issues found in 124 source files; alembic check -> no new upgrade operations
+  check_openapi_copy --exact openapi.json -> matches the API exactly (no API change)
+$ npx vitest run src/lib/safe-next.test.ts -> 31 passed
+$ npm run lint -> clean; npm run typecheck -> clean; npm test -> 64 passed (8 files)
+$ npm run gen:api -> schema.d.ts unchanged; npm run build -> 66 pages
+$ uv run pip-audit -> No known vulnerabilities found
+$ node .github/scripts/npm-audit-gate.mjs apps/web
+  production: no known advisories; all: 1 high (picomatch, reviewed) -> passed
+  (with an empty allow-list -> exit 1; with an expired entry -> exit 1)
+$ docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml config --quiet -> valid
+  (without its variables it refuses, by design)
+# the Compose rehearsal: postgres, migrate, api from Compose; seed and worker
+# passes from the host; web production build with the new headers
+$ curl -i /api/v1/healthz -> 200, content-security-policy: default-src 'none'; frame-ancestors 'none'
+$ curl -I /en -> Content-Security-Policy, X-Frame-Options DENY, Permissions-Policy present
+$ node e2e/page-weight.mjs -> within budget (home 157.1 KB / 142.3 KB script ...
+  product 194.5 KB / 147.0 KB; sign-in 175.5 KB / 147.1 KB)
+$ node e2e/seller-dashboard.mjs, buyer-journey, staff-journey, admin-queues,
+  setup-and-account -> all passed, "console errors: none"
+$ node e2e/shop-screens.mjs -> failed once (see Known problems), then passed
+  every step, "console errors: none"
+# not run here: Gitleaks (downloading its binary was refused in this
+# workspace); it runs in CI. actionlint is not installed; the workflows were
+# parsed as YAML and checked on GitHub.
+```
+
+On GitHub, all on `3a829d0`: **CI #89** (push) and **CI #90** (pull
+request #1) passed every job: API, web, containers (including the new
+`--no-proxy-headers` check) and the new security job, where Gitleaks
+8.28.0 (checksum OK) scanned 89 commits, 5.43 MB, "no leaks found";
+pip-audit "No known vulnerabilities found"; the npm gate printed no
+production advisories and the one reviewed picomatch entry, "passed".
+**Browser journeys #9** passed in four minutes against Compose: the
+page-weight check and all six journeys.
 
 **Tenth session, fifth round** (D-083, provisional answers to F-01 to F-08):
 
@@ -1253,9 +1358,10 @@ end. Work in this order within each. Finish and push each step first.
    `apps/web/src` (the handoff gives the command). A new screen gets its line
    in the admin or seller `menu.ts` and `menu.test.ts`, its words in both
    message files, and a step in one of the browser journeys.
-4. The browser journeys run on GitHub when asked (D-081): push with
-   `[journeys]` in the commit message after changing a screen they cover,
-   and add a step to one of them for every new screen.
+4. The browser journeys run on GitHub on every code push (D-084); add a
+   step to one of them for every new screen. `[journeys]` is no longer
+   needed. Keep the page-weight check green, and bring the product page
+   towards the 150 KB target (D-084).
 5. With the back end: delivery speed as a search filter and "total cost to
    the door" as a sort (D.8; they need the buyer's zone in search), and the
    Telegram Mini App shell once the bot exists. A rating on the product
@@ -1264,6 +1370,10 @@ end. Work in this order within each. Finish and push each step first.
 
 **The back end:**
 
+0. **Recommended next: the real bot-check adapter (Cloudflare Turnstile)**
+   behind `BotCheck` in `core/botcheck.py`, with the widget on the sign-in
+   form (the web owner's part). Until it exists no real server can start
+   (D-084, SEC-2). It needs the founder to create a free Turnstile site key.
 1. When the founder confirms or changes an F- item (D-083): record it as a
    `D-` entry, change the code if the answer differs, and remove its
    `PROVISIONAL` marker and its line in `test_provisional_decisions.py`.
