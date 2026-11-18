@@ -14,7 +14,7 @@ domain.
 | --- | --- |
 | API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search, pictures, monitoring, the admin back end, reviews, reports, exports. Not built: Release 2 payments |
 | PostgreSQL | Schema for all of Release 1 (68 tables), three roles |
-| Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account, the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
+| Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account with its Telegram connection section (D-093), the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher, which carries notifications to Telegram and SMS with a delivery record per channel (D-092). **No real channel is connected**: no bot, no SMS provider, notification SMS off |
 | File storage | Built (D-090): one interface; local folders, MinIO, Amazon S3 and Cloudflare R2 by configuration. Tested against MinIO only; **no bucket or account exists** (F-01) |
 | Containers, CI | Built: a Compose file for a laptop with PostgreSQL and MinIO (D-058, D-090) and CI on every push |
@@ -450,6 +450,24 @@ Monitoring (`ops/checks.py`): `notifications.sms_budget`,
 `notifications.delivery_failures`, `notifications.channel_unavailable` and
 `notifications.stale`, next to the existing `sms.*` and `outbox.*` checks.
 
+### Connecting Telegram (D-093)
+
+`markx/accounts/telegram_link.py`. A person proves they control a Telegram
+account before it is linked to theirs: `POST /me/telegram/link` stores a
+keyed hash of a random one-time token (bound to the account and session,
+10 minutes, one pending per account) and returns a `t.me/<bot>?start=<token>`
+link; the bot's `/start <token>` reaches `POST /telegram/webhook`,
+authenticated by the `X-Telegram-Bot-Api-Secret-Token` header and
+deduplicated by update id (`telegram_updates`), which links the sender's
+Telegram id under the user's row lock and an advisory lock per Telegram
+account, with `users.telegram_id` unique as the backstop. `GET` and
+`DELETE /me/telegram` report and disconnect. The Mini App's signed link
+(`POST /me/telegram`) shares the same rules. Everything except disconnecting
+is off unless `MARKX_TELEGRAM_LINKING_ENABLED` and its two settings are set.
+Linking changes no notification already recorded; delivery reads
+`users.telegram_id` at each attempt, so a disconnect stops the next message.
+The protocol and the activation steps: `docs/runbooks/telegram-linking.md`.
+
 ## Outside services
 
 Each sits behind an adapter with a fake used in tests (blueprint F.0).
@@ -460,6 +478,7 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | Telegram push | `markx/notifications/push.py` | Fake, and a Bot API adapter tested against stand-ins only (D-092). **No bot exists**; a real server uses none and records every Telegram delivery `unavailable` |
 | Bot check | `markx/core/botcheck.py` | **Cloudflare Turnstile** built and tested against stand-ins, **not yet against Cloudflare** (no keys yet; D-085). The development check on a laptop and in tests only; a real server refuses to start with it (D-084). Widget: `apps/web/src/components/TurnstileWidget.tsx` |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
+| Telegram linking webhook | `markx/accounts/telegram_link.py` | Built and OFF (D-093); tested by calling it as Telegram would, never by Telegram. No webhook registered |
 | Private file storage | `markx/core/storage.py` | Local disk, MinIO, Amazon S3, Cloudflare R2 (D-090). **Tested against MinIO only**; no S3 or R2 bucket exists (F-01). A real server refuses to start without `s3` or `r2` |
 | Public picture storage | `markx/core/storage.py` | The same adapters, a second bucket. No CDN or picture domain yet (F-15) |
 | Alerts to Telegram | `markx/ops/alerts.py` | Built; tested against a stand-in; no group or bot yet |

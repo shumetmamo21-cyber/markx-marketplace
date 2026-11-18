@@ -14,6 +14,7 @@ rehearsal is possible, and says so.
 | [backup-and-restore.md](backup-and-restore.md) | Daily backups, the monthly drill, and recovering the database |
 | [tls-certificates.md](tls-certificates.md) | Getting and renewing the site's certificate |
 | [secret-rotation.md](secret-rotation.md) | Changing a password or key |
+| [telegram-linking.md](telegram-linking.md) | Connecting people's Telegram accounts: the protocol, and switching it on once the founder authorises the bot (D-093) |
 
 Rules that hold in every runbook (AGENTS.md):
 

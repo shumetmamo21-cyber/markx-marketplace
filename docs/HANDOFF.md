@@ -15,6 +15,20 @@ the checks actually printed.
 
 ---
 
+# Part A.000000 — Connecting Telegram (18 November 2026, D-093)
+
+Recorded, like the sessions before it, in `docs/DEVELOPMENT_STATUS.md` and
+`docs/DECISIONS.md` (D-093). In short: a signed-in person can connect their
+own Telegram account from the account page with a one-time link that the
+MarkX bot confirms through a secret-checked webhook, see the state in
+Amharic or English, and disconnect at any time. **It is switched off by
+default; no bot exists, no webhook is registered, nothing was sent to or
+received from Telegram, and no notification was enabled.** Seller
+notifications remain a launch blocker. Switching it on is a future task
+that needs the founder's approval: `docs/runbooks/telegram-linking.md`.
+
+---
+
 # Part A.00000 — The production deployment foundation (18 November 2026, D-091)
 
 Later sessions (D-084 to D-090) recorded their reports in

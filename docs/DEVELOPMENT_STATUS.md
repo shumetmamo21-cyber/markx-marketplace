@@ -1,6 +1,19 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **notification system session**
+**Last updated:** 18 November 2026, by the **Telegram account connection
+session** (D-093): a signed-in person can connect their own Telegram
+account with a one-time link that the bot's `/start` confirms through a
+secret-checked webhook (`POST /me/telegram/link`, `POST /telegram/webhook`,
+`GET`/`DELETE /me/telegram`; migration `0017`), with the token stored only as
+a keyed hash, single-use, ten minutes, bound to the account and its sign-in
+session; one MarkX account per Telegram account under locks and the unique
+constraint; replays, duplicates and anything but `/start` in a private chat
+ignored; the account page's section in Amharic and English for every state,
+and a card on the seller overview. **The whole feature is OFF by default
+(`MARKX_TELEGRAM_LINKING_ENABLED=false`); no bot exists, no webhook is
+registered and nothing was sent to or received from Telegram. Seller
+notifications remain a launch blocker** (N-1). Before it, the
+**notification system session**
 (D-092, N-1): the audit's defect fixed first — `get_push_sender()` raised on
 staging and production, so every notification for a person with Telegram
 linked was retried eight times and given up; now a missing provider is
@@ -172,7 +185,7 @@ pictures, problem photos) go through one storage interface that works with
 the local folders, MinIO, Amazon S3 or Cloudflare R2 by configuration
 (D-090), tested against MinIO; no S3 or R2 bucket exists yet (F-01). **Not
 built:** Telegram sign-in and the bot (they need the bot the founder
-creates), deployment. Nothing is deployed anywhere.
+creates); Telegram *linking* is built and switched off (D-093), deployment. Nothing is deployed anywhere.
 
 ## Sessions so far
 
@@ -187,6 +200,7 @@ creates), deployment. Nothing is deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| Telegram account connection (D-093) | the commits after `366f8f9`; see `git log` | `markx/accounts/telegram_link.py`: the one-time link, the webhook, status and disconnect; migration `0017` (`telegram_link_tokens`, `telegram_updates`, `users.telegram_linked_at`/`telegram_unlinked_at`); `MARKX_TELEGRAM_LINKING_ENABLED` and its settings (off); the Mini App link behind the same switch; `TelegramConnection.tsx`, `lib/telegram.ts`, the seller overview card; `tests/api/test_telegram_linking.py`; `e2e/telegram-connection.mjs` in the journeys. Nothing connected |
 | Notification system (D-092, N-1) | the commits after `bd091bd`; see `git log` | The push-provider defect fixed; `notification_deliveries` and `seller_order_reminders` (migration `0016`); `notifications/delivery.py`, `texts.py`, the Bot API adapter; notification SMS (off), its budget, limit and cooldown; the deadline reminder job; `dispute.decided`; four `notifications.*` watch checks; `MARKX_TELEGRAM_PUSH_PROVIDER`; `tests/api/test_notification_delivery.py`. Nothing connected |
 | Production deployment foundation (D-091) | the commits after `a9941d2`; see `git log` | API and web production images, `infra/production/` (Compose, nginx, env templates, `deploy.sh`, the rehearsal), `markx/ops/health.py` and `preflight.py`, the worker heartbeat, the migration lock, stricter real-server configuration, the web start-up check and address forwarding, `bootstrap.sh` keeping real passwords, `check_reachable` on a missing bucket, `docs/DEPLOYMENT.md`, `docs/runbooks/`, CI's web image and rehearsal jobs. No migration |
 | Object storage (D-090) | the commit after `d4a29af`; see `git log` | `ObjectStore` with `local`, `minio`, `s3` and `r2` (boto3), the start-up checks, `file_storage` watch check, `scripts/copy_files_to_object_storage.py`, MinIO in Compose, CI and the journeys, `tests/storage/` (136 tests). No migration |
@@ -305,6 +319,15 @@ All of it is in `apps/api`. Test command and result are at the end.
   looks the same to the caller.
 - **Telegram.** Signature and timestamp of Mini App start-up data verified on
   the server; linking one Telegram identity to one account.
+- **Connecting Telegram (D-093), OFF by default.** A one-time link
+  (`POST /me/telegram/link`: 256-bit token, keyed hash only, ten minutes,
+  single-use, bound to the account and session, one pending per account),
+  completed by the bot's `/start <token>` through `POST /telegram/webhook`
+  (secret header checked before the body is read; update ids deduplicated;
+  only `/start` in a private chat from a person acts; rate limits), status
+  and disconnect (`GET`/`DELETE /me/telegram`; disconnecting always works).
+  Tested with the webhook called as Telegram would call it; **never by
+  Telegram**.
 - **Permission tables** of blueprint C.3 and C.4, in code, with a test for
   every one of the 140 cells.
 
@@ -931,6 +954,11 @@ Be careful with these. They were written and never exercised.
   `seller_metrics_daily`; neither table exists in the schema. D-073.)
 - `TelegramAlertSender` is tested against a stand-in for Telegram's API,
   never against Telegram itself (no bot or group exists yet).
+- **The Telegram linking webhook** (D-093) is tested by calling it the way
+  Telegram would, with test-only values, in the API tests and the browser
+  journey; **Telegram has never called it** and no webhook is registered.
+  The reply carried in the webhook response, and the update shapes, follow
+  the Bot API as known when written.
 - **The `s3` and `r2` storage adapters** (D-090) are tested against MinIO,
   which speaks the same S3 API, and their configuration (endpoint, region,
   addressing, encryption header) is checked without a network; **they have
@@ -942,7 +970,8 @@ Be careful with these. They were written and never exercised.
 
 ## What does not exist
 
-- On the web: Telegram sign-in and linking (the bot does not exist yet).
+- On the web: Telegram sign-in (the bot does not exist yet). Connecting
+  Telegram is built and switched off (D-093).
   Every other route a person uses has its screen (D-070 to D-078); the
   remaining unused routes are the development SMS inbox, the health checks
   and the file links the API hands out.
@@ -1031,6 +1060,11 @@ Be careful with these. They were written and never exercised.
   learns of an order only in the dashboard, and an unanswered order expires
   in 30 business minutes. MarkX must not launch until at least one channel
   is connected and a real alert has reached a seller's phone.
+- **Connecting Telegram is untested against Telegram** (D-093) and off. A
+  notification already being sent at the moment someone disconnects may
+  still go out once; notifications recorded `skipped` or `unavailable`
+  before someone connected are never resent (a resend tool is a separate
+  task); staff have no screen to disconnect someone.
 - **Duplicates and losses are possible by design** (D-092): a worker that
   dies just after Telegram accepted a message sends it again; one that dies
   around an SMS send records it `unknown` and never resends it (it may be
@@ -1953,9 +1987,10 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0013` | `20261118_0700_paid_orders_never_end_undelivered.py` | `ck_seller_orders_paid_order_not_ended_undelivered`: a part with a recorded payment never ends declined, expired, cancelled or returned (D-086). Checks existing rows; deletes nothing |
 | `0014` | `20261118_0800_payment_recorded_at_handover.py` | `trg_seller_orders_payment_at_handover`: a direct payment is recorded only while the part is delivered, completed or disputed; checks only the moment of recording, so existing records are kept and still move on (D-087) |
 | `0016` | `20261118_1645_notification_deliveries_and_order_reminders.py` | `notification_deliveries`: one row per notification and outside channel (unique), its status and reason, never text or a number; `seller_order_reminders`: a reminder sent once per seller order and kind (D-092). Two new tables only |
+| `0017` | `20261118_1752_telegram_account_linking.py` | `telegram_link_tokens` (keyed hash of a one-time token, account, session, expiry, status and failure reason; one pending per account; CHECKs pairing status, end time and reason) and `telegram_updates` (handled update ids); `users.telegram_linked_at` (set exactly when `telegram_id` is, by a CHECK; existing links given their `updated_at`) and `users.telegram_unlinked_at` (D-093) |
 | `0015` | `20261118_1014_sms_delivery_records.py` | `sms_messages`: one delivery record per SMS, with its CHECKs (purpose and reference agree, a failure has its error code, a 32-byte keyed hash of the number, no text or code column) and three indexes (D-089). A new table only; nothing existing changed |
 
-The schema has 72 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`). P9 and P10 needed no new table and no migration at
+The schema has 74 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`, `telegram_link_tokens`, `telegram_updates`). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
@@ -1986,18 +2021,17 @@ end. Work in this order within each. Finish and push each step first.
 
 1. The founder decides N-1 (Telegram, SMS or both) and creates the bot or
    chooses the SMS provider. Nothing in the code may be switched on before.
-2. **The recommended next engineering task, needing no account: the
-   Telegram bot's linking flow on the web** — the "Connect Telegram" button
-   on the account and seller pages calling the existing `POST /me/telegram`,
-   behind a configuration switch that stays off until the bot exists, plus
-   the bot's incoming-update webhook skeleton (verified by Telegram's secret
-   token header) tested against stand-ins. Without linking, a Telegram
-   provider alone reaches nobody.
-3. Then with the founder: `MARKX_TELEGRAM_PUSH_PROVIDER=bot_api` and the
-   token, re-reading the Bot API documentation (its host was not reachable
-   from the D-092 session), and/or F-11's SMS wire format, then the
-   activation steps in `docs/DEPLOYMENT.md` and one real alert to the
-   founder's own phone with permission.
+2. **Done (D-093): connecting Telegram**, built and OFF. With the founder's
+   approval only: create the bot, set the four Telegram settings and
+   `MARKX_TELEGRAM_PUSH_PROVIDER=bot_api`, register the webhook, connect the
+   founder's own Telegram and receive one real order alert, exactly as in
+   `docs/runbooks/telegram-linking.md`; re-read the Bot API documentation
+   first (neither session could reach it). And/or F-11's SMS wire format,
+   then the activation steps in `docs/DEPLOYMENT.md`.
+3. Engineering that needs no account: a staff tool to disconnect a person's
+   Telegram (for a lost account), and a deliberate, audited manual resend of
+   an order alert that was `unavailable`, if the founder wants one (never
+   automatic).
 4. Founder items attached: retention of delivery records (with F-12) and a
    native speaker's review of the outside texts (`notifications/texts.py`).
 
@@ -2036,8 +2070,8 @@ end. Work in this order within each. Finish and push each step first.
    routes: `cd apps/api && uv run python -m scripts.export_openapi
    ../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
    (D-061). Session ten did this; it was current at its last commit.
-3. Every route a person uses has its screen (D-070 to D-078) except
-   Telegram sign-in and linking, which wait for the bot (founder). To check
+3. Every route a person uses has its screen (D-070 to D-078, D-093) except
+   Telegram sign-in, which waits for the bot (founder). To check
    again, compare `apps/api/openapi.json` with the `/api/v1/...` paths in
    `apps/web/src` (the handoff gives the command). A new screen gets its line
    in the admin or seller `menu.ts` and `menu.test.ts`, its words in both

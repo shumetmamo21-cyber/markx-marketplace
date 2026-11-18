@@ -131,6 +131,10 @@ never a value, if a rule below is broken (**Tested**:
 | `MARKX_PUBLIC_MEDIA_BASE_URL` | no | `https://` on a host other than the site's (F.6). **Founder** (F-15) |
 | `MARKX_TELEGRAM_BOT_TOKEN`, `MARKX_ALERT_TELEGRAM_CHAT_ID` | the token | optional; without both, alerts reach only the log and the API and worker say so at start-up (new). **Founder** |
 | `MARKX_TELEGRAM_PUSH_PROVIDER`, `MARKX_TELEGRAM_PUSH_TIMEOUT_SECONDS` | no (the token above is) | unset or `none` today: no bot exists, every Telegram delivery is recorded `unavailable` and a start-up warning says so; `fake` is refused; `bot_api` needs `MARKX_TELEGRAM_BOT_TOKEN` (D-092). **Founder** (N-1) |
+| `MARKX_TELEGRAM_LINKING_ENABLED` | no | `false` (default): connecting Telegram is off, the webhook answers 404. `true` needs the two below or the API refuses to start (D-093). **Founder** (N-1) |
+| `MARKX_TELEGRAM_BOT_USERNAME` | no | the bot's username without `@`; required when linking is on |
+| `MARKX_TELEGRAM_WEBHOOK_SECRET` | **yes** | 32 to 256 of `A-Z a-z 0-9 _ -`, repeated by Telegram in `X-Telegram-Bot-Api-Secret-Token`; required when linking is on; test or development values refused (D-093) |
+| `MARKX_TELEGRAM_LINK_TTL_MINUTES` | no | `10` (2 to 30): how long a connection link works |
 | `MARKX_ALLOW_NEWER_SCHEMA` | no | only during an acknowledged rollback (`docs/runbooks/rollback.md`; new) |
 | `MARKX_WORKER_HEARTBEAT_FILE` | no | set by the Compose file for the worker (new) |
 | `MARKX_DB_POOL_SIZE`, `MARKX_DB_MAX_OVERFLOW`, `MARKX_STORAGE_*_TIMEOUT_SECONDS`, `MARKX_STORAGE_MAX_OBJECT_BYTES`, `MARKX_STORAGE_SERVER_SIDE_ENCRYPTION`, `MARKX_SMS_TIMEOUT_SECONDS`, `MARKX_TURNSTILE_TIMEOUT_SECONDS`, `MARKX_*_SESSION_*_MINUTES`, `MARKX_TOTP_ISSUER`, `MARKX_WORKER_POLL_SECONDS` | no | defaults are the intended values |
@@ -229,9 +233,10 @@ real order alert has been received on a seller's phone. To activate:
 1. The founder decides N-1 (Telegram, SMS or both) and creates the bot
    and/or chooses the SMS provider (F-11) and approves the cost.
 2. Telegram: set `MARKX_TELEGRAM_BOT_TOKEN` and
-   `MARKX_TELEGRAM_PUSH_PROVIDER=bot_api`. A seller must link Telegram once:
-   the API route is built (`POST /me/telegram`, signature-checked), the web
-   button is not (it needs the bot's login widget). SMS: configure the
+   `MARKX_TELEGRAM_PUSH_PROVIDER=bot_api`. A seller must connect Telegram
+   once: the one-time link, the webhook and the account page's section are
+   built and OFF (D-093); switching them on and registering the webhook are
+   in `docs/runbooks/telegram-linking.md`. SMS: configure the
    provider (D-089), then a super administrator turns on
    `notifications.sms_enabled` and sets `notifications.sms_daily_budget`.
 3. Place a test order to a store the founder owns and confirm the alert

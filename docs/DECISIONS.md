@@ -2938,6 +2938,126 @@ provider chosen, nothing sent, nothing deployed, no paid service. Retention
 of delivery records is not set (as F-12). Delivery reports (webhooks) do not
 exist, so `accepted` is the last word.
 
+## D-093 Connecting a person's Telegram: a one-time link through the bot, a secret-checked webhook, off by default
+
+**Follows** blueprint D.2 ("one Telegram identity per account"), D.16, F.4,
+the route `/telegram/webhook` of section F, and D-092's next task. **Built and
+tested locally and in CI only. No bot exists, no webhook is registered,
+nothing was sent to or received from Telegram, and the feature is OFF by
+default everywhere.** Seller notifications remain a launch blocker (N-1).
+Protocol, settings and activation steps: `docs/runbooks/telegram-linking.md`.
+
+**Why a bot link, not the existing route alone.** `POST /me/telegram`
+links from a Mini App's start-up data, which Telegram signs with the bot
+token; it is secure, but it only works inside Telegram's Mini App, which is
+not built. A seller on the website needs a way to prove control of a
+Telegram account from a phone's browser. Telegram's deep link
+(`t.me/<bot>?start=<payload>`) sends the bot `/start <payload>` *from* the
+account that opened it, and Telegram, not the person, states who sent it.
+So the payload is a one-time token MarkX made for the signed-in account,
+and the webhook links the sender of that token. The Login Widget was
+considered and not used: it needs the bot's domain set with BotFather and a
+third-party script on our page (the CSP allows none), and gives nothing the
+deep link does not.
+
+**The token.** `secrets.token_urlsafe(32)` (256 bits, 43 characters that
+Telegram allows in a start parameter). Only `HMAC-SHA256(MARKX_SECRET_KEY,
+token)` is stored (`telegram_link_tokens.token_hash`, exactly 32 bytes by
+constraint), with the account, the session that asked, the expiry
+(`MARKX_TELEGRAM_LINK_TTL_MINUTES`, 10 by default) and how it ended. One
+pending link per account (partial unique index); asking again revokes the
+earlier one. Any use ends it, linked or refused, so a replay is "not valid".
+At completion the account must still be active and the asking session not
+signed out or expired. The token is returned once, in the creating
+response, and never logged, audited or shown again.
+
+**One Telegram account, one MarkX account.** `users.telegram_id` was already
+unique. Completion locks the user row (`FOR NO KEY UPDATE`, D-027) and takes
+an advisory lock per Telegram id (`0x4D585447`, "MXTG"), so two accounts
+linking one Telegram account at once serialise; the unique constraint inside
+a savepoint is the backstop. An account already connected must disconnect
+before connecting another (409 `telegram_already_connected`). Locks are taken
+in one order everywhere: the user's row, then their links, then the
+Telegram account's advisory lock. The first version locked the link before
+the user during completion; a person asking for a new link at the moment
+Telegram confirmed the old one deadlocked (found in review, reproduced by a
+contention test that failed on that order and passes now).
+
+**Not leaking who is linked.** A refused link says the same thing whatever
+the reason, in the bot and on the page ("could not be connected; if it is
+connected to another MarkX account, disconnect it there first"). The
+existing Mini App route said "linked to another number"; it now gives one
+message for both refusals and keeps its code `telegram_already_linked` (its
+existing test is unchanged and a new one checks the messages match).
+
+**The webhook.** `POST /api/v1/telegram/webhook` checks
+`X-Telegram-Bot-Api-Secret-Token` in constant time before reading the body
+(401; 429 after 30 refusals an hour per address), accepts at most 64 KiB of
+JSON with a positive integer `update_id`, records each update id once
+(`telegram_updates`; a repeat answers `{"ok": true}`), and acts only on
+`message` in a private chat from a person whose chat id is the sender's id,
+whose text is exactly `/start` or `/start <payload>`. Everything else is
+acknowledged and ignored, so Telegram does not resend it and nothing
+changes. 20 attempts an hour per Telegram account (keyed by a hash of the
+id, so the rate-limit table does not hold Telegram ids). The bot's answer
+travels in the webhook response (`{"method": "sendMessage", ...}`), so
+linking makes no outbound call to Telegram. The path is the first entry in
+`CSRF_EXEMPT_PATHS` (SEC-6): the parametrised test that listed it among
+paths that must *not* be exempt now lists `/api/v1/telegram/webhook/`
+instead, and `test_every_exempt_path_is_an_exact_existing_route` now reads
+the API's routes from the OpenAPI paths, because `app.routes` lists the
+`/api/v1` router as one nested entry and the test had been passing without
+looking at any API route.
+
+**The switch.** `MARKX_TELEGRAM_LINKING_ENABLED` (default `false`) with
+`MARKX_TELEGRAM_BOT_USERNAME` and `MARKX_TELEGRAM_WEBHOOK_SECRET` (SecretStr,
+32 to 256 characters), all three required together or the API refuses to
+start; staging and production also refuse a webhook secret containing
+`dev-only`, `test-only` or `change-me`. Off: the link is 503
+`telegram_linking_unavailable`, the webhook 404 (it does not exist), the Mini
+App link 503 too, and the page offers no button. **Disconnecting always
+works.** Environment variables rather than a `settings` row because turning
+it on needs the secret and the bot, which are server configuration, and a
+staff switch could not supply them.
+
+**Notifications.** Linking only sets `users.telegram_id`; it sends nothing.
+A message reaches Telegram only while `MARKX_TELEGRAM_PUSH_PROVIDER` is
+`bot_api` (D-092); the status's `telegram_messages_on` says whether any
+provider carries messages, so the page never implies messages that are not
+sent. Connecting does not resend anything recorded `skipped` or
+`unavailable` before; disconnecting makes the next delivery `skipped` /
+`no_telegram_linked`. A manual resend is a separate task.
+
+**Schema (migration `0017`).** `telegram_link_tokens`, `telegram_updates`,
+`users.telegram_linked_at` (set exactly when `telegram_id` is, by a new
+constraint; existing linked rows were given their `updated_at`) and
+`users.telegram_unlinked_at` (so the page can say "disconnected"). Two test
+helpers that arrange a linked person by writing `telegram_id` directly now
+set `telegram_linked_at` too; no assertion changed. Retention: update ids
+after 7 days, links 30 days after creation, in `retention.prune`, as fixed
+periods (neither table is a record anyone reads later).
+
+**Who may do it.** Every route acts on the caller's own account; none takes
+another person's id. Starting a link needs a customer session (a staff
+session gets 403 `customer_session_required`). Store owners cannot see or
+change a team member's connection, and no store screen shows one. The audit
+log records `telegram.link_requested`, `telegram.linked` (method
+`bot_link` or `mini_app`), `telegram.link_refused` (reason) and
+`telegram.unlinked`, never a token or Telegram id.
+
+**The web app.** The account page's "Telegram messages" section shows every
+state; while a link waits it polls `GET /me/telegram` every three seconds and
+when the tab regains focus, and announces "Telegram is connected." in a
+live region. The link opens with `rel="noopener noreferrer"`, and only a
+`https://t.me/<name>?start=<token>` link is ever shown. The seller overview
+has a card with the person's own state and a link to the section.
+
+**Not done.** No bot, no `setWebhook`, no real message; the reply-in-response
+form and the update shapes are as known when written and must be re-read
+against Telegram's documentation when the bot is connected. No staff tool
+to disconnect someone; no Telegram sign-in on the web; no resend of old
+notifications; the bot's texts need a native speaker's review.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
