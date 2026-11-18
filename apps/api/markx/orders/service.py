@@ -1864,9 +1864,12 @@ def resolve_dispute(
     goes back on sale if staff say the goods went back to the shop, and
     leaves the shop's count otherwise (D-049).
     """
-    now = now or _now()
     assert actor.user_id is not None, "a dispute is decided by a signed-in member of staff"
     seller_order = _lock_seller_order(db, seller_order_id)
+    # The clock is read once this decision holds the order, so `resolved_at`
+    # is the moment it took effect: a reply that got the lock first is always
+    # stamped before it, never after.
+    now = now or _now()
     if seller_order.status != SellerOrderStatus.DISPUTED:
         raise Conflict("order_not_disputed", "No problem is waiting for a decision on this order.")
     case = dispute_case(db, seller_order.id)
