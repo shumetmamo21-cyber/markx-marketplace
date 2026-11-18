@@ -51,7 +51,14 @@ const securityHeaders = [
   ...(/^\d+$/.test(hstsMaxAge) ? [{ key: "Strict-Transport-Security", value: `max-age=${hstsMaxAge}` }] : []),
 ];
 
+// The production image (apps/web/Dockerfile, D-091) builds the minimal
+// self-contained server; `npm run build` and `npm run start` on a laptop and
+// in CI keep the ordinary output, which `next start` needs. Like everything in
+// this file, it is decided at build time.
+const standalone = process.env.MARKX_NEXT_OUTPUT === "standalone";
+
 const nextConfig: NextConfig = {
+  ...(standalone ? { output: "standalone" as const } : {}),
   poweredByHeader: false,
   reactStrictMode: true,
   async rewrites() {

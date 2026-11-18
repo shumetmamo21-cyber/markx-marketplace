@@ -1,0 +1,10 @@
+# Only what the image needs; never a local env file or build output.
+.env
+.env.*
+node_modules
+.next
+out
+build
+e2e
+*.tsbuildinfo
+next-env.d.ts
