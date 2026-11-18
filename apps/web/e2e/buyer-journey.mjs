@@ -112,4 +112,5 @@ async function code(page, phone) {
   await buyer.screenshot({ path: (process.argv[2] || '.') + '/order-done.png', fullPage: true });
   console.log('console errors:', errors.length ? errors : 'none');
   await browser.close();
+  if (errors.length) process.exit(1);
 })().catch((e) => { console.error('FAILED', e.message); process.exit(1); });

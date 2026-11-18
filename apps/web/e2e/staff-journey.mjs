@@ -172,4 +172,5 @@ async function signIn(page, phone) {
   console.log('  and the admin API answers the buyer', asAdmin.status, asAdmin.body.error?.code);
   console.log('console errors:', errors.length ? errors : 'none');
   await browser.close();
+  if (errors.length) process.exit(1);
 })().catch((e) => { console.error('FAILED', e.message); process.exit(1); });
