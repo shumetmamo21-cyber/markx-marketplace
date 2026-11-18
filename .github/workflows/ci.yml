@@ -41,6 +41,8 @@ jobs:
         env:
           MINIO_ROOT_USER: markx-dev-only
           MINIO_ROOT_PASSWORD: markx-minio-dev-only-password
+          # D-094: the recovery drill's file stores and its backup destination.
+          MINIO_DEFAULT_BUCKETS: markx-private,markx-public,markx-backups
         ports:
           - 9000:9000
         options: >-
@@ -57,6 +59,13 @@ jobs:
       MARKX_TEST_MINIO_SECRET_KEY: markx-minio-dev-only-password
       # A missing MinIO fails the run here instead of skipping its tests.
       MARKX_TEST_MINIO_REQUIRED: "1"
+      # D-094: the backup tests need PostgreSQL 17's client tools; the runner's
+      # own are older, so the server's image runs them. Missing tools fail the
+      # run instead of skipping the tests.
+      MARKX_TEST_PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_dump
+      MARKX_TEST_PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_restore
+      MARKX_TEST_PSQL: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 psql
+      MARKX_TEST_BACKUP_REQUIRED: "1"
     defaults:
       run:
         working-directory: apps/api
@@ -90,18 +99,57 @@ jobs:
         run: uv run python -m scripts.check_openapi_copy --exact openapi.json
       - name: The web app's copy of the API description is still true
         run: uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
-      # D-063: an encrypted backup of a database with data in it restores
-      # into a new database with every row and every protection. The client
-      # tools come from the same postgres:17 image as the server.
-      - name: Backup and restore drill
+      # D-094: the recovery drill on the demo data, end to end: a backup set
+      # (database and files) encrypted and uploaded to a MinIO backup bucket,
+      # verified, restored into a NEW database and NEW buckets, compared, and
+      # seven injected faults each refused. Keys are made for this run only.
+      # Nothing here reaches a real provider.
+      - name: Backup, off-server copy and recovery drill (MinIO stand-in)
         env:
-          PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:17 pg_dump
-          PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:17 pg_restore
-          PSQL: docker run --rm -i --network host -e PGHOST -e PGUSER -e PGPASSWORD postgres:17 psql
+          MARKX_FILE_STORAGE_PROVIDER: minio
+          MARKX_STORAGE_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_STORAGE_ACCESS_KEY_ID: markx-dev-only
+          MARKX_STORAGE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+          MARKX_STORAGE_PRIVATE_BUCKET: markx-private
+          MARKX_STORAGE_PUBLIC_BUCKET: markx-public
+          MARKX_RELEASE: ${{ github.sha }}
+          MARKX_BACKUP_DATABASE: markx
+          MARKX_BACKUP_PG_DUMP_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_dump
+          MARKX_BACKUP_PG_RESTORE_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_restore
+          MARKX_BACKUP_PSQL_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 psql
+          MARKX_BACKUP_DESTINATION: minio
+          MARKX_BACKUP_DESTINATION_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_BACKUP_DESTINATION_BUCKET: markx-backups
+          MARKX_BACKUP_DESTINATION_PREFIX: markx/ci
+          MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID: markx-dev-only
+          MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+          MARKX_BACKUP_SOURCE_PROVIDER: minio
+          MARKX_BACKUP_SOURCE_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_BACKUP_SOURCE_PRIVATE_BUCKET: markx-private
+          MARKX_BACKUP_SOURCE_PUBLIC_BUCKET: markx-public
+          MARKX_BACKUP_SOURCE_ACCESS_KEY_ID: markx-dev-only
+          MARKX_BACKUP_SOURCE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
         run: |
           uv run python -m scripts.seed_demo > /dev/null
-          head -c 48 /dev/urandom | base64 > "$RUNNER_TEMP/backup.key"
-          MARKX_BACKUP_PASSPHRASE_FILE="$RUNNER_TEMP/backup.key" ../../infra/backup/drill.sh markx
+          keys="$RUNNER_TEMP/backup-keys"
+          uv run python -m markx.backup keygen --out "$keys" > /dev/null
+          export MARKX_BACKUP_PUBLIC_KEY_FILE="$keys/backup-public.key" MARKX_BACKUP_SIGNING_KEY_FILE="$keys/signing.key"
+          export MARKX_BACKUP_WORK_DIR="$RUNNER_TEMP/backup-work"
+          uv run python -m markx.backup drill --seed-sample-files \
+            --recovery-key "$keys/recovery.key" --signer "$keys/signer-public.key" \
+            --report "$RUNNER_TEMP/restore-drill-report.json" | tee "$RUNNER_TEMP/restore-drill.txt"
+          grep -q "DRILL PASSED" "$RUNNER_TEMP/restore-drill.txt"
+          rm -rf "$keys"
+      - name: Keep the restore drill's report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-drill
+          path: |
+            ${{ runner.temp }}/restore-drill-report.json
+            ${{ runner.temp }}/restore-drill.txt
+          if-no-files-found: warn
+          retention-days: 30
 
   web:
     name: Web app (lint, types, unit tests, build)
@@ -202,6 +250,15 @@ jobs:
         run: |
           docker run --rm markx-api:ci python -c "import markx.worker.runner, markx.main"
           docker run --rm markx-api:ci alembic --help > /dev/null
+      # D-094: the backup service's image: the API's code plus PostgreSQL 17's
+      # client tools, unprivileged, its commands loading.
+      - name: The backup image builds, runs unprivileged and holds PostgreSQL 17's tools
+        run: |
+          docker build --target backup -t markx-backup:ci apps/api
+          [[ "$(docker run --rm markx-backup:ci id -u)" != 0 ]]
+          docker run --rm markx-backup:ci pg_dump --version | grep -q "PostgreSQL) 17\."
+          docker run --rm markx-backup:ci pg_restore --version | grep -q "PostgreSQL) 17\."
+          docker run --rm markx-backup:ci python -m markx.backup --help > /dev/null
       # D-091: the production Compose file with the example settings, and the
       # web image (standalone build, unprivileged, no development tools).
       - name: The production Compose file is valid with the example settings

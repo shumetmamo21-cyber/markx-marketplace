@@ -8,10 +8,10 @@
 #   infra/production/deploy.sh check              the server is set up correctly
 #   infra/production/deploy.sh deploy RELEASE     build, check, back up, migrate, start, verify
 #   infra/production/deploy.sh rollback RELEASE   start an earlier release's images again
-#   infra/production/deploy.sh backup             one encrypted dump now
+#   infra/production/deploy.sh backup             one verified, encrypted backup set now
 #   infra/production/deploy.sh status             containers and health
 #
-# RELEASE names the images (markx/api:RELEASE, markx/web:RELEASE): use the
+# RELEASE names the images (markx/api, markx/web, markx/backup:RELEASE): use the
 # Git commit being deployed (git rev-parse --short HEAD). Every release
 # deployed is appended to $MARKX_CONFIG_DIR/releases.log.
 #
@@ -95,9 +95,17 @@ cmd_check() {
       bad=1
     fi
   done
-  check_file "$config_dir/backup.key" 999 400 "the backup passphrase, read by the backup container" || bad=1
-  if [[ -f "$config_dir/backup.key" ]] && (( $(wc -c < "$config_dir/backup.key") < 32 )); then
-    say "  UNSAFE   $config_dir/backup.key is shorter than 32 characters"; bad=1
+  # D-094: the server holds the PUBLIC half of the recovery key and the
+  # signing key; the recovery key itself must never be on it.
+  check_file "$config_dir/backup-signing.key" 999 400 "the backup signing key (python -m markx.backup keygen)" || bad=1
+  check_file "$config_dir/backup-public.key" 0 644 "the recovery key's PUBLIC half (keygen's backup-public.key)" || bad=1
+  if grep -rlq "MARKX-BACKUP-RECOVERY-KEY" "$config_dir" 2>/dev/null; then
+    say "  UNSAFE   a backup RECOVERY key is on this server ($config_dir); it belongs off the server"
+    bad=1
+  fi
+  if [[ -f "$config_dir/backup.key" ]]; then
+    say "  note     $config_dir/backup.key is the retired passphrase (D-063); keep it only while"
+    say "           legacy .dump.enc files may need restore-legacy-cbc.sh, then remove it"
   fi
   if placeholders_in "$compose_env" && [[ "$stage" != local ]]; then
     say "  UNSAFE   $compose_env still holds an example hostname (example.invalid)"; bad=1
@@ -125,8 +133,16 @@ preflight() { # extra arguments for markx.ops.preflight
 }
 
 backup_now() {
-  say "== an encrypted backup before anything changes"
-  compose run --rm --no-deps -T --entrypoint /markx-backup/backup.sh backup markx
+  say "== a verified, encrypted backup set before anything changes"
+  # Exit 3: the nightly backup is running right now; wait for it, then take our own.
+  local tries=0 status
+  while true; do
+    status=0
+    compose run --rm --no-deps -T backup python -m markx.backup run || status=$?
+    [[ $status -eq 0 ]] && return 0
+    [[ $status -eq 3 && $tries -lt 20 ]] || fail "the backup failed (exit $status); nothing was changed"
+    tries=$((tries + 1)); say "   another backup is running; waiting 30 s"; sleep 30
+  done
 }
 
 record() { # what, release
@@ -149,7 +165,7 @@ cmd_deploy() {
   require_release "${1:-}"
   cmd_check
   say "== build release $MARKX_RELEASE"
-  compose build api web
+  compose build api web backup
   say "== the new release's configuration check"
   preflight --config-only
   say "== the database"
@@ -197,7 +213,10 @@ case "$command" in
   check) MARKX_RELEASE="${MARKX_RELEASE:-check}" cmd_check ;;
   deploy) cmd_deploy "$@" ;;
   rollback) cmd_rollback "$@" ;;
-  backup) export MARKX_RELEASE="${MARKX_RELEASE:-backup}"; backup_now ;;
+  # The running release's backup image (the last line of releases.log).
+  backup) export MARKX_RELEASE="${MARKX_RELEASE:-$(awk 'END {print $3}' "$config_dir/releases.log" 2>/dev/null)}"
+          [[ -n "$MARKX_RELEASE" ]] || fail "no release deployed yet; give MARKX_RELEASE"
+          backup_now ;;
   status) export MARKX_RELEASE="${MARKX_RELEASE:-$(awk 'END {print $3}' "$config_dir/releases.log" 2>/dev/null)}"; cmd_status ;;
   *) sed -n '2,23p' "$0"; exit 2 ;;
 esac

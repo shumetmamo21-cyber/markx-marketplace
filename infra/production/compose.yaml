@@ -8,13 +8,14 @@
 #   reverse proxy (nginx, 80/443) -> web (Next.js)   -> API (internal calls)
 #                                 -> API (FastAPI)  -> PostgreSQL 17
 #   worker (jobs, outbox, schedules)                -> PostgreSQL 17
-#   backup (nightly encrypted dump on this server)  -> PostgreSQL 17
+#   backup (nightly encrypted set, off-server)      -> PostgreSQL 17, file buckets, backup bucket
 #   migrate (one-time step, never started by "up")  -> PostgreSQL 17
 #
 # Only the proxy publishes ports. PostgreSQL, the API, the web app and the
 # worker are on internal networks with no port on the host. The web app and
-# PostgreSQL cannot reach the internet at all; the API and the worker can,
-# for the outside services (Turnstile, SMS, object storage, Telegram).
+# PostgreSQL cannot reach the internet at all; the API, the worker and the
+# backup service can, for the outside services (Turnstile, SMS, object
+# storage, Telegram, the backup destination).
 #
 # Run it through infra/production/deploy.sh, or by hand:
 #
@@ -261,55 +262,70 @@ services:
         limits:
           memory: ${MARKX_PROXY_MEMORY:-128m}
 
-  # One encrypted dump a day at MARKX_BACKUP_HOUR_UTC, plus one at start-up,
-  # into MARKX_BACKUP_HOST_DIR on THIS server (D-063, D-091). It is not an
-  # off-server copy: the blueprint's copy to object storage and to the
-  # founder's drive are not connected (docs/runbooks/backup-and-restore.md).
-  # Stored files are NOT in it (F-14).
+  # The backup service (D-094): at start-up and daily at MARKX_BACKUP_HOUR_UTC,
+  # one backup SET (the database dump and every stored file), encrypted to the
+  # founder's recovery key BEFORE it leaves this container, uploaded to the
+  # backup destination, read back and verified, then a signed manifest. It
+  # holds only the PUBLIC half of the recovery key: it can encrypt, never
+  # decrypt. On staging and production it refuses to start unless the
+  # destination is off-server object storage (s3 or r2, https); NOTHING IS
+  # CONNECTED: the provider, bucket and retention are the founder's decision
+  # (F-16, F-14). MARKX_BACKUP_HOST_DIR holds the set being made, the last
+  # verified sets as a local copy (NOT an off-server backup) and the
+  # evidence of failed attempts. docs/runbooks/backup-and-restore.md.
   backup:
-    image: postgres:17.12
+    <<: *hardening
+    image: ${MARKX_IMAGE_PREFIX:-markx}/backup:${MARKX_RELEASE}
+    build:
+      context: ../../apps/api
+      target: backup
     restart: unless-stopped
-    user: "999:999"
-    entrypoint: ["/markx-backup/scheduled.sh"]
+    command: ["python", "-m", "markx.backup", "serve"]
     env_file:
-      # PGPASSWORD of markx_migrator, the hour and the retention.
+      # PGPASSWORD of markx_migrator, the destination and its own access key,
+      # the read-only source key, the hour and the founder's retention.
       - ${MARKX_CONFIG_DIR:-/etc/markx}/backup.env
     environment:
+      MARKX_ENV: ${MARKX_ENV}
+      MARKX_RELEASE: ${MARKX_RELEASE}
       PGHOST: postgres
       PGUSER: markx_migrator
-      MARKX_BACKUP_DIR: /backups
-      MARKX_BACKUP_PASSPHRASE_FILE: /run/secrets/backup.key
+      MARKX_BACKUP_DATABASE: markx
+      MARKX_BACKUP_WORK_DIR: /backups
+      MARKX_BACKUP_PUBLIC_KEY_FILE: /run/secrets/backup-public.key
+      MARKX_BACKUP_SIGNING_KEY_FILE: /run/secrets/backup-signing.key
+      MARKX_BACKUP_BOOTSTRAP_SCRIPT: /postgres/bootstrap.sh
     volumes:
-      - ../backup:/markx-backup:ro
-      # restore.sh creates a restored database's roles with bootstrap.sh.
+      # A restore creates a restored database's roles with bootstrap.sh.
       - ../postgres:/postgres:ro
       - ${MARKX_BACKUP_HOST_DIR:-/var/backups/markx}:/backups
-      - ${MARKX_CONFIG_DIR:-/etc/markx}/backup.key:/run/secrets/backup.key:ro
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/backup-public.key:/run/secrets/backup-public.key:ro
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/backup-signing.key:/run/secrets/backup-signing.key:ro
     networks:
-      - backend
-    read_only: true
+      backend: {}
+      # The way out, to the backup destination and the file buckets.
+      egress: {}
     tmpfs:
       - /tmp
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
     healthcheck:
-      # The last good backup is less than 26 hours old.
-      test: ["CMD", "/markx-backup/scheduled.sh", "--check"]
+      # A verified set newer than MARKX_BACKUP_MAX_AGE_HOURS (default 26),
+      # and off-server on staging and production.
+      test: ["CMD", "python", "-m", "markx.backup", "check"]
       interval: 5m
-      timeout: 10s
+      timeout: 30s
       retries: 2
-      start_period: 15m
+      start_period: 30m
       start_interval: 10s
+    # SIGTERM: stop after the current step; a set in progress has no manifest
+    # yet, so it is never mistaken for a backup.
+    stop_grace_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
     deploy:
       resources:
         limits:
-          memory: ${MARKX_BACKUP_MEMORY:-256m}
-    logging: *logging
+          memory: ${MARKX_BACKUP_MEMORY:-384m}
 
 networks:
   # The only network with published ports: the proxy alone is on it.
@@ -324,7 +340,7 @@ networks:
   # API, worker, migrations, backups and PostgreSQL. No way out either.
   backend:
     internal: true
-  # The way out, for the API and the worker only.
+  # The way out, for the API, the worker and the backup service only.
   egress: {}
 
 volumes:

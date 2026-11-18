@@ -15,6 +15,11 @@
 # Pinned to a patch release (D-091) so a rebuild of an old release gets the
 # same interpreter; bump it deliberately, with CI.
 ARG PYTHON_IMAGE=python:3.13.18-slim-bookworm
+# The PostgreSQL client tools of the backup image (D-094) come from the same
+# PostgreSQL release the production Compose file runs (17.12), in its Debian
+# bookworm variant: the Python image is bookworm, and the tools must find the
+# C library they were built against (the default tag is now trixie).
+ARG POSTGRES_IMAGE=postgres:17.12-bookworm
 
 FROM ${PYTHON_IMAGE} AS build
 # uv, pinned, from PyPI (the same version the repository is developed with).
@@ -43,7 +48,17 @@ RUN --mount=type=secret,id=build_ca,required=false \
     if [ -s /run/secrets/build_ca ]; then export SSL_CERT_FILE=/run/secrets/build_ca; fi \
     && uv sync --locked --no-dev
 
-FROM ${PYTHON_IMAGE}
+FROM ${POSTGRES_IMAGE} AS pgclient
+# pg_dump, pg_restore and psql with the libraries they need that a slim
+# Python image lacks; the C library and the loader stay the system's own.
+RUN set -eu; \
+    mkdir -p /pgclient/bin /pgclient/lib; \
+    for tool in pg_dump pg_restore psql; do cp "/usr/lib/postgresql/17/bin/$tool" /pgclient/bin/; done; \
+    ldd /pgclient/bin/* | awk '$2 == "=>" && $3 ~ /^\// {print $3}' | sort -u \
+      | grep -v -E '/(libc|libm|libdl|libpthread|librt|ld-linux[^/]*)\.so' \
+      | while read -r lib; do cp -L "$lib" /pgclient/lib/; done
+
+FROM ${PYTHON_IMAGE} AS app
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -56,6 +71,28 @@ COPY --from=build /opt/venv /opt/venv
 COPY --from=build --chown=root:root /app /app
 WORKDIR /app
 USER markx
+
+# The backup service (D-094): the same application, plus PostgreSQL 17's
+# client tools. `docker build --target backup -t markx-backup apps/api`.
+# It holds no key or credential: those arrive at run time (docs/DEPLOYMENT.md).
+FROM app AS backup
+COPY --from=pgclient /pgclient /opt/pgclient
+USER root
+RUN set -eu; \
+    for tool in pg_dump pg_restore psql; do \
+      printf '#!/bin/sh\nLD_LIBRARY_PATH=/opt/pgclient/lib exec /opt/pgclient/bin/%s "$@"\n' "$tool" \
+        > "/usr/local/bin/$tool"; \
+      chmod 755 "/usr/local/bin/$tool"; \
+    done; \
+    pg_dump --version && pg_restore --version && psql --version \
+    && mkdir -p /backups && chown markx:markx /backups && chmod 700 /backups
+USER markx
+HEALTHCHECK --interval=5m --timeout=30s --start-period=30m --retries=2 \
+    CMD ["python", "-m", "markx.backup", "check"]
+CMD ["python", "-m", "markx.backup", "serve"]
+
+# The API and worker image: the last stage, so a plain `docker build` makes it.
+FROM app AS runtime
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
     CMD ["python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz', timeout=2).status == 200 else 1)"]

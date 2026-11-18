@@ -6,7 +6,8 @@
 #   need real Turnstile keys, a real SMS provider and real S3 or R2 buckets,
 #   none of which exist (F-01, F-11, F-15), so the API would refuse to start.
 #   The rehearsal proves that refusal separately.
-# - MinIO stands in for the buckets, on the internal backend network.
+# - MinIO stands in for the buckets, on the internal backend network,
+#   including the backup destination (a real server refuses MinIO there).
 # - A self-signed certificate for markx.example.invalid; ports 18080/18443
 #   on 127.0.0.1 only.
 # - Only when MARKX_BUILD_CA is set (a builder behind a TLS-inspecting
@@ -19,7 +20,8 @@ services:
     environment:
       MINIO_ROOT_USER: markx-dev-only
       MINIO_ROOT_PASSWORD: markx-minio-dev-only-password
-      MINIO_DEFAULT_BUCKETS: markx-private,markx-public
+      # markx-backups: the backup destination's stand-in (D-094).
+      MINIO_DEFAULT_BUCKETS: markx-private,markx-public,markx-backups
     networks:
       - backend
     healthcheck:
@@ -34,6 +36,11 @@ services:
         condition: service_healthy
 
   worker:
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  backup:
     depends_on:
       minio:
         condition: service_healthy

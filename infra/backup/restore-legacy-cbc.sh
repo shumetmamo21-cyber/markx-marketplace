@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# Restore an encrypted MarkX backup into a NEW, empty database (D-063).
+# LEGACY ONLY: restore a dump made by the retired backup.sh (D-063) into a
+# NEW, empty database. Kept so that no backup made in the old format becomes
+# unreadable (D-094); nothing makes new dumps in this format any more.
 #
 #   MARKX_BACKUP_PASSPHRASE_FILE=/secure/backup.key \
-#     infra/backup/restore.sh var/backups/markx-markx-20261117T020000Z.dump.enc markx_restored
+#     infra/backup/restore-legacy-cbc.sh var/backups/markx-markx-20261117T020000Z.dump.enc markx_restored
+#
+# THE OLD FORMAT IS NOT AUTHENTICATED (openssl enc -aes-256-cbc): a changed
+# file is caught only by its .sha256 file, which travels beside it and can be
+# changed with it. Restore a legacy dump only when it is the last resort,
+# only from a copy you have kept yourself, and check the result by hand.
+# New backups use `python -m markx.backup` (MXB2, authenticated, signed).
 #
 # Never overwrites anything: it refuses when the target database exists.
 # Connection: the PG* variables, as a PostgreSQL superuser (the three MarkX
 # roles and the database are created first, exactly as bootstrap.sh does).
 # The checksum file, when present next to the backup, is checked first.
 #
-# PG_RESTORE and PSQL override the commands, like PG_DUMP in backup.sh.
+# PG_RESTORE and PSQL override the commands (e.g. "docker exec -i markx-pg pg_restore").
 set -euo pipefail
 
-[[ $# -eq 2 ]] || { echo "usage: restore.sh BACKUP_FILE TARGET_DB" >&2; exit 2; }
+[[ $# -eq 2 ]] || { echo "usage: restore-legacy-cbc.sh BACKUP_FILE TARGET_DB" >&2; exit 2; }
 file="$1"; target="$2"
 [[ "$target" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || { echo "unsafe database name: $target" >&2; exit 2; }
 [[ -r "$file" ]] || { echo "cannot read $file" >&2; exit 2; }

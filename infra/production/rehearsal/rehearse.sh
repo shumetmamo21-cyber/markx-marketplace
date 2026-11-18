@@ -26,7 +26,9 @@
 #   health         readiness through the proxy, the worker's heartbeat and
 #                  its jobs
 #   migrations     two migration runs at once both succeed; nothing changes
-#   backups        the backup service's dump restores into a new database
+#   backups        the backup service makes a verified, signed set; a real
+#                  server refuses a same-server destination; the recovery
+#                  drill restores database and files and refuses tampering
 #   shutdown       every service stops on SIGTERM within its grace period
 #   rollback       deploy.sh rollback to an earlier release
 #
@@ -137,14 +139,42 @@ MARKX_DB_READONLY_PASSWORD=$readonly_pw
 EOF
 # No site key: the production start-up check below must name it.
 echo "MARKX_TURNSTILE_SITE_KEY=" > "$config/web.env"
+# The backup service (D-094) writes to a MinIO bucket of its own here; a
+# real server refuses MinIO (checked below) and needs s3 or r2.
 cat > "$config/backup.env" <<EOF
 PGPASSWORD=$migrator_pw
+MARKX_BACKUP_DESTINATION=minio
+MARKX_BACKUP_DESTINATION_ENDPOINT_URL=http://minio:9000
+MARKX_BACKUP_DESTINATION_BUCKET=markx-backups
+MARKX_BACKUP_DESTINATION_PREFIX=markx/rehearsal
+MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID=markx-dev-only
+MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY=markx-minio-dev-only-password
+MARKX_BACKUP_SOURCE_PROVIDER=minio
+MARKX_BACKUP_SOURCE_ENDPOINT_URL=http://minio:9000
+MARKX_BACKUP_SOURCE_PRIVATE_BUCKET=markx-private
+MARKX_BACKUP_SOURCE_PUBLIC_BUCKET=markx-public
+MARKX_BACKUP_SOURCE_ACCESS_KEY_ID=markx-dev-only
+MARKX_BACKUP_SOURCE_SECRET_ACCESS_KEY=markx-minio-dev-only-password
 MARKX_BACKUP_HOUR_UTC=23
-MARKX_BACKUP_KEEP_DAYS=30
+MARKX_BACKUP_RETENTION_DAYS=7
+MARKX_BACKUP_RETENTION_MIN_SETS=3
 EOF
 chmod 600 "$config"/*.env
-head -c 48 /dev/urandom | base64 > "$config/backup.key"
-chown 999:999 "$config/backup.key"; chmod 400 "$config/backup.key"
+# The backup keys, made with openssl in the format `python -m markx.backup
+# keygen` writes (the image is not built yet). The RECOVERY key stays out of
+# the server's configuration folder, as on a real server.
+raw_keypair() { # algorithm, private label, public label, private file, public file
+  openssl genpkey -algorithm "$1" -outform DER -out "$work/key.der" 2>/dev/null
+  printf '%s:%s\n' "$2" "$(tail -c 32 "$work/key.der" | base64 -w0)" > "$4"
+  printf '%s:%s\n' "$3" "$(openssl pkey -inform DER -in "$work/key.der" -pubout -outform DER | tail -c 32 | base64 -w0)" > "$5"
+  rm -f "$work/key.der"
+}
+raw_keypair X25519 MARKX-BACKUP-RECOVERY-KEY-1 MARKX-BACKUP-PUBLIC-KEY-1 "$work/recovery.key" "$config/backup-public.key"
+raw_keypair ED25519 MARKX-BACKUP-SIGNING-KEY-1 MARKX-BACKUP-SIGNER-1 "$config/backup-signing.key" "$work/signer-public.key"
+chown 999:999 "$config/backup-signing.key"; chmod 400 "$config/backup-signing.key"
+chmod 644 "$config/backup-public.key"
+# Only the drill below reads these, mounted into a one-off container.
+chown 999:999 "$work/recovery.key" "$work/signer-public.key"; chmod 600 "$work/recovery.key"
 chown 999:999 "$backups"; chmod 700 "$backups"
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=$host" \
   -addext "subjectAltName=DNS:$host" -keyout "$tls/privkey.pem" -out "$tls/fullchain.pem" 2>/dev/null
@@ -170,10 +200,13 @@ refuse "deploy.sh check refuses the example settings (placeholders, owners, no c
 check "deploy.sh refuses a stage other than staging or production" \
   bash -c "sed 's/^MARKX_ENV=.*/MARKX_ENV=prod/' '$examples/compose.env' > '$work/bad.env'; ! MARKX_COMPOSE_ENV='$work/bad.env' '$prod/deploy.sh' check"
 check "deploy.sh check passes for the rehearsal's server layout" "$prod/deploy.sh" check
+cp "$work/recovery.key" "$config/stray-recovery.key"
+refuse "deploy.sh check refuses a backup RECOVERY key on the server" "$prod/deploy.sh" check
+rm -f "$config/stray-recovery.key"
 
 export MARKX_RELEASE=rehearsal-1
 echo "== build (this takes a few minutes)"
-compose build api web
+compose build api web backup
 
 compose up -d --wait postgres
 compose run --rm --no-deps -T -e MARKX_ENV=production api python -c "import markx.main" > "$work/api-refusal.txt" 2>&1 || true
@@ -196,6 +229,13 @@ if [[ $pre_status -eq 2 ]] && grep -q "configuration: REFUSED" "$work/preflight.
   pass "preflight refuses the production configuration with exit 2, no value"
 else
   fail "preflight refuses the production configuration"; cat "$work/preflight.txt"
+fi
+compose run --rm --no-deps -T -e MARKX_ENV=production backup python -m markx.backup run > "$work/backup-refusal.txt" 2>&1 && backup_status=0 || backup_status=$?
+if [[ $backup_status -eq 2 ]] && grep -q "must be off-server object storage" "$work/backup-refusal.txt" \
+  && ! grep -q "markx-minio-dev-only-password" "$work/backup-refusal.txt" && leaks_none "$work/backup-refusal.txt"; then
+  pass "the backup service refuses, as production, a backup that is not off-server (exit 2, no value)"
+else
+  fail "the backup service refuses a same-server backup as production"; cat "$work/backup-refusal.txt"
 fi
 compose run --rm --no-deps -T -e MARKX_ENV=production web > "$work/web-refusal.txt" 2>&1 && web_status=0 || web_status=$?
 if [[ $web_status -eq 2 ]] && grep -q "MARKX_TURNSTILE_SITE_KEY must be set" "$work/web-refusal.txt"; then
@@ -254,7 +294,7 @@ if tcp proxy api 8000 >/dev/null 2>&1 && tcp proxy web 3000 >/dev/null 2>&1; the
 else
   fail "the proxy reaches the API and the web app"
 fi
-for s in api worker web proxy; do
+for s in api worker web proxy backup; do
   user="$(docker inspect "$(compose ps -q "$s")" --format '{{.Config.User}}')"
   [[ -z "$user" ]] && user="$(compose exec -T "$s" id -u)"
   case "$user" in 0|root) fail "$s runs as root" ;; *) pass "$s runs as an unprivileged user ($user)" ;; esac
@@ -356,26 +396,36 @@ compose --profile migrate run --rm -T migrate > "$work/m2.txt" 2>&1 & m2=$!
 if wait $m1 && wait $m2; then pass "two migration runs at once both finish"; else fail "concurrent migrations"; cat "$work/m1.txt" "$work/m2.txt"; fi
 [[ "$(psql_markx "select version_num from alembic_version")" == "$before" ]] && pass "and the schema did not change" || fail "schema changed"
 
-dump="$(ls -t "$backups"/markx-markx-*.dump.enc | head -1)"
+for _ in $(seq 1 40); do
+  [[ "$(docker inspect "$(compose ps -q backup)" --format '{{.State.Health.Status}}')" == healthy ]] && break; sleep 3
+done
+check "the backup service is healthy (a verified set exists)" bash -c "[[ \$(docker inspect $(compose ps -q backup) --format '{{.State.Health.Status}}') == healthy ]]"
+compose run --rm --no-deps -T backup python -m markx.backup list > "$work/sets.txt" 2>&1
+grep -q " complete " "$work/sets.txt" && pass "the backup destination holds a complete, signed set" \
+  || { fail "backup sets"; cat "$work/sets.txt"; }
+dump="$(find "$backups/sets" -name database.dump.mxb 2>/dev/null | head -1)"
 [[ -n "$dump" && "$(stat -c %u "$dump")" == 999 && "$(stat -c %a "$dump")" == 600 ]] \
-  && pass "backups are written encrypted, owner 999, mode 600 ($(ls "$backups"/*.dump.enc | wc -l) so far)" || fail "backup files"
-check "the backup service is healthy" bash -c "[[ \$(docker inspect $(compose ps -q backup) --format '{{.State.Health.Status}}') == healthy ]]"
-if compose run --rm --no-deps -T --entrypoint bash \
+  && head -c 8 "$dump" | grep -q "MARKXBK" \
+  && pass "the local copy is MXB2 ciphertext, owner 999, mode 600" || fail "local backup copy: $dump"
+if compose run --rm --no-deps -T \
+    -v "$work/recovery.key:/run/recovery/recovery.key:ro" -v "$work/signer-public.key:/run/recovery/signer-public.key:ro" \
     -e PGUSER=postgres -e PGPASSWORD="$superuser_pw" \
     -e MARKX_DB_MIGRATOR_PASSWORD="$migrator_pw" -e MARKX_DB_APP_PASSWORD="$app_pw" \
-    -e MARKX_DB_READONLY_PASSWORD="$readonly_pw" backup -c \
-    "/markx-backup/restore.sh /backups/$(basename "$dump") markx_restore_check && psql -d markx_restore_check -tAc 'select version_num from alembic_version'" \
-    > "$work/restore.txt" 2>&1 && grep -q "$before" "$work/restore.txt"; then
-  pass "the latest dump restores into a new database at the same migration"
+    -e MARKX_DB_READONLY_PASSWORD="$readonly_pw" backup \
+    python -m markx.backup drill --recovery-key /run/recovery/recovery.key --signer /run/recovery/signer-public.key \
+    > "$work/drill.txt" 2>&1 && grep -q "DRILL PASSED" "$work/drill.txt" && grep -q "migration version: $before" "$work/drill.txt"; then
+  pass "the recovery drill restores database and files into new targets, verified, and refuses every injected fault"
 else
-  fail "restore"; cat "$work/restore.txt"
+  fail "recovery drill"; cat "$work/drill.txt"
 fi
+check "the drill log holds none of this run's secrets" leaks_none "$work/drill.txt"
 if compose exec -T api python -m markx.ops.preflight 2>&1 | grep -q 'preflight: PASSED'; then
-  pass "the restore did not change the running site's passwords (preflight still passes)"
+  pass "the drill did not change the running site's passwords (preflight still passes)"
 else
-  fail "after the restore the API cannot use the database"
+  fail "after the drill the API cannot use the database"
 fi
-psql_markx "drop database markx_restore_check" >/dev/null 2>&1 || true
+[[ -z "$(psql_markx "select datname from pg_database where datname like 'markx_drill%'")" ]] \
+  && pass "the drill removed its own database" || fail "a drill database was left behind"
 
 # -- 7. rollback ------------------------------------------------------------------
 

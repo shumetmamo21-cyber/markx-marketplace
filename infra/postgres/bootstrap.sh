@@ -13,7 +13,7 @@ dbname="${1:-markx}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # A role's password is reset on a re-run only when its variable is given
-# (D-091). Without this, a re-run without the variables (restore.sh on a
+# (D-091). Without this, a re-run without the variables (a restore on a
 # real server, for example) would set every role back to its laptop default.
 ${PSQL:-psql} -v ON_ERROR_STOP=1 --no-psqlrc --quiet -d postgres \
   -v dbname="$dbname" \
