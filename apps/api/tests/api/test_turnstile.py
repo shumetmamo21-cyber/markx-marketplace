@@ -9,13 +9,17 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import socket
+import subprocess
+import sys
 import threading
 import time
 import urllib.error
 import urllib.parse
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
@@ -245,6 +249,98 @@ def test_the_allowed_hostname_defaults_to_the_public_origin() -> None:
     assert config.turnstile_hostnames == ["www.markx.example"]
     config = Config(turnstile_allowed_hostnames="markx.example, www.markx.example")
     assert config.turnstile_hostnames == ["markx.example", "www.markx.example"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("markx.et", "markx.et"),
+        ("MarkX.et, www.markx.et", "markx.et,www.markx.et"),
+        (" localhost ", "localhost"),
+        ("staging.markx.et,markx.et,www.markx.et", "staging.markx.et,markx.et,www.markx.et"),
+        ("xn--mgbh0fb.et", "xn--mgbh0fb.et"),
+        ("", ""),
+    ],
+)
+def test_bare_hostnames_are_accepted(value: str, expected: str) -> None:
+    assert Config(turnstile_allowed_hostnames=value).turnstile_allowed_hostnames == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        ("https://markx.et", "includes a protocol"),
+        ("http://localhost:3000", "includes a protocol"),
+        ("markx.et/sign-in", "includes a path"),
+        ("markx.et/", "includes a path"),
+        ("markx.et?x=1", "includes a path"),
+        ("markx.et:443", "includes a port"),
+        ("localhost:3000", "includes a port"),
+        ("*.markx.et", "is a wildcard"),
+        ("*", "is a wildcard"),
+        ("127.0.0.1", "is an IP address"),
+        ("[::1]", "is an IP address"),
+        ("markx.et.", "ends with a dot"),
+        ("markx.et,,www.markx.et", "is empty"),
+        ("markx.et,", "is empty"),
+        ("mark x.et", "contains a space"),
+        ("-markx.et", "is not a valid hostname"),
+        ("markx_et", "is not a valid hostname"),
+        ("ማርክ.et", "is not a valid hostname"),
+        ("a" * 64 + ".et", "is not a valid hostname"),
+    ],
+)
+def test_malformed_hostnames_are_refused_with_the_reason(value: str, reason: str) -> None:
+    with pytest.raises(ValidationError, match="MARKX_TURNSTILE_ALLOWED_HOSTNAMES") as refused:
+        Config(turnstile_allowed_hostnames=value)
+    assert reason in str(refused.value)
+
+
+def test_every_bad_entry_is_named_at_once() -> None:
+    with pytest.raises(ValidationError) as refused:
+        Config(turnstile_allowed_hostnames="https://markx.et, markx.et, *.markx.et")
+    message = str(refused.value)
+    assert "'https://markx.et' includes a protocol" in message
+    assert "'*.markx.et' is a wildcard" in message
+    assert "'markx.et' " not in message.replace("'https://markx.et'", "")
+
+
+@pytest.mark.parametrize("hostnames", ["localhost", "markx.et,localhost", "app.localhost"])
+def test_a_real_server_refuses_a_localhost_widget(hostnames: str) -> None:
+    with pytest.raises(ValidationError, match="is for local testing only"):
+        Config(**_production(turnstile_allowed_hostnames=hostnames))
+
+
+def test_a_laptop_may_use_a_localhost_widget() -> None:
+    config = Config(bot_check_provider="turnstile", turnstile_secret_key=SECRET,
+                    turnstile_site_key=SITE_KEY, turnstile_allowed_hostnames="localhost")  # fmt: skip
+    assert config.turnstile_hostnames == ["localhost"]
+
+
+def test_a_bad_hostname_stops_the_start_with_a_clear_message(tmp_path: Path) -> None:
+    """What a person sees when the API starts with a mistake in its settings,
+    and that the secret is not part of it."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("MARKX_")}
+    env.update(
+        PYTHONPATH=str(Path(__file__).resolve().parents[2]),
+        MARKX_ENV="local",
+        MARKX_BOT_CHECK_PROVIDER="turnstile",
+        MARKX_TURNSTILE_SITE_KEY=SITE_KEY,
+        MARKX_TURNSTILE_SECRET_KEY=SECRET,
+        MARKX_TURNSTILE_ALLOWED_HOSTNAMES="https://markx.et",
+    )
+    started = subprocess.run(
+        [sys.executable, "-c", "from markx.core.config import get_config; get_config()"],
+        cwd=tmp_path,  # no .env file here
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert started.returncode != 0
+    assert "MARKX_TURNSTILE_ALLOWED_HOSTNAMES" in started.stderr
+    assert "'https://markx.et' includes a protocol" in started.stderr
+    assert SECRET not in started.stderr + started.stdout
 
 
 def _production(**overrides: Any) -> dict[str, Any]:

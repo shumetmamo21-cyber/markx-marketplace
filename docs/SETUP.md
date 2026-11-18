@@ -290,41 +290,130 @@ On a laptop and in the tests nothing is needed: the API's development check
 answers and the sign-in page shows no widget. Staging and production refuse
 to start until Turnstile is configured.
 
-**What the founder creates** (Cloudflare dashboard, Turnstile, "Add widget";
-free): one widget named for MarkX, with
+#### Three different things: do not confuse them
 
-- **Hostnames:** the site's real domain(s), e.g. `markx.et` and
-  `www.markx.et` (and a staging hostname if there is one). Add `localhost`
-  only to a separate test widget, never to the production one.
-- **Widget mode:** "Managed" (Cloudflare decides when to ask the visitor to
-  click). Pre-clearance: off.
-
-It gives two values:
-
-| Value | Secret? | Where it goes |
+| | What it means | Where it works today |
 | --- | --- | --- |
-| **Site key** | No (it is in every page) | `MARKX_TURNSTILE_SITE_KEY` for the **API** and for the **web app** |
-| **Secret key** | **Yes** | `MARKX_TURNSTILE_SECRET_KEY` for the **API only**, in the server's secret store. Never in Git, `.env.example`, the web app, a screenshot or chat |
+| **1. Turnstile verification** | The API asked Cloudflare about the visitor's token and Cloudflare said "a person, on our site, for sign-in" | On a laptop with the local test widget (below). Not yet against a production widget |
+| **2. SMS delivery** | The six-digit code reaches the person's phone | **Nowhere yet.** No real SMS adapter exists. On a laptop the code is written to the development inbox, not sent. On staging or production the code request fails with "We could not send the code" (`sms_send_failed`) right after a successful Turnstile check |
+| **3. Complete production sign-in** | On the real domain over HTTPS: Turnstile, then the SMS, then the person types the code and is signed in | **Not possible yet:** it needs the SMS adapter, a production Turnstile widget and a deployed server |
 
-Then set, for the API: `MARKX_BOT_CHECK_PROVIDER=turnstile`, the two keys,
-and, if the site answers on more than one hostname,
-`MARKX_TURNSTILE_ALLOWED_HOSTNAMES=markx.et,www.markx.et` (otherwise the
-host of `MARKX_PUBLIC_ORIGIN` is the only one accepted). For the web app:
-`MARKX_TURNSTILE_SITE_KEY` when it starts (it is read per request; no
-rebuild needed).
+A successful Turnstile test therefore proves item 1 only.
 
-The API refuses a token that is missing, malformed, invalid, expired or
-already used, one solved on another hostname or for another action than
-`sign_in`, and any answer it cannot read; if Cloudflare cannot be reached
-within `MARKX_TURNSTILE_TIMEOUT_SECONDS` (default 5) it refuses too. No
-sign-in code is sent then. Cloudflare's published test keys are accepted on
-a laptop and refused on staging and production.
+#### The two Turnstile widgets
 
-**Before calling it working:** with the real keys configured, sign in once
-on the real domain, then confirm in the API log that no `bot check refused`
-line appeared, and that a second request with the same token (replayed by
-hand) is refused with `timeout-or-duplicate`. Until then it is untested
-against Cloudflare itself.
+- **"MarkX", the local test widget** (created by the founder on 18 November
+  2026). Hostname: `localhost` only. For testing on a laptop, never for
+  production: staging and production refuse to start with `localhost` among
+  their Turnstile hostnames, and Cloudflare refuses its tokens anywhere but
+  `localhost`. Its **site key is public**: `0x4AAAAAAGGYs5bV6hfwiNJC`. Its
+  **secret key stays in the Cloudflare dashboard** and is typed into the
+  tester's own terminal only (below); it is not in this repository.
+- **The production widget: not created yet.** Create it before launch with
+  the site's real hostnames only (e.g. `markx.et`, `www.markx.et`), mode
+  "Managed", pre-clearance off. It gets its own site key and secret.
+
+#### The settings
+
+| Setting | Value | Set on | Secret? |
+| --- | --- | --- | --- |
+| `MARKX_BOT_CHECK_PROVIDER` | `turnstile` | API | No |
+| `MARKX_TURNSTILE_SITE_KEY` | the widget's site key | API **and** web app (same value) | No |
+| `MARKX_TURNSTILE_SECRET_KEY` | the widget's secret key | **API only** | **Yes** |
+| `MARKX_TURNSTILE_ALLOWED_HOSTNAMES` | e.g. `markx.et,www.markx.et`; empty means the host of `MARKX_PUBLIC_ORIGIN` (on a laptop, `localhost`) | API | No |
+
+- **The secret key** goes only into the server's secret store or the
+  tester's own terminal: never Git, a committed file, `.env.example`, the web
+  app, GitHub Actions, documentation, a screenshot, email or chat. Paste it
+  exactly: no quotes, spaces or line breaks.
+- **Allowed hostnames** are checked when the API starts: bare names
+  separated by commas. A protocol (`https://`), a path, a port (`:3000`), a
+  wildcard (`*.markx.et`), an IP address, a trailing dot, an empty entry or
+  a space stops the start with a message naming the entry and the problem.
+- **The web app** reads the site key each time the sign-in page is served:
+  no rebuild is needed to change it. It never sees the secret.
+- The API refuses a token that is missing, malformed, invalid, expired or
+  already used, one solved on another hostname or for another action than
+  `sign_in`, and any answer it cannot read; if Cloudflare cannot be reached
+  within `MARKX_TURNSTILE_TIMEOUT_SECONDS` (default 5) it refuses too. No
+  code is sent then.
+- To check what the API loaded (the secret prints as `**********`), from
+  `apps/api`: `uv run python -c "from markx.core.config import get_config;
+  c=get_config(); print(c.bot_check_provider, c.turnstile_hostnames,
+  c.turnstile_site_key, c.turnstile_secret_key)"`
+
+#### Testing Turnstile on a laptop (item 1 only)
+
+Needs a computer with this repository set up (sections 1 to 3 and 7), an
+internet connection, and the founder's Cloudflare login to copy the secret
+from the "MarkX" widget. A cloud session cannot do this test: the widget
+must be solved by a person in a real browser on `localhost`.
+
+1. **The API**, in one terminal:
+
+   ```bash
+   cd apps/api
+   export MARKX_ENV=local MARKX_BOT_CHECK_PROVIDER=turnstile
+   export MARKX_TURNSTILE_SITE_KEY=0x4AAAAAAGGYs5bV6hfwiNJC
+   read -rs MARKX_TURNSTILE_SECRET_KEY && export MARKX_TURNSTILE_SECRET_KEY
+   uv run uvicorn markx.main:app --host 127.0.0.1 --port 8000
+   ```
+
+   At the `read` line, paste the secret key from the Cloudflare dashboard
+   and press Enter: nothing is shown, and nothing is kept in the shell's
+   history or in any file. `MARKX_TURNSTILE_ALLOWED_HOSTNAMES` is not needed
+   here (the laptop's origin is `http://localhost:3000`).
+2. **The web app**, in a second terminal:
+
+   ```bash
+   cd apps/web
+   npm run build
+   MARKX_TURNSTILE_SITE_KEY=0x4AAAAAAGGYs5bV6hfwiNJC npm run start
+   ```
+
+3. Open **`http://localhost:3000/en/sign-in`** in an ordinary browser. Use
+   `localhost`, not `127.0.0.1`: the widget only works on its hostname, and
+   the API's anti-forgery check expects `localhost:3000`.
+4. The check appears under the phone number. Type a number, wait for the
+   tick, press "Send code".
+5. Read the result:
+   - **Turnstile verified (item 1 passed):** the page says "We sent a code",
+     and the API's terminal shows no `bot check refused` line. The code is
+     in the development inbox,
+     `http://localhost:3000/api/v1/dev/sms-inbox?phone=0911234567` (with the
+     number you typed). **No SMS reaches a phone: that is expected** (item 2
+     does not exist yet).
+   - **Refused:** the page says "We could not confirm you are a person", and
+     the API's terminal shows `bot check refused` with a reason:
+     `invalid-input-secret` (the secret was mistyped), `wrong-hostname` (the
+     page was opened on another address), `unreachable` (no internet, or
+     Cloudflare did not answer in time), `timeout-or-duplicate` (the token
+     expired or was used twice: solve the check again).
+6. **Afterwards:** close both terminals; the secret leaves with them. If you
+   used an `apps/api/.env` file instead of `read`, delete it.
+
+#### Credential rotation and the founder's security review
+
+- **Before production launch: review the temporary Turnstile credentials
+  and rotate the secret before production use.** The local "MarkX" widget is
+  for testing only; production gets its own widget, whose secret is rotated
+  once before launch and then lives only in the server's secret store.
+- **At any time:** the founder may rotate any Turnstile secret whenever they
+  wish, for their own security; no code change is needed. In the Cloudflare
+  dashboard, open Turnstile, the widget, its settings, and rotate the secret
+  key (or delete and re-create the widget), then put the new secret where
+  the old one was and restart the API. The old secret stops working.
+- **Security review at the 100th real MarkX transaction**, or earlier
+  whenever the founder asks. A real transaction is a seller order completed
+  on the production site; demo and test data do not count. The review:
+  rotate the Turnstile secret; review the other secrets (`MARKX_SECRET_KEY`,
+  `MARKX_ENCRYPTION_KEY`, database passwords, the Telegram bot token); review
+  staff accounts and their authenticators; read the audit log of staff
+  actions. This is a written reminder in this file and in
+  `docs/DEVELOPMENT_STATUS.md`; nothing in the code fires it automatically
+  yet.
+- None of this is permission to put a secret in Git, a file, a document, a
+  screenshot or a chat.
 
 ## Making a schema change
 

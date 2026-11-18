@@ -7,6 +7,7 @@ real values are set in the host's secret store or a protected env file.
 from __future__ import annotations
 
 import ipaddress
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -71,8 +72,10 @@ class Config(BaseSettings):
     turnstile_secret_key: SecretStr | None = None
     # The public site key, which the sign-in page also needs. Not a secret.
     turnstile_site_key: str | None = None
-    # The hostnames Turnstile must report the token was solved on. Empty
-    # means the host of MARKX_PUBLIC_ORIGIN.
+    # The hostnames Turnstile must report the token was solved on, as bare
+    # names separated by commas ("markx.et,www.markx.et"): no protocol, path,
+    # port or wildcard; checked at start-up. Empty means the host of
+    # MARKX_PUBLIC_ORIGIN.
     turnstile_allowed_hostnames: str = ""
     # How long to wait for Cloudflare before refusing (fail closed).
     turnstile_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
@@ -108,6 +111,24 @@ class Config(BaseSettings):
                 raise ValueError(f"MARKX_TRUSTED_PROXIES: {item!r} would trust every caller")
         return value
 
+    @field_validator("turnstile_allowed_hostnames")
+    @classmethod
+    def _turnstile_hostnames_are_bare(cls, value: str) -> str:
+        if not value.strip():
+            return ""
+        entries = [entry.strip() for entry in value.split(",")]
+        problems = [
+            f"{entry!r} {problem}"
+            for entry in entries
+            if (problem := _hostname_problem(entry)) is not None
+        ]
+        if problems:
+            raise ValueError(
+                "MARKX_TURNSTILE_ALLOWED_HOSTNAMES must list bare hostnames separated by "
+                "commas, such as markx.et,www.markx.et: " + "; ".join(problems)
+            )
+        return ",".join(entry.lower() for entry in entries)
+
     @property
     def turnstile_hostnames(self) -> list[str]:
         configured = [h.lower() for h in _split(self.turnstile_allowed_hostnames)]
@@ -129,6 +150,13 @@ class Config(BaseSettings):
         if not self.turnstile_hostnames:
             problems.append(
                 "MARKX_TURNSTILE_ALLOWED_HOSTNAMES or MARKX_PUBLIC_ORIGIN must name a host"
+            )
+        local = [h for h in self.turnstile_hostnames if _is_local_hostname(h)]
+        if self.is_real_environment and local:
+            # A widget for localhost is for testing on a laptop only (D-085).
+            problems.append(
+                f"{', '.join(local)} is for local testing only; staging and production "
+                "need the site's real hostnames and their own Turnstile widget"
             )
         if self.is_real_environment and _is_turnstile_test_key(secret, self.turnstile_site_key):
             # Cloudflare's published test keys pass or fail every visitor.
@@ -180,6 +208,44 @@ def _is_turnstile_test_key(secret: str, site_key: str | None) -> bool:
         len(key) > 6 and key[0] in "123" and key[1] == "x" and key[2:8] == "000000"
         for key in (secret, site_key or "")
     )
+
+
+_HOSTNAME_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def _hostname_problem(entry: str) -> str | None:
+    """Why an entry is not a bare hostname, in words; None when it is one."""
+    if not entry:
+        return "is empty (two commas in a row, or a comma at the start or end)"
+    if "://" in entry:
+        return "includes a protocol; write only the hostname, e.g. markx.et"
+    if "/" in entry or "?" in entry or "#" in entry:
+        return "includes a path; write only the hostname, e.g. markx.et"
+    if "*" in entry:
+        return "is a wildcard; list each hostname instead, e.g. markx.et,www.markx.et"
+    if any(character.isspace() for character in entry):
+        return "contains a space"
+    try:
+        ipaddress.ip_address(entry.strip("[]"))
+    except ValueError:
+        pass
+    else:
+        return "is an IP address; use a hostname such as markx.et or localhost"
+    if ":" in entry:
+        return "includes a port; write the hostname without :port"
+    if entry.endswith("."):
+        return "ends with a dot"
+    host = entry.lower()
+    if len(host) > 253 or not all(_HOSTNAME_LABEL.match(label) for label in host.split(".")):
+        return (
+            "is not a valid hostname (letters, digits, hyphens and dots only; "
+            "write an Amharic domain in its xn-- form)"
+        )
+    return None
+
+
+def _is_local_hostname(host: str) -> bool:
+    return host == "localhost" or host.endswith(".localhost")
 
 
 def _split(value: str) -> list[str]:

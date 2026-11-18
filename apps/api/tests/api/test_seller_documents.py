@@ -192,6 +192,12 @@ def test_a_link_stops_working_after_five_minutes(
     assert len(_views(db, "seller_document.viewed")) == 1
 
 
+def _altered(signature: str, position: int) -> str:
+    """The signature with one character replaced by a different one."""
+    replacement = "B" if signature[position] == "A" else "A"
+    return signature[:position] + replacement + signature[position + 1 :]
+
+
 def test_a_link_cannot_be_extended_or_forged(staff: ApiClient) -> None:
     seller, seller_id = start_application(staff, ABEBE)
     document_id = upload_document(seller, seller_id, "owner_id").json()["id"]
@@ -200,11 +206,18 @@ def test_a_link_cannot_be_extended_or_forged(staff: ApiClient) -> None:
     params = dict(part.split("=") for part in query.split("&"))
 
     far_future = str(int(params["expires"]) + 86_400)
+    genuine = params["signature"]
+    made_up = "A" * len(genuine) if genuine != "A" * len(genuine) else "B" * len(genuine)
     for tampered in (
         {**params, "expires": far_future},
-        {**params, "signature": params["signature"][:-2] + "AA"},
-        {**params, "signature": "A" * 43},
+        {**params, "signature": _altered(genuine, 0)},
+        {**params, "signature": _altered(genuine, len(genuine) - 2)},
+        {**params, "signature": made_up},
     ):
+        # Every forgery really differs from the genuine link. (Replacing the
+        # last two characters with "AA" left it unchanged about once in a
+        # thousand runs, when the real signature already ended in "AA".)
+        assert tampered != params
         response = seller.http.get(path, params=tampered)
         assert response.status_code == 403
         assert error_code(response) == "document_link_invalid"

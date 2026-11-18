@@ -2165,6 +2165,33 @@ contract above (the URL, the form fields, `success`, `hostname`, `action`,
 Cloudflare's long-standing published one, not re-read today. The check with
 the real keys in `docs/SETUP.md` confirms it.
 
+**Update, 18 November 2026 (second round, at the founder's request).**
+- *Hostnames are checked at start-up.* `MARKX_TURNSTILE_ALLOWED_HOSTNAMES`
+  takes bare hostnames separated by commas; a protocol, path, port,
+  wildcard, IP address, trailing dot, empty entry, space or invalid label
+  stops the start with a message naming each bad entry and its problem.
+  Before, `https://markx.et` was accepted and then refused every sign-in.
+  Staging and production also refuse `localhost` (and `*.localhost`), so a
+  local test widget cannot be used there.
+- *The founder's local test widget* "MarkX" (hostname `localhost`) exists.
+  Its public site key is in `docs/SETUP.md` and allowed by `.gitleaks.toml`
+  as public; its secret key is in no file. A test with it proves Turnstile
+  verification only: SMS delivery does not exist yet, so a complete
+  production sign-in is not possible (see `docs/SETUP.md`, "Three different
+  things").
+- *Credentials:* the temporary credentials are reviewed and the secret
+  rotated before production use; the founder may rotate any Turnstile secret
+  at any time; a founder security review is due at the 100th real
+  transaction (a seller order completed on the production site) or earlier
+  on request. It is a written reminder, not an automatic alert: an
+  automatic one would need a way to record that the review was done (the
+  alerts close only when their condition clears), which is a separate task.
+- *A flaky test fixed:* `test_a_link_cannot_be_extended_or_forged` forged a
+  document-link signature by replacing its last two characters with "AA",
+  which left a genuine signature unchanged about once in a thousand runs
+  (CI #95 on `fbaf46c`). Its forgeries now always differ from the genuine
+  link; the verification code is unchanged.
+
 ---
 
 ## Decisions that need the founder

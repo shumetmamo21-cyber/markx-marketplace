@@ -21,3 +21,11 @@ regexes = [
   # The development encryption key: base64 of "dev-only-encryption-key-32bytes!".
   '''ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=''',
 ]
+
+[[allowlists]]
+description = "Public Turnstile site keys (sent to every visitor's browser by design; never a secret key)"
+regexTarget = "match"
+regexes = [
+  # The founder's localhost-only test widget "MarkX" (D-085), documented in docs/SETUP.md.
+  '''0x4AAAAAAGGYs5bV6hfwiNJC''',
+]

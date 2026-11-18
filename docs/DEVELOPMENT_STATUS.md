@@ -1,6 +1,12 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **Turnstile session** (D-085):
+**Last updated:** 18 November 2026, by the **Turnstile session, second
+round** (D-085 update): Turnstile hostnames checked at start-up, the
+founder's local test widget documented, the Turnstile test instructions
+corrected (Turnstile verification, SMS delivery and a complete production
+sign-in are three different things; only the first works today), the
+credential-rotation and 100th-transaction security-review reminders, and a
+flaky test fixed. Before it, the **Turnstile session** (D-085):
 the real bot check, Cloudflare Turnstile, built on the API and the sign-in
 page and tested against stand-ins. **Not yet tested against Cloudflare**:
 the founder's keys are not configured yet, and no real server can start
@@ -105,6 +111,7 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| Turnstile, second round (D-085 update) | the commit after `fbaf46c` | Hostname validation at start-up, `localhost` refused on real servers; the local test widget and corrected test steps in `docs/SETUP.md`; rotation and security-review reminders; the flaky document-link forgery test made deterministic |
 | Turnstile (D-085) | `45a699c` and the status commit after it | Cloudflare Turnstile verified on the server (`TurnstileBotCheck`), its configuration with the secret kept out of logs, the widget on the sign-in form, the CSP opened for Turnstile only, `e2e/turnstile-widget.mjs` in the browser journeys. Stand-ins only; no key exists yet |
 | Security and CI (D-084) | `1698082`, `3a829d0` and the status commit | The audit's P0-1: sign-in open redirect (SEC-1), the fake bot check refused on real servers (SEC-2), trusted proxies only for forwarded addresses (SEC-3), security headers (SEC-5), exact-path anti-forgery exemptions (SEC-6); P0-2: Gitleaks, pip-audit, an npm audit gate with a reviewed allow-list, journeys on every code push against Compose, Playwright as a dev dependency, the page-weight check. 997 API tests, 64 web unit tests |
 | 10 (web owner) | `b2e11ce`, `1920e55`, the merge `d015261`, `ae10c83`, `326ae26`, `af02d59`, `ffa2720`; second round `822f564`, `751e2b0`, `47e9fec` and the documentation commit; third round `c6b7a29`, `3511e0e`, `8dc0264`, `94d5bd3`, `b4bff76`, `876c1d9` and the documentation commits; see `docs/HANDOFF.md`, Part A.0000 | Reviews and report links for buyers, the shop's replies, `can_edit`/`can_reply` (D-072); thumbnails on the product card (`thumb_url`), the product page gallery, shops' photos, problem evidence (D-074); the rest of the seller dashboard and the application (D-075); then a store with open orders cannot close (D-076), every remaining screen the API supports (D-077) and the settings in Amharic (D-078); `e2e/shop-screens.mjs`, `e2e/seller-dashboard.mjs`, `e2e/setup-and-account.mjs`; then a store's track record on its page and search by rating and seller level (D-080), a worker pass that reports failure (D-079) and the browser journeys on GitHub (D-081). 951 API tests, 33 web unit tests |
@@ -885,11 +892,14 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
-- **Turnstile is untested against Cloudflare itself** (D-085). Every test
-  stands in for Cloudflare; the documentation site was not reachable from
-  the building session, so the contract was not re-read. The check with
-  real keys in `docs/SETUP.md` ("Before calling it working") must pass
-  before anyone calls sign-in production-ready.
+- **Turnstile is untested against Cloudflare itself** (D-085). Every
+  automated test stands in for Cloudflare; the documentation site was not
+  reachable from the building session. The founder's local test widget now
+  exists: the laptop test in `docs/SETUP.md` ("Testing Turnstile on a
+  laptop") proves Turnstile verification once a person runs it. **Even then
+  production sign-in does not work**: there is no SMS adapter (a real server
+  answers `sms_send_failed` after the check), no production widget and no
+  server.
 
 - **The page weight is over the blueprint's 150 KB target** (D-084): 157 KB
   (home) to 195 KB (product page) before images; script 142 to 147 KB. The
@@ -1004,6 +1014,31 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Turnstile session, second round** (D-085 update), on the commit after
+`fbaf46c`. Cloudflare was not contacted; the founder's secret key was not
+used, stored or printed:
+
+```text
+# the flaky test (CI #95 on fbaf46c: 1 failed, 1070 passed)
+  measured: a signature ends in "AA" 187 times in 200,000 = about 1 in 1,069
+$ pytest -p force_aa (a throwaway plugin: every signature ends in "AA")
+  old test -> 1 failed: assert 200 == 403 (the CI failure, reproduced)
+  new test -> 1 passed
+$ pytest -p force_all_a (every signature is "AAA...A") new test -> 1 passed
+$ new test, 30 ordinary runs -> passed 30, failed 0
+# hostname validation
+$ pytest tests/api/test_turnstile.py -> 105 passed (31 new: accepted and refused
+  values with their reasons, every bad entry named at once, localhost refused on
+  staging/production and allowed on a laptop, a real start-up in a separate
+  process: exit code not 0, the message names the entry, no secret in it)
+$ uv run pytest -> 1102 passed in 464.38s (0:07:44)
+  ruff check -> All checks passed!; ruff format --check -> 189 files already formatted
+  mypy markx -> no issues found in 124 source files; alembic check -> no new upgrade operations
+  check_openapi_copy, both copies -> match exactly; pip-audit -> No known vulnerabilities found
+# no secret in the repository: every 0x4... value in tracked and new files is the
+# public site key, a test-only placeholder, or part of an npm checksum
+```
 
 **Turnstile session** (D-085), on `45a699c`. Cloudflare was never
 contacted. On GitHub, all passed on `45a699c`: **CI #93** (push) and
@@ -1384,6 +1419,23 @@ all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
 
+## Founder reminders
+
+These are written reminders; nothing in the code fires them.
+
+- **Before production launch:** review the temporary Turnstile credentials
+  and rotate the secret before production use. The local "MarkX" widget
+  (`localhost`) is for testing only; production gets its own widget.
+- **Any time:** the founder may rotate any Turnstile secret whenever they
+  wish, for their own security (steps in `docs/SETUP.md`, "Credential
+  rotation and the founder's security review").
+- **At the 100th real MarkX transaction** (a seller order completed on the
+  production site), or earlier whenever the founder asks: a security review
+  of the secrets, staff accounts and the audit log, with the Turnstile
+  secret rotated. The steps are in `docs/SETUP.md`.
+- None of these is permission to put a secret in Git, a file, a document,
+  a screenshot or a chat.
+
 ## The exact next task
 
 Two sessions may work in parallel: one owns `apps/web`, the other the back
@@ -1414,12 +1466,13 @@ end. Work in this order within each. Finish and push each step first.
 
 **The back end:**
 
-0. **Turnstile (D-085) is built; it waits for the founder's keys.** Once the
-   founder has put them in the server's secret store, run the check in
-   `docs/SETUP.md` ("Before calling it working") and record the result. Do
-   not ask for the secret key in chat or put it in any file. **Then: the
-   real SMS adapter** (blueprint section O, question 23), the other thing
-   a real server needs before a code can be sent.
+0. **Turnstile (D-085) is built; its local test waits for a person.** The
+   founder (or an engineer at the founder's computer) runs "Testing
+   Turnstile on a laptop" in `docs/SETUP.md` with the "MarkX" test widget,
+   typing the secret into the terminal; record the result. Never ask for the
+   secret in chat or put it in any file. **Then, only when the founder
+   authorises it: the real SMS adapter** (blueprint section O, question 23),
+   without which no real server can send a code.
 1. When the founder confirms or changes an F- item (D-083): record it as a
    `D-` entry, change the code if the answer differs, and remove its
    `PROVISIONAL` marker and its line in `test_provisional_decisions.py`.
