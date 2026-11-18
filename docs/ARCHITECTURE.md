@@ -133,10 +133,16 @@ The web app will hold no business rules and will never talk to the database.
 
 ## A request, end to end
 
+0. The proxy-headers middleware (outermost) replaces the caller's address
+   with the one in `X-Forwarded-For`, but only when the request comes from a
+   proxy listed in `MARKX_TRUSTED_PROXIES` (D-084). Every rate limit and
+   stored address uses the result.
 1. The request-context middleware gives the request an ID, times it, and adds
-   security headers to the reply.
+   security headers to the reply (a CSP that loads nothing; HSTS on real
+   servers only).
 2. `enforce_request_origin` refuses a request that changes data unless it
-   carries the MarkX client header and comes from the site's own origin.
+   carries the MarkX client header and comes from the site's own origin. Only
+   the exact paths in `CSRF_EXEMPT_PATHS` skip it (none today; D-084).
 3. `get_db` opens one database transaction. It commits when the route returns
    and rolls back on any error, **before** the response is sent.
 4. `get_optional_principal` reads the session token, checks it against the
@@ -339,7 +345,7 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | --- | --- | --- |
 | SMS | `markx/notifications/sms.py` | Fake only; no provider chosen |
 | Telegram push | `markx/notifications/push.py` | Fake only; no bot |
-| Bot check | `markx/core/botcheck.py` | Fake only |
+| Bot check | `markx/core/botcheck.py` | Fake only, on a laptop and in tests; a real server refuses to start with it and refuses every sign-in code (D-084) |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
 | Private file storage | `markx/core/storage.py` | Local disk only; refused on real servers |
 | Public picture storage | `markx/core/storage.py` | Local disk only; refused on real servers |

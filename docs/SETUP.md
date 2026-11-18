@@ -269,7 +269,20 @@ named `.env` in `apps/api`. Copy `apps/api/.env.example` to start. **Never
 commit `.env`.** The defaults work on a laptop with the steps above.
 
 With `MARKX_ENV=staging` or `production`, the application refuses to start
-unless real secrets, `Secure` cookies and an `https://` origin are set.
+unless real secrets, `Secure` cookies and an `https://` origin are set. It also
+refuses the fake bot check (`MARKX_BOT_CHECK_PROVIDER=fake`, D-084), so a
+real server cannot start until a real bot-check adapter exists.
+
+Security settings added by D-084:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MARKX_TRUSTED_PROXIES` (API) | `127.0.0.1,::1` | The reverse proxies whose `X-Forwarded-For` is believed: exact addresses or networks, comma-separated. On a real server, the proxy's address. `*` and catch-all networks are refused |
+| `MARKX_MEDIA_ORIGIN` (web, build time) | none | The picture CDN's origin, allowed in the page's Content Security Policy |
+| `MARKX_HSTS_MAX_AGE` (web, build time) | none | Sends `Strict-Transport-Security` from the web app. Set only once HTTPS works end to end; the API sends it by itself on staging and production |
+
+The container runs uvicorn with `--no-proxy-headers`; run it the same way
+behind a proxy so only `MARKX_TRUSTED_PROXIES` decides.
 
 ## Making a schema change
 
@@ -354,7 +367,16 @@ and the API allows five codes per phone per clock hour; a refused code
 argument to keep screenshots (`seller-dashboard.mjs` also keeps one of every
 page when a step fails).
 
-On GitHub the same journeys run against a fresh demo database when asked:
-push a commit whose message contains `[journeys]` (or, once the workflow is
-on the default branch, use "Run workflow" on the Actions tab). The run keeps
-its screenshots and server logs as an artifact for a week (D-081).
+Playwright is a development dependency of the web app (`npm ci` installs
+it); `npx playwright install chromium` fetches its browser once.
+
+`node e2e/page-weight.mjs` checks the page weight of five pages against the
+ceilings of D-084 and exits 1 when one is over (production build only).
+
+On GitHub the page-weight check and the same journeys run on every push that
+changes code (`apps/`, `infra/` or the workflow), against PostgreSQL, the
+migrations and the API started from Compose with a fresh demo database
+(`infra/compose/compose.ci.yaml` shares the picture folder with the runner),
+or from the Actions tab once the workflow is on the default branch. A failing
+journey fails the run, which keeps its screenshots and server logs for a
+week (D-081, D-084).

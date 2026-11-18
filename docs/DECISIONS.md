@@ -1900,6 +1900,8 @@ Additive changes (D-061): one test each (`test_performance.py`,
 
 ## D-081 The browser journeys run on GitHub when asked
 
+*Superseded in part by D-084: they now run on every code push, against Compose.*
+
 **Follows** blueprint P1 (automated checks) and the boundary "no paid
 resources". **Accepted.**
 
@@ -1991,6 +1993,110 @@ test line go.
 | F-08 retention | Search logs 180 days; rate-limit counters one day after their window could end | **New:** the daily job `retention.prune` (`markx/ops/retention.py`) and two staff-adjustable settings, `retention.search_queries_days` (180) and `retention.rate_limit_counters_days` (1), both described as PROVISIONAL on the settings screen in both languages. It deletes only those two tables, writes the counts to the audit log when it deleted anything, and is refused nothing by the database (neither table is protected). A rate limit may no longer use a window longer than a day (`ratelimit.LONGEST_WINDOW`), so the job never deletes a count in use. Five tests |
 
 Nothing in this entry creates an account, a cloud resource or a cost.
+
+## D-084 Security fixes and CI hardening from the independent audit (P0-1, P0-2)
+
+**Follows** blueprint H (security), F.1 and D.26 (page weight) and the
+pipeline of section Q ("a secret scan, a dependency audit and the
+page-weight check on every change"). **Accepted.** The audit report itself
+(`MARKX_INDEPENDENT_AUDIT_OPUS55.md`) was not in the repository; the
+findings were taken from the founder's brief and each was confirmed in the
+code before it was fixed.
+
+**SEC-1, sign-in open redirect (high).** The sign-in page accepted any
+`next` that started with one `/`. Browsers read `/\evil.example` and
+`/<tab>/evil.example` as `//evil.example`, another site, and Next.js
+decodes `%5C` to `\` before the page sees it. One helper,
+`apps/web/src/lib/safe-next.ts`, now decides: it looks through up to three
+layers of percent-encoding, refuses backslashes, control characters and
+anything not starting with exactly one `/`, then requires the URL parser to
+keep the address on the site. The page uses it, and `SignInForm` checks
+again before it navigates. 31 unit tests (`safe-next.test.ts`), including
+`/\host`, `/%5Chost`, `//host`, `%2F%2Fhost`, tab and newline forms; the old
+check sent two of them off the site.
+
+**SEC-2, the fake bot check on a real server (high).** The fake accepts
+every token, even none, and was the only adapter, on every environment.
+Now staging and production refuse to start while
+`MARKX_BOT_CHECK_PROVIDER` is `fake` (the same validator that refuses
+development secrets), and `get_bot_check()` hands a real server a check
+that refuses everyone, so a misconfigured server sends no code rather than
+one to a robot. Laptops and tests keep the fake. Consequence, stated
+plainly: **no real server can start until a real bot-check adapter
+(Cloudflare Turnstile is the candidate) is built and configured**, just as
+no code can be sent there until a real SMS adapter exists.
+
+**SEC-3, forwarded headers (medium).** uvicorn trusted `X-Forwarded-For`
+from `127.0.0.1` only. In a container the reverse proxy is another address,
+so every visitor would have looked like the proxy and shared one
+rate-limit bucket (one attacker could stop everyone's sign-in); the obvious
+"fix", `FORWARDED_ALLOW_IPS=*`, would let anyone choose their address. The
+API now reads forwarded headers itself, through uvicorn's
+`ProxyHeadersMiddleware` as the outermost layer, believing only
+`MARKX_TRUSTED_PROXIES` (exact addresses or networks; default loopback;
+`*` and catch-all networks refused at start-up). The nearest untrusted
+address in the chain wins, so a visitor cannot prepend one. The image runs
+uvicorn with `--no-proxy-headers` so nothing else reads them; CI checks it.
+On a real server set `MARKX_TRUSTED_PROXIES` to the proxy's address.
+
+**SEC-5, security headers (medium).** API responses now carry
+`Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (they
+are data, never pages; the laptop-only docs page is left alone) and, only on
+staging and production, `Strict-Transport-Security: max-age=31536000`.
+That is safe there because those environments already refuse to start
+without an `https://` origin and secure cookies; `includeSubDomains` and
+`preload` are not sent, because they bind every subdomain and belong with
+the founder's domain decision. The web app sends a CSP limited to its own
+origin (plus `MARKX_MEDIA_ORIGIN`, the picture CDN, when set), `nosniff`,
+`X-Frame-Options: DENY`, a referrer policy, a permissions policy and
+`Cross-Origin-Opener-Policy`. Its scripts still allow `'unsafe-inline'`:
+Next.js writes small inline start-up scripts, and a nonce per request would
+make every page dynamic, a performance change to measure separately. The
+web app sends HSTS only when `MARKX_HSTS_MAX_AGE` is set at build time. All
+six browser journeys passed under the new CSP with no console errors.
+
+**SEC-6, anti-forgery exemptions (low).** Two prefixes were exempt
+(`/api/v1/webhooks/` and anything starting `/api/v1/telegram/webhook`),
+though no webhook exists, so any route later added under them would have
+skipped the guard. Exemptions are now exact paths (`CSRF_EXEMPT_PATHS`,
+empty today); a test fails if an exempt path is not a real route.
+
+**CI (P0-2).** A new `security` job in `ci.yml`: Gitleaks 8.28.0
+(checksum-verified) over the whole history with `.gitleaks.toml` (all
+default rules; only lines labelled dev-only or test-only are excused);
+`pip-audit` over the locked environment, development tools included; and
+`npm audit` through `.github/scripts/npm-audit-gate.mjs`. That gate fails
+on any high or critical advisory in production dependencies, and in
+development dependencies unless the exact advisory is reviewed in
+`.github/security/npm-audit-allowlist.json` with a reason and an expiry
+date (expired entries fail). One entry today: picomatch ReDoS
+GHSA-fc5q-39xc-vjpf, which reaches only vitest, vite and eslint, has no
+fixed version (4.0.7 is the newest), and is in nothing sent to browsers
+(production audit: 0 advisories). It expires on 31 December 2026.
+
+`journeys.yml` replaces D-081's "only when asked": the journeys run on
+**every push that changes `apps/`, `infra/` or the workflow** (a
+documents-only push does not start them), against **PostgreSQL, the
+migrations and the API from Compose**, built from the same Dockerfile. The
+seed and the journeys' single worker passes run on the runner (they need
+development tools the image leaves out), so `infra/compose/compose.ci.yaml`
+gives the API container the runner's picture folder and user. Compose's
+always-running worker is not started: it would race the journeys' "Being
+prepared" checks. Playwright is now a pinned development dependency of the
+web app (`playwright` 1.63.0). Any failing step fails the run. Cost: about
+six minutes of the private repository's free Actions minutes per code push.
+
+**Page weight.** `apps/web/e2e/page-weight.mjs` runs first in the journeys
+job: it loads five pages as a first-time phone visitor and counts the
+compressed bytes transferred before images. Measured on 18 November 2026:
+script 142 to 147 KB on every page; before images 157 KB (home) to 195 KB
+(product page, which prefetches the pages it links to). **The 150 KB
+target of D.26 is not met.** As F.1 directs, the ceiling follows the
+measurement: script at most 170 KB (the framework's ~140 KB plus F.1's
+30 KB) and 210 KB before images, so pages cannot get heavier unnoticed.
+Closing the gap (link prefetching, the RSC payload) is open work.
+
+Nothing in this entry deploys anything, creates an account or costs money.
 
 ---
 

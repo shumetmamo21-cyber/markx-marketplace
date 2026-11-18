@@ -1,0 +1,13 @@
+# Added on top of compose.yaml by the browser-journeys workflow (D-084):
+#
+#   docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml up -d --wait api
+#
+# The journeys seed the demo data and run single worker passes from the
+# runner with `uv` (they need the development tools the image leaves out),
+# so the API container must read and write the same picture folder as the
+# runner, as the runner's own user. Nothing else differs from a laptop.
+services:
+  api:
+    user: "${MARKX_UID:?set MARKX_UID to the runner's user id}:${MARKX_GID:?set MARKX_GID}"
+    volumes:
+      - ${MARKX_HOST_STORAGE:?set MARKX_HOST_STORAGE to a folder on the runner}:/var/lib/markx/storage

@@ -1,0 +1,13 @@
+{
+  "_comment": "Reviewed npm advisories that CI tolerates in DEVELOPMENT dependencies only (D-084). Production dependencies are never allowed a high or critical advisory. Each entry names one advisory, why it cannot reach a buyer, and the date by which it must be looked at again; after that date CI fails until someone reviews it. Remove an entry as soon as a fixed version exists.",
+  "advisories": [
+    {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "severity": "high",
+      "reviewed": "2026-11-18",
+      "expires": "2026-12-31",
+      "reason": "ReDoS (a very slow match) when an attacker controls a glob pattern. picomatch <=4.0.7 is used only by development tools (vitest, vite, eslint, tinyglobby, fast-glob) on globs written by the developers in config files; `npm ls picomatch --omit=dev` is empty and no file under .next/static contains it, so nothing a visitor sends ever reaches it. No fixed version exists yet (4.0.7 is the newest); npm's suggested fix is a downgrade of vitest to 3.1.4, which is not a fix."
+    }
+  ]
+}

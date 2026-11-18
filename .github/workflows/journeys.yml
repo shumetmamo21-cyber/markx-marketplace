@@ -1,51 +1,40 @@
-# The browser journeys (apps/web/e2e/*.mjs) against a fresh demo database, in
-# Chromium, on GitHub's free hosted runners. Nothing here is deployed or paid
-# for. They take a quarter of an hour, so they run only when asked: from the
-# Actions tab (once this file is on the default branch), or on a push whose
-# commit message contains "[journeys]" (D-081).
+# The browser journeys (apps/web/e2e/*.mjs) and the page-weight check, in
+# Chromium, against the Compose environment (infra/compose) with a fresh demo
+# database, on GitHub's free hosted runners. Nothing here is deployed or paid
+# for. Any failing journey fails the run (D-081, D-084).
+#
+# It runs on every push that changes code or infrastructure; a push that
+# changes only documents does not start it. It can also be started from the
+# Actions tab once this file is on the default branch.
 name: Browser journeys
 
 on:
   workflow_dispatch:
   push:
+    paths:
+      - "apps/**"
+      - "infra/**"
+      - ".github/workflows/journeys.yml"
 
 permissions:
   contents: read
 
-# A push without "[journeys]" still starts a run, whose job is skipped. The
-# group's name says whether a run will really work, so such a push can only
-# cancel another empty run, never a journey run in progress.
+# A newer push to the same branch supersedes a run in progress.
 concurrency:
-  group: journeys-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[journeys]') }}
+  group: journeys-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   journeys:
-    name: Browser journeys (demo data, Chromium)
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[journeys]')
+    name: Browser journeys and page weight (Compose, demo data, Chromium)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          # A throwaway database inside the runner; the development-only
-          # password of docs/SETUP.md. Not a secret.
-          POSTGRES_PASSWORD: postgres_dev_only
-          POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 30
     env:
-      PGHOST: 127.0.0.1
-      PGUSER: postgres
-      PGPASSWORD: postgres_dev_only
-      # Demo data and the development SMS inbox exist only here (D-056).
+      # The runner's tools (seed, single worker passes) reach the Compose
+      # database on 127.0.0.1:5432 with the laptop-only defaults, and share
+      # the picture folder with the API container (compose.ci.yaml).
       MARKX_ENV: local
+      COMPOSE: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -59,12 +48,23 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
-      - name: The API, its database and the demo data
+      - name: Shared picture folder
+        run: |
+          mkdir -p "$RUNNER_TEMP/storage"
+          {
+            echo "MARKX_HOST_STORAGE=$RUNNER_TEMP/storage"
+            echo "MARKX_STORAGE_DIR=$RUNNER_TEMP/storage"
+            echo "MARKX_UID=$(id -u)"
+            echo "MARKX_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
+
+      - name: Start PostgreSQL, the migrations and the API from Compose
+        run: $COMPOSE up -d --build --wait api
+
+      - name: The demo data
         working-directory: apps/api
         run: |
           uv sync --locked
-          ../../infra/postgres/bootstrap.sh markx
-          uv run alembic upgrade head
           uv run python -m scripts.seed_demo | tee "$RUNNER_TEMP/seed.log"
           secret=$(sed -n 's/.*Staff authenticator secret: *\([A-Z2-7=]*\).*/\1/p' "$RUNNER_TEMP/seed.log" | head -1)
           test -n "$secret"
@@ -85,30 +85,26 @@ jobs:
               settings_store.set_setting(db, "auth.otp_per_ip_per_hour", 200)
           PY
 
-      - name: Start the API
-        working-directory: apps/api
-        run: |
-          nohup uv run uvicorn markx.main:app --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/api.log" 2>&1 &
-          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8000/api/v1/healthz > /dev/null && exit 0; sleep 1; done
-          cat "$RUNNER_TEMP/api.log"; exit 1
-
       - name: Build and start the web app
         working-directory: apps/web
         run: |
-          npm ci
+          npm ci --no-audit --no-fund
           npm run build
           nohup npm run start > "$RUNNER_TEMP/web.log" 2>&1 &
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/en > /dev/null && exit 0; sleep 1; done
           cat "$RUNNER_TEMP/web.log"; exit 1
 
-      # The journeys load Playwright from the web app's folder; it is not one
-      # of the app's dependencies, so it is installed here without saving.
-      - name: Install Playwright and Chromium
+      # Playwright is one of the web app's development dependencies (locked
+      # in package-lock.json); only its Chromium is downloaded here.
+      - name: Chromium for Playwright
         working-directory: apps/web
         run: |
-          npm install --no-save playwright@1.63.0
           npx playwright install --with-deps chromium
           mkdir -p "$RUNNER_TEMP/shots"
+
+      - name: Page weight
+        working-directory: apps/web
+        run: node e2e/page-weight.mjs
 
       # One journey per step, so a failure names its journey.
       - name: Seller dashboard
@@ -130,6 +126,10 @@ jobs:
         working-directory: apps/web
         run: node e2e/setup-and-account.mjs "$RUNNER_TEMP/shots"
 
+      - name: Server logs
+        if: always()
+        run: $COMPOSE logs --no-color api > "$RUNNER_TEMP/api.log" 2>&1 || true
+
       - name: Keep the screenshots and server logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -140,3 +140,7 @@ jobs:
             ${{ runner.temp }}/api.log
             ${{ runner.temp }}/web.log
           retention-days: 7
+
+      - name: Stop Compose
+        if: always()
+        run: $COMPOSE down --volumes
