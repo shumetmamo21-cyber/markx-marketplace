@@ -77,7 +77,12 @@ one real fault before it shipped: "add a version" forced a value on a detail
 the other versions leave empty, which the API refuses. The only routes left
 without a screen are Telegram sign-in and linking (they need the bot), the
 development SMS inbox, the health checks and the file links the API hands
-out.
+out. Final checks: 948 API tests; 33 web unit tests; the buyer, staff,
+admin, seller-dashboard and setup-and-account journeys passed in Chromium
+with no console errors; GitHub Actions run #63 passed. **One open
+question** for the next session: a single worker pass in one admin journey
+run handled none of the outbox messages that were due, with no error
+anywhere; it did not recur (`docs/DEVELOPMENT_STATUS.md`, Known problems).
 
 **Still to build on the web:** Telegram sign-in and the Mini App once the
 founder creates the bot; ratings on the product card (with the back end).
