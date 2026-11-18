@@ -42,9 +42,12 @@ step (blueprint F.0, F.13):
    +-----------+  +-----------+  +-----------+  +-----------+
    | postgres  |<-| worker    |  | backup    |  | migrate   |  (profile; one-time)
    | 17.12     |  | jobs and  |  | nightly   |  | alembic   |
-   |           |  | schedules |  | dump      |  | upgrade   |
+   |           |  | schedules |  | set (*)   |  | upgrade   |
    +-----------+  +-----------+  +-----------+  +-----------+
-   api and worker are also on the egress network: Turnstile, SMS, S3/R2, Telegram
+   api, worker and backup are also on the egress network: Turnstile, SMS,
+   S3/R2, Telegram, the backup destination
+   (*) the database and every stored file, encrypted, to an off-server bucket
+       (D-094); NO destination is connected yet (F-16)
 ```
 
 | Service | Image | What it does | Health check | Stop grace |
@@ -54,7 +57,7 @@ step (blueprint F.0, F.13):
 | `api` | `markx/api:<release>` (`apps/api/Dockerfile`) | Every business rule | `GET /api/v1/healthz/ready` (readiness) | 30 s (uvicorn drains for 20 s) |
 | `worker` | the API image, `python -m markx.worker` | Scheduled jobs, the outbox, pictures; also the scheduler | `--check-heartbeat` (a pass in the last 5 min) | 60 s (finishes the row in hand) |
 | `postgres` | `postgres:17.12` | The database, on a named volume, data checksums on | `pg_isready` | 60 s |
-| `backup` | `postgres:17.12`, `infra/backup/scheduled.sh` | An encrypted dump at start-up and daily | last good dump under 26 h old | — |
+| `backup` | `markx/backup:<release>` (the `backup` stage of `apps/api/Dockerfile`), `python -m markx.backup serve` | A backup set (database and files) at start-up and daily: encrypted, uploaded, read back, signed; retries and retention (D-094) | a verified set under 26 h old, off-server on staging and production | 30 s |
 | `migrate` | the API image, `alembic upgrade head` | The one-time migration step; never started by `up` | — | — |
 
 Hardening on the application containers (**Tested** by the rehearsal):
@@ -83,9 +86,11 @@ provider at most once every 15 seconds, whoever calls. **Tested.**
 Two kinds of file, both **outside the repository**, on the server only:
 
 - `/etc/markx/compose.env`: **not secret**; what the Compose file needs.
-- `/etc/markx/*.env` and `/etc/markx/backup.key`: **secret**, owner root,
-  mode 600 (the backup key: owner 999, mode 400). `deploy.sh check` refuses
-  wrong owners, wrong modes and example values.
+- `/etc/markx/*.env` and `/etc/markx/backup-signing.key`: **secret**, owner
+  root, mode 600 (the signing key: owner 999, mode 400).
+  `/etc/markx/backup-public.key`: not secret (root, 644). `deploy.sh check`
+  refuses wrong owners, wrong modes, example values, and a backup
+  **recovery** key anywhere in `/etc/markx` (it never belongs on the server).
 
 Templates with placeholders only: `infra/production/env/*.env.example`. The
 API refuses to start on staging or production, naming every problem and
@@ -155,15 +160,39 @@ The web container refuses to start on staging or production without these
 | `MARKX_TURNSTILE_SITE_KEY` | `web.env` | set, not a Cloudflare test key |
 | `MARKX_HSTS_MAX_AGE` | — | must NOT be set at run time; the proxy sends HSTS |
 
-### Database and backups (`postgres.env`, `backup.env`, `backup.key`)
+### Database (`postgres.env`)
 
 | Setting | For | Purpose |
 | --- | --- | --- |
-| `POSTGRES_PASSWORD` | postgres | the superuser; used for restores only |
+| `POSTGRES_PASSWORD` | postgres | the superuser; used for restores and drills only |
 | `MARKX_DB_MIGRATOR_PASSWORD`, `MARKX_DB_APP_PASSWORD`, `MARKX_DB_READONLY_PASSWORD` | postgres (first start only) | the three MarkX roles (blueprint F.3); must match the URLs above |
-| `PGPASSWORD` | backup | the `markx_migrator` password (the schema owner reads every table) |
-| `MARKX_BACKUP_HOUR_UTC`, `MARKX_BACKUP_KEEP_DAYS` | backup | default 23 (02:00 in Addis Ababa) and 30 days |
-| `backup.key` | backup | the passphrase, at least 32 characters; **keep a copy off the server** |
+
+### Backups (`backup.env`, `backup-public.key`, `backup-signing.key`; D-094)
+
+Read by the `backup` service only; the API and the worker never hold a
+backup credential or key. **None of these exists for a real server yet**
+(F-16, F-19, F-20). Template: `infra/production/env/backup.env.example`.
+Procedures: `docs/runbooks/backup-and-restore.md`.
+
+| Setting | Purpose |
+| --- | --- |
+| `PGPASSWORD` | the `markx_migrator` password (the schema owner reads every table) |
+| `MARKX_BACKUP_DESTINATION` | `s3` or `r2`; staging and production refuse `local` and `minio` |
+| `MARKX_BACKUP_DESTINATION_ENDPOINT_URL`, `_REGION`, `_BUCKET`, `_PREFIX` | the dedicated backup bucket, never a file bucket; `https://` only |
+| `MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` | **its own key**, scoped to that bucket; never the file stores' key, never the machine's credentials |
+| `MARKX_BACKUP_SOURCE_PROVIDER`, `_ENDPOINT_URL`, `_REGION`, `_PRIVATE_BUCKET`, `_PUBLIC_BUCKET` | the two file buckets to copy |
+| `MARKX_BACKUP_SOURCE_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` | a **read-only** key for the two file buckets |
+| `MARKX_BACKUP_HOUR_UTC` | the nightly set (default 23, 02:00 in Addis Ababa) |
+| `MARKX_BACKUP_RETENTION_DAYS`, `MARKX_BACKUP_RETENTION_MIN_SETS` | **required** on a real server; the founder's decision (F-20); 0 days keeps everything |
+| `MARKX_BACKUP_RETRY_ATTEMPTS`, `_RETRY_DELAY_SECONDS`, `_MAX_AGE_HOURS`, `_LOCAL_KEEP_SETS`, `_BLOB_GRACE_HOURS` | optional: 3 attempts, 600 s, 26 h, 2 local copies, 48 h |
+| `/etc/markx/backup-public.key` | the recovery key's PUBLIC half: the server encrypts, never decrypts |
+| `/etc/markx/backup-signing.key` | signs manifests; secret, owner 999, mode 400 |
+
+The **recovery key** (private) and the signer public key are kept off the
+server by the founder (F-19); a restore needs only them and the bucket's
+read access. In `api.env`, `MARKX_BACKUP_MONITORING` (`auto`: on for
+staging and production), `MARKX_BACKUP_MAX_AGE_HOURS` (26) and
+`MARKX_RESTORE_DRILL_MAX_AGE_DAYS` (35) set the worker's backup alerts.
 
 ## The reverse proxy
 
@@ -218,6 +247,11 @@ simultaneous runs). The API, the web app and the worker never migrate. See
   (`docs/runbooks/tls-certificates.md`).
 - Turnstile's production widget; an SMS provider (F-11); the buckets (F-01)
   and the picture CDN and its domain (F-15); the Telegram alert group.
+- **The backup destination (F-16), the recovery key (F-19) and the
+  retention (F-20).** The backup service (D-094) is built and tested
+  against MinIO; on a real server it refuses to start until they exist.
+  Until then there is no off-server backup: a disk or server loss loses
+  the data. Activation steps: `docs/runbooks/backup-and-restore.md`.
 - The Cloudflare edge.
 
 **Seller notifications: a launch blocker (D-092, N-1).** The notification
@@ -245,15 +279,12 @@ real order alert has been received on a seller's phone. To activate:
 
 **Not built:**
 
-- Off-server backups (F-16): the nightly dump stays on the server's disk.
-  The blueprint's copy to object storage (30 days) and the weekly copy to
-  the founder's encrypted drive are not connected. A disk or server loss
-  loses the backups too.
-- **Backups of the stored files (F-14 stays open).** No dump contains a
-  document or picture, and nothing copies the buckets.
-- An outside uptime monitor and error tracking (F-18; both need an account);
-  backup failures show only as an unhealthy `backup` container and in its
-  log.
+- The blueprint's weekly copy to an encrypted drive the founder holds: not
+  automated (a second destination, F-16).
+- Versioning of the live file buckets between two nightly sets (F-14).
+- An outside uptime monitor and error tracking (F-18; both need an account).
+  Backup alerts are generated by the worker's watch but reach a person only
+  once the Telegram alert group exists; until then, the log.
 - Zero-downtime deploys: one copy of each service, so a restart drops
   requests for a few seconds. The web server stops at once on SIGTERM (Next.js
   does not drain), so pages being rendered at that moment fail.
@@ -265,5 +296,6 @@ real order alert has been received on a seller's phone. To activate:
 
 **Real world only:** real TLS from outside, real latency from Ethiopia,
 memory limits under real load, edge rate limits against real carrier
-addresses, a restore on the real server within the four-hour target
-(blueprint H.2), the security review before launch (blueprint H.7).
+addresses, a backup to and a restore from a real off-server destination
+within the four-hour target (blueprint H.2), the security review before
+launch (blueprint H.7).

@@ -1327,6 +1327,10 @@ location data". **Accepted.** Migration `0008`.
 
 ## D-063 Backups: an encrypted dump, a restore that never overwrites, a drill in CI
 
+> **Superseded by D-094** (18 November 2026) for everything but the legacy
+> restore: the CBC format, `backup.sh`, `scheduled.sh` and `drill.sh` are
+> gone; `restore.sh` lives on as `infra/backup/restore-legacy-cbc.sh`.
+
 **Follows** blueprint F.13, H.2 (backups) and the P2 deliverable "a nightly
 encrypted backup and a scripted restore". **Accepted.** Nothing is uploaded
 anywhere; no cloud resource was created.
@@ -3058,6 +3062,166 @@ against Telegram's documentation when the bot is connected. No staff tool
 to disconnect someone; no Telegram sign-in on the web; no resend of old
 notifications; the bot's texts need a native speaker's review.
 
+## D-094 Off-server backup and disaster recovery: signed, encrypted sets of the database and the files, provider-independent, not connected
+
+**Follows** blueprint F.6 ("the buckets need their own protection"), F.13
+and H.2 (a nightly encrypted dump away from the server, a monthly restore
+drill, 24 hours of loss and 4 hours to restore at most), G.11 ("encrypted
+before they leave the database host"), H.7 (a restore drill before launch).
+**Replaces** the backup part of D-063 and the backup service of D-091.
+**Built and tested locally and in CI against PostgreSQL 17 and MinIO only.
+No destination, bucket, account or key exists for a real server; nothing was
+uploaded anywhere outside this machine and CI; MarkX has NO off-server backup
+until the founder's decisions F-16, F-19 and F-20 are made and the
+activation steps in `docs/runbooks/backup-and-restore.md` are done.**
+
+**What the audit said, checked against the code** (`infra/backup/*.sh` at
+`866a184`):
+
+| Finding | Verified |
+| --- | --- |
+| Dumps stay on the same server | **True.** `scheduled.sh` wrote to `MARKX_BACKUP_HOST_DIR` only; nothing copied them away |
+| AES-256-CBC without authentication | **True.** `openssl enc -aes-256-cbc -pbkdf2`; the `.sha256` beside the file catches accidents, not someone who changes both |
+| The key on the same host | **True.** `/etc/markx/backup.key`, beside the database passwords; the same passphrase decrypts every dump |
+| Stored files not backed up | **True.** F-14 open; no code copied either bucket |
+| Failures not brought to a person | **True.** Only an `unhealthy` container and a log line; the watch knew nothing of backups |
+| Restore testing does not prove database-plus-file recovery | **True.** `drill.sh` restored the database only and compared row counts |
+
+**The design** (`apps/api/markx/backup/`, `python -m markx.backup`):
+
+- **A backup set** is the dump and every stored file, taken together, with a
+  signed manifest written last. Nothing is a recovery point until that
+  manifest exists, verifies and says `complete`. Layout, steps and the
+  operator's view: the runbook.
+- **Consistency.** One REPEATABLE READ transaction exports its snapshot;
+  `pg_dump --snapshot` dumps that instant, and the same transaction reads
+  every table's row count and every file reference. Files are listed after
+  the snapshot. Because uploads write the file before the row commits and
+  nothing deletes stored files (D-062, D-090), every referenced file exists
+  by then; a missing one makes the set `incomplete` (refused by a restore
+  by default, alerted). **A future feature that deletes files must delete
+  the row first.**
+- **Dump checks.** Exit status; a custom-format archive; `pg_restore
+  --list` reads the table of contents and finds every table of the
+  snapshot, `alembic_version`'s data included. The plaintext streams into
+  the encryption and `pg_restore --list` and is never written to disk.
+  Credentials travel only in the child's PG* environment, never an argument;
+  the child gets no MARKX_* or AWS_* variable.
+- **Encryption: public-key, authenticated (MXB2).** X25519 + HKDF-SHA256 to
+  a per-file key, AES-256-GCM in 1 MiB chunks with the STREAM nonce (counter
+  and last-chunk flag), the header authenticated in every chunk, from the
+  `cryptography` library already in use. **Why public-key:** the server
+  must encrypt every night but should not be able to decrypt; with a
+  symmetric key on the server, the server's compromise or loss is the
+  backups' too. The server holds only the recipient's public key; the
+  **recovery key** (private) is kept off the server by the founder (F-19).
+  Because the public key lets anyone encrypt, authorship comes from an
+  **Ed25519-signed manifest** recording every piece's SHA-256; a restore
+  checks the hash, decrypts the whole piece once without using it, and only
+  then writes. `age` was considered (same construction, but one more
+  binary and a second format to verify); GnuPG (heavier, harder to use
+  correctly). A cloud key service was not invented: none exists, and the
+  founder chooses custody.
+- **Never the application's keys.** `MARKX_SECRET_KEY` and
+  `MARKX_ENCRYPTION_KEY` are not read by `markx.backup.crypto` (a test
+  says so). Keys are separate files made by `keygen`, labelled by kind so a
+  public key cannot be loaded as a private one; private key files readable
+  by others are refused; `keygen` never overwrites.
+- **Files.** Both buckets are listed (read-only by construction: the
+  source interface has `list` and `open` only), each object encrypted to a
+  blob named by an HMAC of its content (keyed by the signing key, so a name
+  reveals nothing). Unchanged objects (same size and ETag) are not read
+  again; existing blobs are not uploaded again; an interrupted run's blobs
+  are reused by the next. The encrypted index keeps each file's store,
+  key, size, SHA-256 and type: private files are restored only to the
+  private target. Symbolic links and unsafe keys in a folder source are
+  skipped and counted, never followed.
+- **Destinations.** One interface (`destination.py`): `S3Destination` for
+  any S3-compatible bucket (S3, R2; MinIO in tests) with its own
+  credentials, never the machine's; `LocalDestination` for a laptop. Every
+  upload is verified by size and a full read-back hash. A failed multipart
+  upload is aborted; parts left by a killed process are aborted after a day.
+  The destination is refused if it lists without credentials. Errors are
+  `DestinationUnavailable` (retried) or `DestinationError` (a setting);
+  neither carries a credential.
+- **Refusals on staging and production** (`config.py`): a destination that
+  is `local` or `minio`, or not https; a backup bucket that is a file
+  bucket; and, for the service, file stores read from a folder or MinIO,
+  the file stores' key reused for backups, no explicit retention, no keys,
+  no release. MinIO is never reported off-server.
+- **Restore** (`restore.py`): into a NEW database (refuses one that exists,
+  the source's own name, a system database, a confirmation that does not
+  repeat it) and EMPTY file targets that are not the live buckets. Then it
+  checks the migration version, every table's row count against the
+  snapshot's, invalid indexes and unvalidated constraints, the audit log's
+  protection, every file's checksum after reading it back, every database
+  reference against the restored files, and that the private target cannot
+  be read anonymously. A failed database restore drops only the database
+  it created.
+- **Drill** (`drill.py`): backup, deep verification, restore into a new
+  database and disposable targets (MinIO buckets in CI; a temporary folder
+  on a server, so no bucket is bought), comparison, then seven injected
+  faults on a copy under a separate prefix (a changed dump byte, a cut index,
+  a missing manifest, an edited manifest, a missing blob, a wrong recovery
+  key, and a restore of an altered set that must create nothing). It
+  removes only what it created and records the result.
+- **Concurrency.** A PostgreSQL advisory lock and a file lock; a second run
+  is `skipped`. Runs left `running` by a dead process are marked
+  `abandoned` by the next one.
+- **Failures** never delete anything at the destination: the last good set
+  stays. The attempt's folder (encrypted pieces, tool output, a report
+  with the error and its trace, kept on the server only) moves to
+  `failed/`. Transient failures are retried by the service (3 attempts,
+  10 then 20 minutes apart by default); each attempt is its own record.
+- **Retention** (`retention.py`): founder-set days and minimum sets, the
+  newest complete set always kept, only this service's signed manifests
+  trusted, blobs collected only when unneeded and older than 48 hours, and
+  none at all if a kept set's blob list cannot be checked.
+- **Monitoring.** Migration `0018`: `backup_runs`, written by the backup
+  service as the schema owner; the application role may read it only (a
+  test). The worker's watch adds `backup.failed`, `backup.incomplete`,
+  `backup.stale` (no verified **off-server** set within 26 hours, or none
+  ever), `backup.drill_failed` and `backup.drill_overdue` (35 days), on
+  staging and production (`MARKX_BACKUP_MONITORING`). **An alert generated
+  is not an alert received:** it reaches a person only once the Telegram
+  alert group is configured (F-18); until then, the log.
+- **Deployment.** The API image gains a `backup` stage (the same code plus
+  PostgreSQL 17.12's client tools copied from the `postgres:17.12-bookworm`
+  image; the default `postgres:17.12` tag is now Debian trixie, whose C
+  library the bookworm-based Python image lacks). The Compose `backup`
+  service runs `python -m markx.backup serve` as uid 999, read-only root,
+  on the backend and egress networks, with the public and signing keys
+  mounted and the recovery key absent; `deploy.sh check` refuses a recovery
+  key in `/etc/markx`; `deploy.sh` takes a set before every migration.
+- **Old format.** `backup.sh`, `scheduled.sh` and `drill.sh` are removed:
+  no new CBC dump is ever made. `restore.sh` is kept as
+  `restore-legacy-cbc.sh` so a dump in the old format never becomes
+  unreadable. MarkX was never deployed, so no real dump in that format
+  exists; one on a laptop can be restored and backed up again in MXB2.
+
+**Tested** (commands and results in `docs/DEVELOPMENT_STATUS.md`): 33
+encryption and signature tests (every size across chunk boundaries, a bit
+changed anywhere, truncation at every boundary, extension, chunks swapped,
+dropped or repeated, a foreign header, wrong keys, key rings, legacy files,
+key files), 16 configuration tests, 11 retention tests, 16 monitoring tests,
+19 PostgreSQL-and-MinIO recovery tests (a full database-and-file recovery
+from data made through the API, incremental runs, a missing file, a failed,
+empty or foreign dump, an unreachable destination, an interrupted backup
+resumed, overlapping runs, a dead run, a public or missing bucket, a
+read-back mismatch, an aborted multipart upload, path and link escapes,
+every restore refusal, tampering at the destination, a wrong key, the drill
+and a failed drill); the CI drill on the demo data; the drill inside the
+built `backup` image; and the production rehearsal.
+
+**Not done, and not claimed:** no real destination, bucket, key or alert
+channel; no restore on a real server; no measurement of the 4-hour target
+on real data volumes; no object lock or versioning on a backup bucket (part
+of F-16); files larger than memory are streamed for backup but a restore
+reads one file into memory (MarkX stores pictures of at most 20 MB); the
+weekly copy to the founder's drive (blueprint F.13) is the founder's choice
+of destination and is not automated (a second destination can be a second
+`backup` service with another `backup.env`).
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -3065,7 +3229,8 @@ request on 18 November 2026: the engineer's guess, which the founder must
 confirm or change before MarkX goes live. F-09 and F-10 (raised in D-086)
 were decided on 18 November 2026: see D-087 and D-088. F-11 to F-13
 (D-089, SMS), F-14 and F-15 (D-090, file storage), F-16 to F-18 (D-091,
-deployment) and N-1 (D-092, notification channels) are open and have no provisional answer: the code does the most cautious thing until the founder
+deployment), F-19 and F-20 (D-094, backups) and N-1 (D-092, notification
+channels) are open and have no provisional answer: the code does the most cautious thing until the founder
 decides.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
@@ -3315,18 +3480,17 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 
 ### F-14 How the stored files are protected against loss (blueprint F.6)
 
-- **Today (D-090):** files live in the buckets only. The database backup
-  (D-063) does not include them, and nothing copies them anywhere else.
-- **Options:** turn on the provider's object versioning (S3; R2 has no
-  versioning, so a second bucket and a scheduled copy), and a lifecycle rule
-  that keeps old versions for 30 days; or a scheduled copy of both buckets
-  to a second provider or the founder's encrypted drive (blueprint F.13).
-  Each costs storage. A restore drill for files, beside the database drill,
-  belongs to either.
-- **Blocks:** not development; the controlled launch should not start
-  without it.
+- **Today (D-094):** the backup service copies every stored object of both
+  buckets, encrypted, into each backup set, with the database dump of the
+  same moment, and restores them into new buckets with every checksum
+  verified. **Tested against MinIO only; not connected** (it needs F-16's
+  destination). Nothing else protects a file deleted or changed in a live
+  bucket between two sets.
+- **Still to decide:** whether to also turn on object versioning (S3) or a
+  second scheduled copy (R2 has no versioning) on the live buckets, which
+  would protect files changed between two nightly sets. Each costs storage.
 - **Founder's approval required: yes** (a paid setting and where copies of
-  personal documents may live).
+  personal documents may live; together with F-16).
 
 ### F-15 The pictures' own domain (blueprint F.6)
 
@@ -3341,18 +3505,21 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 
 ---
 
-### F-16 Where the database dumps are copied off the server (blueprint H.2, F.13)
+### F-16 Where the backup sets are kept off the server (blueprint H.2, F.13)
 
-- **Today (D-091):** the backup service writes an encrypted dump at start-up
-  and every night to the server's own disk and keeps 30 days. Nothing copies
-  them anywhere else, so losing the server loses its backups.
-- **Options:** a private, versioned backup bucket at the same provider as
-  F-01 (blueprint M.3 lists "backups" among the dedicated buckets) with a
-  30-day lifecycle rule, written by the backup service; and the blueprint's
-  weekly copy to an encrypted drive the founder holds, by hand until then.
+- **Today (D-094):** the backup service is built for any S3-compatible
+  bucket (Amazon S3 or Cloudflare R2), refuses anything that is not off the
+  server on staging and production, and is tested against MinIO. **No
+  provider, account or bucket is chosen or created; MarkX has no off-server
+  backup.**
+- **To decide:** the provider (AWS S3 or Cloudflare R2), the bucket's
+  location (backups hold personal data: blueprint O.1), versioning or an
+  object lock on the bucket (protects sets against a stolen backup key),
+  and the spending. Also whether the blueprint's weekly copy to an
+  encrypted drive the founder holds is kept (a second destination).
 - **Blocks:** the controlled launch should not start without an off-server
-  copy. **Founder's approval required: yes** (a paid bucket; where copies of
-  personal data live).
+  set, a passed drill and an alert channel (F-18). **Founder's approval
+  required: yes** (a paid bucket; where copies of personal data live).
 
 ### F-17 The site's domain, its certificate and whether Cloudflare is in front
 
@@ -3377,6 +3544,31 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   tracker on a free tier with personal data removed before sending.
 - **Founder's approval required: yes** (accounts; error tracking sends data
   out).
+
+### F-19 Who holds the backup recovery key, and where (D-094)
+
+- **Today:** the backups are encrypted to a recovery key whose private half
+  never goes on the server. No real key has been made.
+- **To decide:** who holds it (the founder, and a second trusted person for
+  when the founder is unavailable: blueprint H.6), in which two separate
+  places (for example a password manager with emergency access, and an
+  encrypted USB key or a sealed printed copy in a safe), and the yearly
+  rotation. **Losing every copy makes every backup unreadable, for ever.**
+  Keeping it beside the server's passwords would not protect against losing
+  both.
+- **Founder's approval required: yes.**
+
+### F-20 How long backups are kept (D-094)
+
+- **Today:** staging and production refuse to start the backup service
+  without `MARKX_BACKUP_RETENTION_DAYS` (0 keeps everything) and
+  `MARKX_BACKUP_RETENTION_MIN_SETS`; a laptop keeps 7 days and 3 sets. The
+  newest complete set is never deleted. The blueprint says 30 days (H.2);
+  that is not chosen here.
+- **To decide:** the days and the minimum number of sets, with the legal
+  retention of the personal data in them (the founder's own checks) and
+  the storage cost.
+- **Founder's approval required: yes.**
 
 ## Open questions carried over from session 1
 

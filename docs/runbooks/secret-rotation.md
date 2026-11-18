@@ -20,5 +20,6 @@ environment change recreates the container). `deploy.sh check` before.
 | SMS API key | `api.env` | The provider's dashboard, then the file | api, worker |
 | Storage access key | `api.env` | Create the new key at the provider scoped to the two buckets, change the file, restart, then delete the old key | api, worker |
 | Telegram bot token | `api.env` | BotFather's `/revoke`, then the file | api, worker |
-| `backup.key` | `/etc/markx/backup.key` | Write a new one (`deploy.md`); **keep the old one** as long as any dump made with it is kept (30 days, and every off-server copy) | backup |
+| Backup keys (D-094) | `/etc/markx/backup-public.key`, `/etc/markx/backup-signing.key`; the recovery key off the server | `python -m markx.backup keygen` on a trusted machine; install the new public and signing keys; take a set; drill with the NEW recovery key. **Keep the old recovery key and signer public key** as long as any set made with them is kept (`backup-and-restore.md`, "Rotating keys") | backup |
+| Backup destination key | `backup.env` | Create the new key at the provider scoped to the backup bucket only, change the file, restart, take a set, then delete the old key | backup |
 | TLS private key | `/etc/markx/tls` | `tls-certificates.md` | proxy (reload) |

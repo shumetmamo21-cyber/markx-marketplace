@@ -48,6 +48,9 @@ apps/
       search/               search documents, matching, the evaluator
       images/               product pictures and problem photos (D-062)
       ops/                  self-checks, alerts, reconciliation (D-064)
+      backup/               off-server backup sets of the database and the
+                            files, restore, drill, retention (D-094);
+                            `python -m markx.backup`
       admin/                audit-log viewer, settings, staff accounts,
                             dispatch board, business dashboard (D-065)
       reviews/              reviews, replies, moderation, rating totals (D-066)
@@ -66,6 +69,8 @@ apps/
       db/                   rules the database enforces by itself, and
                             contention tests with many threads
       api/                  HTTP tests through the real application
+      storage/              MinIO: object storage, and backup and recovery
+                            against PostgreSQL 17 (D-090, D-094)
       worker/               the worker, driven one pass at a time
   web/                      Next.js app (D-055); every page under /am or /en
     messages/               am.json and en.json: every word on screen
@@ -76,7 +81,8 @@ apps/
     e2e/                    browser journeys against the demo data
 infra/
   postgres/                 bootstrap.sql and bootstrap.sh: roles and database
-  backup/                   backup.sh, restore.sh, drill.sh (D-063)
+  backup/                   restore-legacy-cbc.sh: the retired D-063 format,
+                            restore only (D-094)
   compose/                  API, worker, PostgreSQL and MinIO on a laptop
                             (D-058, D-090)
   production/               the production Compose file, nginx, env file
@@ -337,7 +343,8 @@ markx.worker --check-heartbeat` is its container check.
 `infra/production/compose.yaml`: nginx (TLS, the only published ports) in
 front of the web app and the API on an internal network; PostgreSQL, the
 worker, the backup service and the one-time `migrate` step on a second
-internal network; only the API and the worker can reach the internet. The
+internal network; only the API, the worker and the backup service can
+reach the internet. The
 API trusts forwarded addresses from the proxy network only, and the web
 server passes the visitor's single address on to the API for its own calls
 (`apps/web/src/lib/api/forwarded.ts`). Migrations run once per release,
@@ -345,6 +352,40 @@ under a PostgreSQL advisory lock (`migrations/env.py`). The web app's
 production image runs Next.js's standalone server after
 `apps/web/deploy/check-env.mjs` has checked its settings. Everything is in
 `docs/DEPLOYMENT.md`.
+
+## Backups and disaster recovery (D-094)
+
+`markx/backup/`, run as its own service (`python -m markx.backup serve` in
+the `backup` image: the API image plus PostgreSQL 17's client tools). It is
+deliberately **not** a worker job: the worker would then hold the backup
+destination's key, the source buckets' key and the signing key, and the
+worker is on every request's path. The two meet through `backup_runs`
+(migration `0018`): the service records every attempt; the worker's watch
+(`checks.backups`, `checks.restore_drills`) turns the record into alerts.
+
+```text
+ PostgreSQL --(exported snapshot)--> pg_dump --> MXB2 encryption --+
+     |   row counts and file references from the same snapshot     |
+     v                                                             v
+ file buckets --(after the snapshot; unchanged objects skipped)--> blobs --> backup bucket
+                                                                  (read back, SHA-256)
+                                                   signed manifest, written last
+```
+
+- `crypto.py`: X25519 + HKDF + AES-256-GCM in chunks (MXB2); Ed25519
+  manifest signatures; key files. The server holds only the public half of
+  the recovery key.
+- `runner.py`: one set (lock, snapshot, dump, files, uploads, manifest);
+  `references.py` says which files the rows need; `database.py` runs
+  pg_dump and pg_restore with credentials in the environment only.
+- `destination.py` and `sources.py`: the S3-compatible and folder adapters;
+  sources are read-only by construction.
+- `restore.py`: verifies a set completely before writing, restores into a
+  new database and empty stores, and checks the result.
+- `retention.py`, `drill.py`, `records.py`, `config.py` (staging and
+  production refuse anything but an off-server https destination).
+
+Procedures: `docs/runbooks/backup-and-restore.md`.
 
 ## The worker
 

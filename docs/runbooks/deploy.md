@@ -27,13 +27,17 @@ the founder.
    Then edit each file and replace every `REPLACE_WITH_…` and every
    `example.invalid`. Generate each secret on the server (the commands are
    in the files); never reuse one and never send one over chat. Keep
-   `MARKX_ENCRYPTION_KEY` and `backup.key` also where the founder keeps
-   recovery material: without them the data cannot be read.
-4. The backup key and folder:
+   `MARKX_ENCRYPTION_KEY` also where the founder keeps recovery material:
+   without it the encrypted columns cannot be read.
+4. The backup keys and folder (D-094; `backup-and-restore.md`, "Activating
+   off-server backups": the destination, the recovery key's keeper and the
+   retention are the founder's decisions F-16, F-19, F-20). The keys are
+   made on a trusted machine, never on the server; only the PUBLIC key and
+   the signing key come here, the recovery key never does:
 
    ```bash
-   head -c 48 /dev/urandom | base64 > /etc/markx/backup.key
-   chown 999:999 /etc/markx/backup.key && chmod 400 /etc/markx/backup.key
+   install -o 0 -g 0 -m 644 backup-public.key /etc/markx/backup-public.key
+   install -o 999 -g 999 -m 400 signing.key /etc/markx/backup-signing.key
    install -d -o 999 -g 999 -m 700 /var/backups/markx
    install -d -m 755 /var/lib/markx/acme
    ```

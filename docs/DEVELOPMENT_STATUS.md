@@ -1,7 +1,28 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **Telegram account connection
-session** (D-093): a signed-in person can connect their own Telegram
+**Last updated:** 18 November 2026, by the **off-server backup and disaster
+recovery session** (D-094): the audit's six backup findings verified in the
+code and all true (dumps on the same server, unauthenticated AES-256-CBC,
+the passphrase beside the database passwords, no file backup, failures
+heard by no one, no database-plus-file restore test). Replaced by
+`python -m markx.backup`: a **backup set** is the PostgreSQL 17 dump and
+every stored object, taken from one exported snapshot, encrypted with
+**public-key authenticated encryption** (X25519 + AES-256-GCM in chunks,
+"MXB2") so the server can encrypt but never decrypt, uploaded to a
+provider-independent S3-compatible destination, read back and checked, and
+committed by an **Ed25519-signed manifest**; a restore into a NEW database
+and EMPTY stores that verifies everything first and checks everything
+after; an automated **recovery drill** with seven injected faults, in CI on
+every push; retention that never deletes the last good set and waits for
+the founder's numbers; and five new watch alerts fed by `backup_runs`
+(migration `0018`). The production `backup` service, `deploy.sh` and the
+rehearsal use it; the CBC scripts are gone (a decrypt-only legacy restore
+is kept). **Tested against PostgreSQL 17 and MinIO only. No provider,
+bucket, account or real key exists; nothing was uploaded outside this
+machine and CI; MarkX has NO off-server backup** until the founder decides
+F-16, F-19 and F-20 (new) and the activation steps are done, and alerts reach
+a person only once the alert group exists (F-18). Before it, the **Telegram
+account connection session** (D-093): a signed-in person can connect their own Telegram
 account with a one-time link that the bot's `/start` confirms through a
 secret-checked webhook (`POST /me/telegram/link`, `POST /telegram/webhook`,
 `GET`/`DELETE /me/telegram`; migration `0017`), with the token stored only as
@@ -896,9 +917,8 @@ All of it under `apps/api` and `infra/`; `apps/web` was not modified.
   to WebP in two sizes within 30 KB and 150 KB, no metadata, moderation by
   staff; problem photos for both sides of an open problem, private, by
   five-minute link, append-only.
-- **Backups** (D-063, `infra/backup/`): `backup.sh` (encrypted dump),
-  `restore.sh` (new database only), `drill.sh` (backup, restore, compare,
-  clean up), run by CI on the demo data.
+- **Backups** (D-063, `infra/backup/`): replaced by D-094 (below); only
+  `restore-legacy-cbc.sh` remains, for dumps in the retired format.
 - **Monitoring** (D-064, `markx/ops/`): `ops.watch` every five minutes and
   `ops.reconcile` daily; alerts open, persist and resolve once each, through
   the outbox, to Telegram when configured; `GET /healthz/worker` for an
@@ -924,6 +944,38 @@ All of it under `apps/api` and `infra/`; `apps/web` was not modified.
   stores each trading store's figures for the last Monday-to-Sunday week
   once and tells its members.
 
+### Backups and disaster recovery (D-094)
+
+`apps/api/markx/backup/`, `python -m markx.backup`; procedures in
+`docs/runbooks/backup-and-restore.md`. **Tested** locally and in CI against
+PostgreSQL 17 and MinIO; **not connected** to any real destination.
+
+- **Backup sets**: lock (advisory and file), exported snapshot, `pg_dump
+  --snapshot` checked by exit status, archive signature and `pg_restore
+  --list` against the snapshot's tables; row counts and file references
+  from the same snapshot; every object of both buckets, after the
+  snapshot, unchanged ones skipped, equal ones stored once; every upload
+  read back and hashed; the signed manifest last. A missing referenced file
+  makes the set `incomplete`. Failures keep the last good set and the
+  evidence; retries; a dead run is marked `abandoned`.
+- **Encryption** MXB2 (X25519, HKDF-SHA256, AES-256-GCM STREAM) and
+  Ed25519 manifests; four key files from `keygen`; the recovery key never on
+  the server (`deploy.sh check` refuses it).
+- **Restore** into a new database and empty, non-live stores; verified
+  before (signature, hashes, a full decryption) and after (migration
+  version, row counts, indexes and constraints, audit protection, every
+  file's checksum, every reference, the private target's privacy).
+- **Drill** with seven injected faults; CI keeps its report (artifact
+  `restore-drill`).
+- **Retention**: founder-set; the newest complete set always kept; only
+  signed sets trusted; blobs after 48 hours and only when unneeded.
+- **Monitoring**: `backup_runs` (migration `0018`, read-only for the
+  application role) and the watch's `backup.failed`, `backup.incomplete`,
+  `backup.stale`, `backup.drill_failed`, `backup.drill_overdue` on staging
+  and production.
+- **Deployment**: the `backup` image stage, the Compose service, `deploy.sh`
+  (a set before every migration), the rehearsal's checks and drill.
+
 ## What exists but is NOT tested
 
 Be careful with these. They were written and never exercised.
@@ -941,6 +993,13 @@ Be careful with these. They were written and never exercised.
   the certificate (no tool is installed; the deploy hook named in
   `tls-certificates.md` does not exist yet), recovering a lost server,
   secret rotation, the monthly drill on a server.
+- **Backups against a real provider** (D-094): every backup, restore and
+  drill test used MinIO. The `s3` and `r2` paths of the backup destination
+  share the storage adapter's client code, but no set has ever been written
+  to Amazon S3 or Cloudflare R2, no real key exists, no backup schedule has
+  run for a night, and the four-hour restore target has not been measured
+  on real data volumes. Alerts are generated, but no person receives them
+  until the alert group exists (F-18).
 
 - Models for refunds, payouts, reviews, reports and analytics: the tables
   exist and are constrained; **no service, route or test uses them**.
@@ -997,11 +1056,12 @@ Be careful with these. They were written and never exercised.
 - Any deployed server. The reverse proxy, the production Compose file and
   the nightly backup schedule now exist **in the repository** (D-091) and
   are rehearsed locally; none of it runs anywhere.
-- Error tracking (F-18), an outside uptime monitor (F-18), the off-server
-  copy of the database dumps (F-16), the site's domain and certificate
-  (F-17), the buckets themselves (F-01), their own protection against loss
-  (F-14) and the pictures' CDN and domain (F-15). An alert when a nightly
-  dump fails (it shows only as an unhealthy container). Zero-downtime
+- Error tracking (F-18), an outside uptime monitor (F-18), **a connected
+  off-server backup destination** (F-16; the code exists, D-094), the
+  recovery key's keeper (F-19) and the retention (F-20), the site's domain
+  and certificate (F-17), the buckets themselves (F-01), versioning of the
+  live buckets between nightly sets (F-14) and the pictures' CDN and domain
+  (F-15). The weekly copy to the founder's drive. Zero-downtime
   deploys. A container registry. The server's firewall, updates and the
   spending alarm (host set-up, blueprint M.3). A tool to re-encrypt data
   under a new `MARKX_ENCRYPTION_KEY` (`docs/runbooks/secret-rotation.md`).
@@ -2080,16 +2140,17 @@ end. Work in this order within each. Finish and push each step first.
    `sudo -E infra/production/rehearsal/rehearse.sh` locally after any change
    to `infra/production/`, either Dockerfile, `markx/ops/health.py`,
    `markx/core/config.py` or `apps/web/deploy/`.
-2. **Next after the notification linking flow: off-server database backups
-   (F-16), code only, behind the existing adapter.** Extend the backup
-   service so each successful dump is also copied to a THIRD, private,
-   versioned bucket (`MARKX_BACKUP_BUCKET`, through the existing
-   `ObjectStore` interface; refused when it equals either file bucket),
-   with a restore that fetches from it, a test against MinIO, and a
-   `backup.failed` / `backup.stale` alert raised by the worker's watch from
-   a status row the backup writes. It stays unconnected until the founder
-   decides F-16 and creates the bucket; it is the largest gap between
-   "prepared" and "safe to launch" that needs no account to build.
+2. **Done (D-094): off-server backup and disaster recovery, code only.**
+   Connecting it needs the founder (F-16, F-19, F-20, F-18) and then the
+   steps in `docs/runbooks/backup-and-restore.md`, "Activating off-server
+   backups": keys made off the server, the bucket and its two scoped keys,
+   `backup.env`, a deploy, a drill and a restore on a separate machine, and
+   a test alert received on a phone. Engineering that needs no account:
+   a restore that streams very large files instead of reading each into
+   memory (pictures are 20 MB at most today); a staff screen listing
+   `backup_runs` (the alerts already carry the facts); a second
+   destination for the blueprint's weekly copy, if the founder wants it
+   automated.
 3. Then, still without accounts: the certificate deploy hook named in
    `docs/runbooks/tls-certificates.md`; the re-encryption tool for
    `MARKX_ENCRYPTION_KEY` (`docs/runbooks/secret-rotation.md`); a

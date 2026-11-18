@@ -3,7 +3,8 @@
 **Written:** 17 November 2026, during the sixth AI engineering session, and
 kept current at each pushed milestone; Parts A.00 and A.0 were added by the
 two back-end-only sessions that followed, Part A.000 by the ninth session
-and Part A.0000 by the tenth (both the web app's owner).
+and Part A.0000 by the tenth (both the web app's owner), and Parts A.00000
+to A.0000000 by the deployment, Telegram and backup sessions.
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -12,6 +13,47 @@ and Part A.0000 by the tenth (both the web app's owner).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000000 — Off-server backup and disaster recovery (18 November 2026, D-094)
+
+Recorded in `docs/DEVELOPMENT_STATUS.md` (with every command and result)
+and `docs/DECISIONS.md` (D-094, and the founder items F-14, F-16, F-19,
+F-20). In plain words, for the founder:
+
+- **What was wrong** (all six audit findings checked in the code and true):
+  the nightly dump stayed on the same server; its encryption could not tell
+  a changed file from a good one; its key sat beside the database
+  passwords; the uploaded documents and pictures were not backed up at
+  all; a failed backup told nobody; and no test proved that the database
+  and the files could be recovered together.
+- **What exists now:** each night the backup service takes one *set*: the
+  database and every stored file from the same moment, locked so two never
+  run at once. Everything is encrypted before it leaves the container, with
+  a key pair: the server holds only the half that locks, **you hold the
+  half that unlocks** (the recovery key). A stolen or lost server reveals
+  no backup and is not needed for a restore. Every piece is uploaded,
+  read back and checked, then a signed list says what the set holds; a
+  restore refuses anything changed, missing, cut short, unsigned or locked
+  to another key, and only ever writes into a new database and empty
+  storage. A drill does the whole recovery automatically, and on every code
+  change in CI, with seven deliberate faults that must each be refused.
+  Failed, incomplete or stale backups and failed drills raise alerts.
+- **What does NOT exist:** a real backup bucket. **MarkX has no off-server
+  backup today.** Nothing was connected to AWS, Cloudflare or anything
+  else; no account, bucket or real key was made; nothing cost money.
+  Alerts are generated, but nobody receives them until your Telegram alert
+  group exists (F-18).
+- **Your decisions** (`docs/DECISIONS.md`): **F-16** which provider and
+  where the backup bucket lives, and whether it gets versioning or an
+  object lock; **F-19** who keeps the recovery key and where (two places;
+  losing every copy loses every backup, for ever); **F-20** how many days
+  and how many sets are kept (the blueprint says 30 days; not chosen for
+  you); **F-14** whether the live buckets also get versioning; **F-18** the
+  alert group. Then the activation steps in
+  `docs/runbooks/backup-and-restore.md` ("Activating off-server backups")
+  take about an hour with an engineer.
 
 ---
 

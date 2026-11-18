@@ -182,34 +182,55 @@ docker run --rm -p 127.0.0.1:3000:3000 -e MARKX_ENV=local markx-web:local
 With `MARKX_ENV=production` it refuses to start (exit 2) and names every
 missing setting.
 
-## 4d. Back up, restore and drill (D-063)
+## 4d. Back up, restore and drill (D-094)
+
+A backup set is the database and every stored file, encrypted to a recovery
+key whose private half the backing-up machine never needs
+(`docs/runbooks/backup-and-restore.md`). On a laptop, with PostgreSQL 17
+and MinIO from sections 1 and 4e:
 
 ```bash
+cd apps/api
+uv run python -m markx.backup keygen --out ~/markx-backup-keys   # once; never in the repository
 export PGHOST=127.0.0.1 PGUSER=postgres PGPASSWORD=postgres_dev_only
-# a passphrase of at least 32 characters, kept outside the repository and
-# outside the backup directory
-head -c 48 /dev/urandom | base64 > ~/markx-backup.key
-export MARKX_BACKUP_PASSPHRASE_FILE=~/markx-backup.key
+export MARKX_BACKUP_PUBLIC_KEY_FILE=~/markx-backup-keys/backup-public.key
+export MARKX_BACKUP_SIGNING_KEY_FILE=~/markx-backup-keys/signing.key
+# Where the sets go: a folder (the default, ./var/backup-destination) or MinIO:
+export MARKX_BACKUP_DESTINATION=minio MARKX_BACKUP_DESTINATION_ENDPOINT_URL=http://127.0.0.1:9000
+export MARKX_BACKUP_DESTINATION_BUCKET=markx-backups   # create it first in MinIO
+export MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID=markx-dev-only
+export MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY=markx-minio-dev-only-password
+# Where the files are read from: the folders (default ./var/storage) or MinIO:
+export MARKX_BACKUP_SOURCE_PROVIDER=minio MARKX_BACKUP_SOURCE_ENDPOINT_URL=http://127.0.0.1:9000
+export MARKX_BACKUP_SOURCE_PRIVATE_BUCKET=markx-private MARKX_BACKUP_SOURCE_PUBLIC_BUCKET=markx-public
+export MARKX_BACKUP_SOURCE_ACCESS_KEY_ID=markx-dev-only
+export MARKX_BACKUP_SOURCE_SECRET_ACCESS_KEY=markx-minio-dev-only-password
 
-infra/backup/backup.sh markx                     # -> var/backups/markx-markx-<time>.dump.enc
-infra/backup/restore.sh var/backups/<file> markx_restored   # into a NEW database only
-infra/backup/drill.sh markx                      # backup, restore, compare, clean up
+uv run python -m markx.backup run            # one set; prints its id
+uv run python -m markx.backup list           # the sets, with their status
+uv run python -m markx.backup verify --set <id> --deep \
+  --recovery-key ~/markx-backup-keys/recovery.key --signer ~/markx-backup-keys/signer-public.key
+uv run python -m markx.backup restore --set <id> --target-db markx_restored --confirm-target markx_restored \
+  --target-files-dir /tmp/markx-restored-files \
+  --recovery-key ~/markx-backup-keys/recovery.key --signer ~/markx-backup-keys/signer-public.key
+uv run python -m markx.backup drill --seed-sample-files \
+  --recovery-key ~/markx-backup-keys/recovery.key --signer ~/markx-backup-keys/signer-public.key
 ```
 
 `pg_dump` refuses a server newer than itself. If your client is older than
-PostgreSQL 17, use the server's own tools in its container:
+PostgreSQL 17, run the server's own tools in a container (the same for the
+tests, as `MARKX_TEST_PG_DUMP`, `MARKX_TEST_PG_RESTORE`, `MARKX_TEST_PSQL`):
 
 ```bash
-export PG_DUMP="docker exec -i -e PGUSER -e PGPASSWORD markx-pg pg_dump"
-export PG_RESTORE="docker exec -i -e PGUSER -e PGPASSWORD markx-pg pg_restore"
-export PSQL="docker exec -i -e PGUSER -e PGPASSWORD markx-pg psql"
+DK="docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17"
+export MARKX_BACKUP_PG_DUMP_COMMAND="$DK pg_dump" MARKX_BACKUP_PG_RESTORE_COMMAND="$DK pg_restore"
+export MARKX_BACKUP_PSQL_COMMAND="$DK psql"
 ```
 
-Keep the passphrase somewhere safe and separate from the backups: without
-it a backup cannot be read, by anyone. On a server, a nightly cron line
-such as `15 2 * * * cd /srv/markx && infra/backup/backup.sh markx
---keep-days 30` runs it; that, and the copy away from the server, are
-deployment settings.
+The backup tests (`tests/storage/test_backup_recovery.py`) need those
+tools and MinIO; without them they are skipped on a laptop (CI requires
+them). Keep `recovery.key` apart from everything else: without it no
+backup made with its public key can be read, by anyone.
 
 ## 4e. Object storage on a laptop: MinIO (D-090)
 

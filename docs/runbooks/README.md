@@ -11,7 +11,7 @@ rehearsal is possible, and says so.
 | [deploy.md](deploy.md) | The first server, and every release after it |
 | [migrations.md](migrations.md) | Every release that adds a migration |
 | [rollback.md](rollback.md) | A release misbehaves |
-| [backup-and-restore.md](backup-and-restore.md) | Daily backups, the monthly drill, and recovering the database |
+| [backup-and-restore.md](backup-and-restore.md) | Backup sets of the database and files, alerts, the monthly drill, restoring, and activating off-server backups (D-094) |
 | [tls-certificates.md](tls-certificates.md) | Getting and renewing the site's certificate |
 | [secret-rotation.md](secret-rotation.md) | Changing a password or key |
 | [telegram-linking.md](telegram-linking.md) | Connecting people's Telegram accounts: the protocol, and switching it on once the founder authorises the bot (D-093) |
