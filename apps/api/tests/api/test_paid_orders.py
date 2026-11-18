@@ -2,6 +2,11 @@
 (D-086): the buyer's cancel, the overdue-fulfilment job and "returned" are
 refused, the database refuses the same ends, and the operations watch asks
 staff to settle such parts with the shop. Nothing here moves money.
+
+Since D-087 (F-09, option 2) a payment can no longer be recorded before the
+handover, so such parts arise only from before that rule. The tests make one
+as it exists in such a database (`_pay`), and check that it is kept and can
+still go ahead.
 """
 
 from __future__ import annotations
@@ -9,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import create_engine, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,7 +24,7 @@ from markx.ops import checks
 from markx.orders import service
 from markx.orders.models import Order, OrderItem, SellerOrder
 from tests.bazaar import Bazaar
-from tests.conftest import error_code
+from tests.conftest import _url, error_code
 from tests.db.test_fulfilment_contention import Parcel
 
 FAR_FUTURE = datetime.now(UTC) + timedelta(days=30)
@@ -30,11 +35,26 @@ def bazaar(db: Session) -> Bazaar:
     return Bazaar(db)
 
 
-def _pay(bazaar: Bazaar, parcel: Parcel, method: str = "bank_transfer") -> None:
-    paid = bazaar.a.post(
-        f"/seller/{bazaar.a_id}/orders/{parcel.so_id}/payment", json={"method": method}
-    )
-    assert paid.status_code == 200, paid.text
+def _pay(db: Session, parcel: Parcel, method: str = "bank_transfer") -> None:
+    """A payment recorded in advance, before D-087 forbade it: written as the
+    schema owner with the handover trigger off for this one update, which is
+    how such a part exists in a database from before the rule."""
+    db.rollback()  # no open transaction may wait on the table's lock
+    engine = create_engine(_url("markx_migrator"))
+    try:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "alter table seller_orders disable trigger trg_seller_orders_payment_at_handover"
+            ))  # fmt: skip
+            connection.execute(
+                text("update seller_orders set paid_at = now(), paid_method = :m where id = :id"),
+                {"m": method, "id": parcel.so_id},
+            )
+            connection.execute(text(
+                "alter table seller_orders enable trigger trg_seller_orders_payment_at_handover"
+            ))  # fmt: skip
+    finally:
+        engine.dispose()
 
 
 def _cancel(parcel: Parcel):  # type: ignore[no-untyped-def]
@@ -59,7 +79,7 @@ def _code(db: Session, parcel: Parcel) -> str:
 def test_the_buyer_cannot_cancel_a_part_they_have_paid_for(bazaar: Bazaar, db: Session) -> None:
     parcel = Parcel(db, bazaar, state="confirmed")
     assert _can_cancel(parcel) is True
-    _pay(bazaar, parcel)
+    _pay(db, parcel)
     assert _can_cancel(parcel) is False  # the page offers no button that would fail
     refused = _cancel(parcel)
     assert refused.status_code == 409
@@ -81,7 +101,7 @@ def test_the_overdue_job_cancels_unpaid_parts_and_keeps_paid_ones(
 ) -> None:
     unpaid = Parcel(db, bazaar, state="confirmed")
     paid = Parcel(db, bazaar, state="ready")
-    _pay(bazaar, paid, "cash")
+    _pay(db, paid, "cash")
     with session_scope() as session:
         assert service.cancel_overdue_fulfilment(session, now=FAR_FUTURE) == 1
     assert unpaid.status(db) == "cancelled"
@@ -109,7 +129,7 @@ def test_the_overdue_job_cancels_unpaid_parts_and_keeps_paid_ones(
 
 def test_a_paid_part_cannot_be_marked_returned(bazaar: Bazaar, db: Session) -> None:
     parcel = Parcel(db, bazaar, state="out_for_delivery")
-    _pay(bazaar, parcel, "telebirr")
+    _pay(db, parcel, "telebirr")
     base = f"/seller/{bazaar.a_id}/orders/{parcel.so_id}"
     assert (
         bazaar.a.post(f"{base}/delivery-failed", json={"reason": "Nobody home"}).status_code == 200
@@ -161,7 +181,7 @@ def test_the_database_refuses_a_paid_part_ending_undelivered(
     is what refuses it (declined is reachable only from placed, which cannot
     be paid)."""
     parcel = Parcel(db, bazaar, state="out_for_delivery" if state == "delivery_failed" else state)
-    _pay(bazaar, parcel)
+    _pay(db, parcel)
     if state == "delivery_failed":
         failed = bazaar.a.post(
             f"/seller/{bazaar.a_id}/orders/{parcel.so_id}/delivery-failed", json={"reason": "Gone"}
@@ -171,3 +191,57 @@ def test_the_database_refuses_a_paid_part_ending_undelivered(
     with pytest.raises(IntegrityError, match="ck_seller_orders_paid_order_not_ended_undelivered"):
         db.execute(update(SellerOrder).where(SellerOrder.id == parcel.so_id).values(status=end))
     db.rollback()
+
+
+# -- D-087: recorded only from the handover on ------------------------------------------------
+
+
+@pytest.mark.parametrize("state", ["confirmed", "ready", "out_for_delivery"])
+def test_the_database_refuses_a_payment_recorded_before_the_handover(
+    bazaar: Bazaar, db: Session, state: str
+) -> None:
+    parcel = Parcel(db, bazaar, state=state)
+    with pytest.raises(IntegrityError, match="only once the goods are handed over"):
+        db.execute(
+            update(SellerOrder)
+            .where(SellerOrder.id == parcel.so_id)
+            .values(paid_at=func.now(), paid_method="cash")
+        )
+    db.rollback()
+
+
+def test_the_database_accepts_a_payment_recorded_at_the_handover(
+    bazaar: Bazaar, db: Session
+) -> None:
+    parcel = Parcel(db, bazaar, state="delivered")
+    db.execute(
+        update(SellerOrder)
+        .where(SellerOrder.id == parcel.so_id)
+        .values(paid_at=func.now(), paid_method="cash")
+    )
+    db.rollback()  # nothing kept: only that the database allowed it
+
+
+def test_a_part_paid_in_advance_before_the_rule_is_kept_and_goes_ahead(
+    bazaar: Bazaar, db: Session
+) -> None:
+    """Existing records are not touched by D-087: a part paid in advance keeps
+    its payment and still moves on to completion."""
+    parcel = Parcel(db, bazaar, state="confirmed")
+    _pay(db, parcel, "telebirr")
+    base = f"/seller/{bazaar.a_id}/orders/{parcel.so_id}"
+    assert bazaar.a.post(f"{base}/ready").status_code == 200
+    assert bazaar.a.post(f"{base}/dispatch", json={}).status_code == 200
+    handed = bazaar.a.post(f"{base}/handover", json={"code": parcel.code(db)})
+    assert handed.status_code == 200, handed.text
+    # Already recorded: a second record is refused as before.
+    assert error_code(bazaar.a.post(f"{base}/payment", json={"method": "cash"})) == "already_paid"
+    done = parcel.buyer.post(
+        f"/me/orders/{parcel.order_id}/seller-orders/{parcel.so_id}/confirm-received"
+    )
+    assert done.status_code == 200, done.text
+    db.rollback()
+    kept = db.execute(
+        select(SellerOrder.status, SellerOrder.paid_method).where(SellerOrder.id == parcel.so_id)
+    ).one()
+    assert tuple(kept) == ("completed", "telebirr")

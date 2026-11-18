@@ -13,6 +13,7 @@ from markx.orders.status import (
     ALLOWED_MOVES,
     FINAL,
     OPEN,
+    PAYABLE,
     contact_visible,
     derive_order_status,
     move_allowed,
@@ -135,3 +136,9 @@ def test_bad_input_is_refused() -> None:
         response_deadline(datetime(2026, 11, 20, 10), window_minutes=30, open_hour=8, close_hour=20)
     with pytest.raises(ValueError, match="longer than zero"):
         response_deadline(_addis(10), window_minutes=0, open_hour=8, close_hour=20)
+
+
+def test_a_payment_is_recorded_only_from_the_handover_on() -> None:
+    """F-09, option 2 (D-087): never in advance; the web app's copy of this
+    list (SellerOrderActions.tsx) must say the same."""
+    assert {S.DELIVERED, S.COMPLETED, S.DISPUTED} == PAYABLE

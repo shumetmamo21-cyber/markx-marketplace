@@ -413,14 +413,63 @@ def test_staff_dispatch_and_who_may_intervene(bazaar: Bazaar, db: DbSession) -> 
 # -- the direct payment record (D.12) --------------------------------------------------------
 
 
-def test_the_seller_records_a_direct_payment_once(bazaar: Bazaar, db: DbSession) -> None:
+def test_a_payment_cannot_be_recorded_before_the_handover(bazaar: Bazaar, db: DbSession) -> None:
+    """F-09, option 2 (D-087): the seller records that the buyer paid only
+    once the goods are handed over, never in advance. Refused at every step
+    before it, leaving the payment intent untouched; accepted at the handover
+    and after completion."""
     buyer, _, order = _two_seller_order(bazaar)
-    alpha_id, _ = _confirm(bazaar, order)
+    alpha_id, beta_id = _part(order, "alpha")["id"], _part(order, "beta")["id"]
+    a = f"/seller/{bazaar.a_id}/orders/{alpha_id}"
+    b = f"/seller/{bazaar.b_id}/orders/{beta_id}"
+
+    def refused_at(client: ApiClient, base: str, state: str) -> None:
+        response = client.post(f"{base}/payment", json={"method": "bank_transfer"})
+        assert response.status_code == 409, (state, response.text)
+        assert error_code(response) == "payment_not_recordable"
+        assert "handed over" in response.json()["error"]["message"]
+
+    refused_at(bazaar.a, a, "placed")
+    _confirm(bazaar, order)
+    refused_at(bazaar.a, a, "confirmed")
+    assert bazaar.a.post(f"{a}/ready").status_code == 200
+    refused_at(bazaar.a, a, "ready")
+    assert bazaar.a.post(f"{a}/dispatch", json={}).status_code == 200
+    refused_at(bazaar.a, a, "out_for_delivery")
+    assert bazaar.a.post(f"{a}/delivery-failed", json={"reason": "Nobody home"}).status_code == 200
+    refused_at(bazaar.a, a, "delivery_failed")
+    assert bazaar.b.post(f"{b}/ready").status_code == 200
+    refused_at(bazaar.b, b, "ready (shop collection)")
+
+    db.rollback()
+    assert db.scalar(select(func.count()).select_from(PaymentAttempt)) == 0
+    assert set(db.scalars(select(PaymentIntent.status))) == {"pending"}
+    mine = _mine(buyer, order["id"])
+    assert [p["paid_at"] for p in mine["seller_orders"]] == [None, None]
+
+    # Handed over: now it may be recorded. Alpha at the door after a retry,
+    # Beta after collection and the buyer's confirmation (completed).
+    assert bazaar.a.post(f"{a}/dispatch", json={}).status_code == 200
+    code = _part(_mine(buyer, order["id"]), "alpha")["handover_code"]
+    assert bazaar.a.post(f"{a}/handover", json={"code": code}).status_code == 200
+    assert bazaar.a.post(f"{a}/payment", json={"method": "cash"}).status_code == 200
+    beta_code = _part(_mine(buyer, order["id"]), "beta")["handover_code"]
+    assert bazaar.b.post(f"{b}/handover", json={"code": beta_code}).status_code == 200
+    done = buyer.post(f"/me/orders/{order['id']}/seller-orders/{beta_id}/confirm-received")
+    assert done.status_code == 200, done.text
+    late = bazaar.b.post(f"{b}/payment", json={"method": "telebirr"})
+    assert late.status_code == 200, late.text
+    assert (late.json()["status"], late.json()["paid_method"]) == ("completed", "telebirr")
+
+
+def test_the_seller_records_a_direct_payment_once(bazaar: Bazaar, db: DbSession) -> None:
+    buyer, order, alpha_id, code = _dispatched_alpha(bazaar)
     base = f"/seller/{bazaar.a_id}/orders/{alpha_id}"
+    assert bazaar.a.post(f"{base}/handover", json={"code": code}).status_code == 200
     before = datetime.now(UTC)
     paid = bazaar.a.post(f"{base}/payment", json={"method": "bank_transfer"})
     assert paid.status_code == 200, paid.text
-    assert paid.json()["status"] == "confirmed"  # the status does not move (D.12)
+    assert paid.json()["status"] == "delivered"  # the status does not move (D.12)
     assert paid.json()["paid_method"] == "bank_transfer"
     assert datetime.fromisoformat(paid.json()["paid_at"]) >= before  # the server's clock
     assert error_code(bazaar.a.post(f"{base}/payment", json={"method": "cash"})) == "already_paid"

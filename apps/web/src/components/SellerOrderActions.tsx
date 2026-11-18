@@ -11,7 +11,8 @@ type Order = components["schemas"]["SellerOrderOut"];
 type Payment = components["schemas"]["PaymentRecordIn"]["method"];
 type Kind = "confirm" | "decline" | "ready" | "dispatch" | "handover" | "failed" | "return" | "payment" | "reply";
 
-const PAYABLE = ["confirmed", "ready", "out_for_delivery", "delivery_failed", "delivered", "completed", "disputed"];
+// Only once the goods are handed over, as the API decides (F-09, D-087): never in advance.
+const PAYABLE = ["delivered", "completed", "disputed"];
 
 /** What this seller may do next, by the life cycle (G.6); the API checks again. */
 export function nextActions(order: Order): Kind[] {

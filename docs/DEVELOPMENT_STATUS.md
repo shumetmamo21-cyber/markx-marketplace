@@ -1,7 +1,11 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **order and payment integrity
-session** (the audit's P0-3, D-086): a paid part can no longer be cancelled
+**Last updated:** 18 November 2026, by the **founder's F-09 and F-10
+decisions**: a direct payment is now recorded only once the goods are handed
+over (D-087, migration `0014`; no refund process, by instruction), and fees
+stay at zero with the list of what must exist before any fee (D-088).
+Before it, the **order and payment integrity session** (the audit's P0-3,
+D-086): a paid part can no longer be cancelled
 or returned without staff (service, database constraint and a staff alert);
 a store can no longer tell which buyer wrote a review; the weekly report
 splits buyer cancellations from the store's own unfulfilled orders and makes
@@ -122,7 +126,8 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
-| Order and payment integrity (D-086) | the commit after `1c55602` | Paid parts never end undelivered without staff (migration `0013`, `paid_orders_waiting` alert, buyer's Cancel hidden); `order_item_id` withheld from stores; weekly report: cancellations split by who ended them, one savepoint per store; `cancel_by_buyer`, `confirm_received`, `record_direct_payment` read the clock after the lock; commission and ledger gaps recorded (F-10) |
+| F-09 option 2, F-10 recorded (D-087, D-088) | the commit after `9af18c7` | `PAYABLE` is now delivered, completed and disputed; migration `0014` (`trg_seller_orders_payment_at_handover`) refuses an advance payment record without touching existing ones; the web app shows "Record the payment" only from the handover on; F-09 and F-10 closed as D-087 and D-088 |
+| Order and payment integrity (D-086) | `9af18c7` | Paid parts never end undelivered without staff (migration `0013`, `paid_orders_waiting` alert, buyer's Cancel hidden); `order_item_id` withheld from stores; weekly report: cancellations split by who ended them, one savepoint per store; `cancel_by_buyer`, `confirm_received`, `record_direct_payment` read the clock after the lock; commission and ledger gaps recorded (F-10) |
 | Dispute timestamp fix | `1c55602` | `resolve_dispute` reads the clock after taking the seller order's lock (one line); `test_a_decision_reads_the_clock_only_once_it_holds_the_order`, deterministic, both decisions. No `DECISIONS.md` entry: a fix within D-050's rule, not a new decision |
 | Turnstile, second round (D-085 update) | `8b32485` | Hostname validation at start-up, `localhost` refused on real servers; the local test widget and corrected test steps in `docs/SETUP.md`; rotation and security-review reminders; the flaky document-link forgery test made deterministic |
 | Turnstile (D-085) | `45a699c` and the status commit after it | Cloudflare Turnstile verified on the server (`TurnstileBotCheck`), its configuration with the secret kept out of logs, the widget on the sign-in form, the CSP opened for Turnstile only, `e2e/turnstile-widget.mjs` in the browser journeys. Stand-ins only; no key exists yet |
@@ -905,14 +910,16 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
-- **A paid part that cannot go ahead waits for staff with no button to close
-  it** (D-086, founder decision F-09). The buyer's cancel, the overdue job
-  and "returned" refuse it, and the watch alerts staff
+- **A part paid in advance before D-087 that cannot go ahead waits for
+  staff with no button to close it.** No new such part can arise (a payment
+  is now recorded only from the handover on). For an old one, the buyer's
+  cancel, the overdue job and "returned" refuse it and the watch alerts staff
   (`orders.paid_past_hold`, `orders.paid_delivery_failed`); staff can ask
-  the shop to deliver, but cannot yet record that the money went back.
-- **The commission cap is stored but never applied** (D-086, F-10). Harmless
-  while every rate is zero (no `commission_rules` row exists); a capped rule
-  added by hand would over-charge sellers. Fix before any non-zero rule.
+  the shop to deliver. Recording a refund is, by the founder's decision, a
+  Release 2 requirement (D-087).
+- **The commission cap is stored but never applied** (D-086). **Mandatory
+  fix before any commission is enabled** (D-088, item 1). Harmless while fees
+  stay at zero, as the founder decided.
 - **Weekly reports stored before D-086** count every cancellation as the
   buyer's; reports from now on split them.
 
@@ -1058,6 +1065,28 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**F-09 option 2** (D-087), on the commit after `9af18c7`:
+
+```text
+$ pytest test_paid_orders, test_clock_after_lock, test_order_rules, test_fulfilment,
+         test_disputes, test_fulfilment_contention -> 96 passed
+# the new tests against the old code
+  old service rule (advance payment allowed), trigger kept ->
+    test_a_payment_cannot_be_recorded_before_the_handover failed: 500 == 409
+    (the database trigger refused the advance record: its half works alone)
+  without migration 0014 (no trigger) ->
+    test_the_database_refuses_a_payment_recorded_before_the_handover: 3 failed
+# kept: a part paid in advance before the rule still goes to completion with its
+# payment record (test_a_part_paid_in_advance_before_the_rule_is_kept_and_goes_ahead)
+$ uv run pytest -> 1126 passed in 591.68s (0:09:51)   (1119 before; 7 new)
+  ruff check -> All checks passed!; ruff format --check -> 191 files already formatted
+  mypy markx -> no issues found in 124 source files
+  alembic upgrade head (0013 -> 0014) ok; alembic check -> no new upgrade operations
+  check_openapi_copy, both copies -> match exactly (no API schema change)
+  pip-audit -> No known vulnerabilities found; npm audit gate -> passed
+$ web: lint clean; typecheck clean; npm test -> 64 passed; build ok; gen:api unchanged
+```
 
 **Order and payment integrity** (D-086), on the commit after `1c55602`. Each
 new test was also run against the old code (the fix taken out, the test
@@ -1499,6 +1528,7 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0011` | `20261117_1116_listing_reports.py` | `reports`: a note, the reason list, one open report per person and target, closing CHECKs (D-067) |
 | `0012` | `20261117_1158_seller_weekly_reports.py` | `seller_weekly_reports`: one row per store and week, starting on a Monday (D-073) |
 | `0013` | `20261118_0700_paid_orders_never_end_undelivered.py` | `ck_seller_orders_paid_order_not_ended_undelivered`: a part with a recorded payment never ends declined, expired, cancelled or returned (D-086). Checks existing rows; deletes nothing |
+| `0014` | `20261118_0800_payment_recorded_at_handover.py` | `trg_seller_orders_payment_at_handover`: a direct payment is recorded only while the part is delivered, completed or disputed; checks only the moment of recording, so existing records are kept and still move on (D-087) |
 
 The schema has 69 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
@@ -1559,12 +1589,11 @@ end. Work in this order within each. Finish and push each step first.
    secret in chat or put it in any file. **Then, only when the founder
    authorises it: the real SMS adapter** (blueprint section O, question 23),
    without which no real server can send a code.
-0a. **When the founder answers F-09** (D-086): build the chosen way for
-   staff to settle a paid part that cannot go ahead (recommended: record a
-   payment only from the handover on, and later a staff "the shop returned
-   the money" record). **Before any non-zero commission rule (F-10):** copy
-   the rule's cap onto the order line at placement and apply it at
-   completion, with tests; then a staff tool for versioned rules.
+0a. **F-09 and F-10 are decided** (D-087, D-088). Do not build a refund
+   process or enable any fee until the founder asks. **Before any commission
+   is enabled:** the seven items in D-088, the cap first. **With Protected
+   checkout:** staff record and verify a refund before an order whose
+   payment was captured can close without delivery (D-087).
 1. When the founder confirms or changes an F- item (D-083): record it as a
    `D-` entry, change the code if the answer differs, and remove its
    `PROVISIONAL` marker and its line in `test_provisional_decisions.py`.

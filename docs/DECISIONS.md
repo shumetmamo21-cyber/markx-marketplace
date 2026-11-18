@@ -2269,14 +2269,85 @@ with no invoice); (e) seller statements (S-14) and payouts and settlement
 founder's decision F-10. Exports for an accountant (D-068) and the daily
 fee-to-ledger reconciliation (D-064) already exist.
 
+## D-087 A direct payment is recorded only once the goods are handed over (F-09)
+
+**The founder's decision** (18 November 2026) on F-09: option 3, in stages.
+**Decided.**
+
+**Now: option 2.** A seller may record that the buyer paid directly only
+from the handover on: `PAYABLE` is `delivered`, `completed` and `disputed`.
+At `placed`, `confirmed`, `ready`, `out_for_delivery` and `delivery_failed`
+the service refuses with `payment_not_recordable` ("only once the goods are
+handed over"), leaving the payment intent untouched. Migration `0014` adds
+the database's half: `trg_seller_orders_payment_at_handover` refuses
+`paid_at` going from empty to set (or a new row arriving with it) while the
+status is not one of those three. It checks only the moment of recording, so
+a part paid in advance before this rule keeps its record and still goes
+ahead to completion (a table CHECK could not allow that). The web app's copy
+of the list (`SellerOrderActions.tsx`) shows "Record the payment" only from
+the handover on, and the refusal's words in both languages explain why.
+A transfer the buyer makes before delivery is simply recorded at the
+handover. This also makes advance-payment scams harder, as blueprint D.12
+prefers ("at the door after inspecting the goods").
+
+**What D-086 still does.** Its guards (no buyer cancel, overdue cancel or
+"returned" of a paid part; the database constraint; the staff alert) stay,
+for parts paid in advance before this rule. No new part can reach them.
+
+**Not built, by the founder's instruction: option 1.** No refund process,
+and staff cannot mark money as returned. **A requirement for Protected
+checkout (Release 2):** before an order whose payment was captured can be
+closed without delivery, staff must be able to record a refund and verify
+it (J.5: its own record, linked to a case or a return, never above the
+amount captured, a second approver above a set amount, ledger entries
+posted), and only then may the order end. Until then, a part paid in
+advance before D-087 that cannot go ahead waits for staff, who are alerted
+(D-086).
+
+## D-088 Commission fees stay at zero; what must exist before any fee (F-10)
+
+**The founder's decision** (18 November 2026) on F-10. **Decided.**
+
+Direct-order fees stay at zero for the first year, as blueprint D.19 and
+K.2 specify. No commission rule is created, and no rate, cap, invoice or
+payout policy is invented. Nothing in the code changes: with no
+`commission_rules` row, `commission_bps` returns 0, every completed part
+gets a zero `fee_charges` row, and the ledger receives nothing (D-045).
+
+**Mandatory before any commission is enabled:**
+
+1. **Apply the per-order cap.** `commission_rules.cap_santim` is stored but
+   never used, and `fee_charges.cap_applied` is always false (D-086). A
+   capped rule would therefore over-charge sellers. The cap must be copied
+   onto the order line at placement with the rate (so a later change never
+   alters a past order, J.8) and applied at completion, with tests.
+2. **A staff tool for versioned rules** (today only a hand-written row,
+   D-042), audit-logged, never overwriting a rule in force.
+3. **The seller sees the fee in birr before confirming** each order: already
+   shown (`estimated_fee_santim`); check it again once rates are non-zero.
+4. **Fee reversal on a refund** (G.10 rule 4, J.5): the columns exist
+   (`fee_charges.reversal_ledger_transaction_id`, `reversed_at`); no path
+   needs them while a completed part cannot be refunded.
+5. **Invoicing and collecting** what sellers owe on direct orders, if direct
+   fees are ever charged: the receivable account exists
+   (`seller_receivable:<seller>`), with no invoice.
+6. **Seller statements** from the ledger (S-14, G.10 rule 5), and **payouts
+   and settlement** (J.7), which come with Protected checkout.
+7. The founder's rates and caps (K.2's ranges are assumptions, [A]).
+
+Already in place: the rules table with its scopes and validity dates, the
+rate copied onto each line at placement (D-042), the fee charged at
+completion and posted to a balanced ledger (D-045), the accountant's exports
+(D-068) and the daily fee-to-ledger reconciliation (D-064).
+
 ---
 
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
 request on 18 November 2026: the engineer's guess, which the founder must
-confirm or change before MarkX goes live. F-09 and F-10 (D-086) are open:
-options and a recommendation, no answer yet.** Treat this list as part of the launch
+confirm or change before MarkX goes live. F-09 and F-10 (raised in D-086)
+were decided on 18 November 2026: see D-087 and D-088.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -2448,43 +2519,6 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   otherwise grow without limit once real traffic arrives.
 - **Blocks:** nothing before launch.
 - **Founder's approval required: yes**, because it deletes rows.
-
-### F-09 How staff settle a paid order that cannot go ahead
-
-- **Today (D-086):** a part with a recorded direct payment can no longer be
-  cancelled by the buyer or the overdue job, or marked returned; it waits,
-  and staff are alerted. Staff have no button that closes it with the money
-  returned, because MarkX moves no money in Release 1 and the life cycle has
-  no arrow for it outside a problem case.
-- **Options:**
-  1. **Staff record that the shop gave the money back** (as on a problem
-     case, J.5: "staff record it"), with a written reason, which then lets
-     the part end. Needs a refund record (the `refunds` table exists) and a
-     staff screen. Keeps pre-delivery payment possible.
-  2. **Record a payment only once the goods are handed over** (`delivered`
-     on). The problem cannot arise; a transfer made before delivery is
-     simply recorded at the handover. Smallest change; matches "pay at the
-     door after inspecting" (D.12) and makes advance-payment scams harder.
-  3. **Both:** option 2 now, option 1 when Protected checkout arrives.
-- **Recommendation:** option 3. Option 2 removes the problem at its source
-  for Release 1 at almost no cost; option 1 is needed anyway for Release 2.
-- **Blocks:** nothing technical. A paid part that cannot go ahead waits for
-  staff until this is decided.
-- **Founder's approval required: yes** (how buyers may pay is a business
-  rule).
-
-### F-10 When commission fees start, and at what rates and caps
-
-- **Today (D-086):** zero, by design (D.19: direct orders free in year one).
-- **To decide:** whether direct orders ever carry a fee; the rates per
-  category and the per-order caps (K.2 gives ranges marked [A]); when fees
-  start (with Protected checkout, Release 2, per D.19); how sellers are
-  invoiced for fees on direct orders, if any.
-- **Engineering before the first non-zero rule:** apply the cap (it is
-  stored but ignored today, so a capped rule would over-charge), a staff tool
-  for versioned rules, and fee reversal on refund.
-- **Blocks:** revenue, not launch.
-- **Founder's approval required: yes.**
 
 ---
 

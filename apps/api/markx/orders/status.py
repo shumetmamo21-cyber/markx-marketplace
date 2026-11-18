@@ -34,11 +34,12 @@ ENDED_WITHOUT_DELIVERY = frozenset({S.DECLINED, S.EXPIRED, S.CANCELLED})
 CLOSED_WITH_REASON = ENDED_WITHOUT_DELIVERY | {S.RETURNED}
 # The handover code is live: the buyer sees it, the seller or rider enters it.
 AWAITING_HANDOVER = frozenset({S.READY, S.OUT_FOR_DELIVERY, S.DELIVERY_FAILED})
-# The buyer owes the seller directly (D.12): the seller may record the payment.
-PAYABLE = frozenset({
-    S.CONFIRMED, S.READY, S.OUT_FOR_DELIVERY, S.DELIVERY_FAILED, S.DELIVERED, S.COMPLETED,
-    S.DISPUTED,
-})  # fmt: skip
+# The goods have been handed over (D.12): only now may the seller record that
+# the buyer paid them directly. Never in advance (F-09, option 2; D-087): a
+# payment recorded before the handover could leave an order that cannot go
+# ahead with the buyer's money and no way back. The database refuses the same
+# (`trg_seller_orders_payment_at_handover`).
+PAYABLE = frozenset({S.DELIVERED, S.COMPLETED, S.DISPUTED})
 FINAL = frozenset(state for state, moves in ALLOWED_MOVES.items() if not moves)
 OPEN = frozenset(ALLOWED_MOVES) - FINAL
 _HANDED_OVER = frozenset({S.DELIVERED, S.COMPLETED, S.DISPUTED})

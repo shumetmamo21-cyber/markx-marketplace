@@ -329,7 +329,7 @@
     "collection_order": "The buyer collects this order at the shop: enter their code instead.",
     "handover_code_wrong": "That is not the buyer's code.",
     "handover_code_locked": "Too many wrong codes. Ask MarkX to issue the buyer a new code.",
-    "payment_not_recordable": "This order is not one the buyer owes you for.",
+    "payment_not_recordable": "Record the payment once the goods are handed over. An order that ended without them cannot be paid for.",
     "already_paid": "A payment was already recorded for this order.",
     "order_paid_contact_support": "A payment is recorded for this order, so it cannot be cancelled here. Please contact MarkX support.",
     "paid_order_needs_staff": "A payment is recorded for this order. MarkX staff must settle the buyer's money with you before the goods can be marked returned.",

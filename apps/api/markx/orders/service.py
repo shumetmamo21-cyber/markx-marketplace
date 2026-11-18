@@ -1692,7 +1692,8 @@ def record_direct_payment(
     method: str,
     now: datetime | None = None,
 ) -> SellerOrder:
-    """The seller says the buyer paid them directly (D.12, Release 1).
+    """The seller says the buyer paid them directly (D.12, Release 1), once
+    the goods are handed over (`PAYABLE`; F-09, D-087): never in advance.
 
     Recorded as the seller's word, with the method and the server's time; the
     status does not move (`paid` belongs to Protected prepay). Never from a
@@ -1704,7 +1705,11 @@ def record_direct_payment(
     # event is never stamped before one that came first.
     now = now or _now()
     if seller_order.status not in PAYABLE:
-        raise Conflict("payment_not_recordable", "This order is not one the buyer owes you for.")
+        raise Conflict(
+            "payment_not_recordable",
+            "A payment can be recorded only once the goods are handed over, and never on an "
+            "order that ended without them.",
+        )
     if seller_order.paid_at is not None:
         raise Conflict("already_paid", "A payment was already recorded for this order.")
     intent = db.scalar(

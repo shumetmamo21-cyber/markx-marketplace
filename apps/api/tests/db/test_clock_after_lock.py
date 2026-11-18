@@ -81,7 +81,7 @@ def _record_payment(parcel: Parcel, session: Session) -> None:
     [
         ("confirmed", _cancel, "cancelled"),
         ("delivered", _confirm_received, "completed"),
-        ("ready", _record_payment, "ready"),
+        ("delivered", _record_payment, "delivered"),  # from the handover on (D-087)
     ],
     ids=["cancel_by_buyer", "confirm_received", "record_direct_payment"],
 )
