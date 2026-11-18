@@ -1852,6 +1852,25 @@ Ethiopic script. The screen shows the description in the page's language.
 Drafted by an AI agent; a native speaker must review them with every other
 Amharic text (blueprint I.3).
 
+## D-079 A single worker pass reports failure in its exit code
+
+**Fills a gap in** blueprint F.8 (the worker). **Accepted.**
+
+`python -m markx.worker --once` exited 0 even when every due job failed and
+the outbox could not be drained (found with the database stopped: ten
+"could not run scheduled job" errors, then "worker pass finished" and exit
+0). Whoever ran it — a browser journey, a scheduler, a container check —
+could not tell. The pass report now carries `drain_error`, and `ok` is true
+only when every due job ran and the outbox was drained; `--once` exits 1
+otherwise and logs the failed jobs and the drain error. A message that
+failed and will be retried is the outbox working, not a failed pass. The
+long-running worker (`run_forever`) is unchanged. One test.
+
+This did not explain the one pass in the admin journey that handled none of
+the due messages (Known problems): there the jobs were recorded as
+succeeded, and no error appeared in the database log. It would make such a
+pass visible if it failed.
+
 ---
 
 ## Decisions that need the founder

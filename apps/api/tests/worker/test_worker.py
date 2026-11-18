@@ -545,6 +545,31 @@ def test_the_command_runs_one_pass_and_exits(db: Session) -> None:
     assert set(db.scalars(select(ScheduledJob.name))) == {j.name for j in scheduled.JOBS}
 
 
+def test_a_pass_that_cannot_do_its_work_exits_with_an_error(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-079: `--once` exits 1 when a due job failed or the outbox could not
+    be drained, so a script or scheduler that started it can tell."""
+    from markx.worker import runner
+
+    db.commit()
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise ConnectionError("the database went away")
+
+    monkeypatch.setattr(runner.outbox, "drain", broken)
+    report = runner.run_once()
+    assert report.drain_error == "ConnectionError: the database went away"
+    assert not report.ok
+    assert main(["--once"]) == 1
+
+    monkeypatch.undo()
+    failing = scheduled.Job("test.always_fails", timedelta(minutes=5), broken)
+    report = runner.run_once(jobs=(failing,))
+    assert [(o.name, o.ok) for o in report.jobs] == [("test.always_fails", False)]
+    assert not report.ok
+
+
 def test_the_worker_connects_as_the_application_role() -> None:
     """The worker shares the API's configuration: the least-privileged role,
     which cannot rewrite history (blueprint C.2 "System", F.3)."""

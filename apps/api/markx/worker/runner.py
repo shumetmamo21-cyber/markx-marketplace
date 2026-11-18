@@ -26,6 +26,14 @@ logger = logging.getLogger("markx.worker")
 class PassReport:
     jobs: list[scheduled.JobOutcome]
     outbox: outbox.DrainReport
+    # Why the outbox could not be drained at all, if it could not (D-079).
+    drain_error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        """Every due job ran and the outbox was drained. A message that failed
+        and will be retried is the outbox working, not the pass failing."""
+        return self.drain_error is None and all(job.ok for job in self.jobs)
 
 
 def run_once(
@@ -40,11 +48,13 @@ def run_once(
     outcomes = scheduled.run_due_jobs(now, jobs)
     try:
         drained = outbox.drain(now, limit=outbox_limit, handlers=handlers)
-    except Exception:
+    except Exception as exc:
         # Only the dispatcher's own bookkeeping can raise here (the database
         # went away). A failing handler is caught per row.
         logger.exception("could not drain the outbox")
-        drained = outbox.DrainReport()
+        return PassReport(
+            jobs=outcomes, outbox=outbox.DrainReport(), drain_error=f"{type(exc).__name__}: {exc}"
+        )
     return PassReport(jobs=outcomes, outbox=drained)
 
 
@@ -77,9 +87,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "outbox_done": report.outbox.done,
                 "outbox_retried": report.outbox.retried,
                 "outbox_failed": report.outbox.failed,
+                "failed_jobs": [o.name for o in report.jobs if not o.ok],
+                "drain_error": report.drain_error,
             },
         )
-        return 0
+        # A pass that could not do its work says so to whoever started it (a
+        # script, a scheduler, a container check): exit 1 (D-079).
+        return 0 if report.ok else 1
     stop = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
         # Finish the row in hand, then leave: nothing is cut off mid-transaction.
