@@ -22,6 +22,7 @@ last confirmed.
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Engineering decisions and every departure from the blueprint |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organised |
 | [docs/SETUP.md](docs/SETUP.md) | How to run and test it |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | The production stack, prepared and rehearsed but **not deployed**, and every setting; procedures in [docs/runbooks/](docs/runbooks/) |
 | [AGENTS.md](AGENTS.md) | Rules for AI coding agents working here |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | The last session's report, the decisions waiting on the founder, and the brief for the next engineering session |
 

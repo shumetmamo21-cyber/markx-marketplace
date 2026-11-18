@@ -139,8 +139,48 @@ does.
 
 If Docker Hub refuses pulls ("429 Too Many Requests"), build the image
 from a mirror of the same Python image:
-`docker build --build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.13-slim-bookworm -t markx-api:local apps/api`.
+`docker build --build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.13.18-slim-bookworm -t markx-api:local apps/api`.
 Nothing here deploys anything.
+
+Behind a proxy that inspects TLS (a company network, some cloud
+workspaces), the image builds cannot download packages until they trust
+its certificate authority. Give it to the build as a BuildKit secret; it is
+used for the download steps only and never written into the image (D-091):
+`docker build --secret id=build_ca,src=/path/to/ca.crt -t markx-api:local apps/api`
+(the same for `apps/web`).
+
+## 4f. Rehearse a production deployment on this machine (D-091)
+
+The production Compose file (`infra/production/`), its reverse proxy and
+`deploy.sh`, run locally with throwaway settings, a self-signed certificate
+and MinIO, then about 60 checks: refused production settings, isolation,
+TLS and headers, body and rate limits, the visitor's address, health,
+two migrations at once, a restore of the nightly dump, a rollback and a
+clean shutdown. It needs root (it sets file owners as a server would), uses
+ports 18080 and 18443 on 127.0.0.1, takes 5 to 10 minutes, and removes
+everything it made at the end:
+
+```bash
+sudo -E infra/production/rehearsal/rehearse.sh
+# behind a TLS-inspecting proxy:
+MARKX_BUILD_CA=/path/to/ca.crt sudo -E infra/production/rehearsal/rehearse.sh
+```
+
+It runs the stack with `MARKX_ENV=local`: staging and production need real
+Turnstile keys, an SMS provider and buckets that do not exist yet, and the
+rehearsal proves that they refuse to start without them. CI runs it on
+every push ("Production stack rehearsal"). It deploys nothing and contacts
+no outside service. The real procedure is `docs/runbooks/deploy.md`.
+
+The web app's production image on its own:
+
+```bash
+docker build -t markx-web:local --build-arg MARKX_MEDIA_ORIGIN=https://media.example.invalid apps/web
+docker run --rm -p 127.0.0.1:3000:3000 -e MARKX_ENV=local markx-web:local
+```
+
+With `MARKX_ENV=production` it refuses to start (exit 2) and names every
+missing setting.
 
 ## 4d. Back up, restore and drill (D-063)
 

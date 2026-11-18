@@ -17,7 +17,8 @@ domain.
 | Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account, the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
 | File storage | Built (D-090): one interface; local folders, MinIO, Amazon S3 and Cloudflare R2 by configuration. Tested against MinIO only; **no bucket or account exists** (F-01) |
-| Containers, CI | Built: a Compose file for a laptop with PostgreSQL and MinIO (D-058, D-090) and CI on every push. **The reverse proxy and any deployment do not exist** |
+| Containers, CI | Built: a Compose file for a laptop with PostgreSQL and MinIO (D-058, D-090) and CI on every push |
+| Production stack (D-091) | **Prepared, never deployed**: production images for the API and the web app, a production Compose file (`infra/production/`) with the nginx reverse proxy, PostgreSQL, the worker, nightly encrypted dumps and a one-time migration step, `deploy.sh`, and a local rehearsal that CI runs. **No server, domain, certificate or bucket exists**; see `docs/DEPLOYMENT.md` |
 
 ## Repository layout
 
@@ -77,7 +78,12 @@ infra/
   backup/                   backup.sh, restore.sh, drill.sh (D-063)
   compose/                  API, worker, PostgreSQL and MinIO on a laptop
                             (D-058, D-090)
+  production/               the production Compose file, nginx, env file
+                            templates, deploy.sh, the local rehearsal (D-091)
 docs/
+  DEPLOYMENT.md             the production stack and every setting (D-091)
+  runbooks/                 deploy, migrations, rollback, backups and
+                            recovery, certificates, secret rotation, checklists
 ```
 
 ## The admin dashboard on the web
@@ -310,6 +316,35 @@ queues `ops.alert` messages on open and resolve; `alerts.py` sends them to
 Telegram when configured, otherwise to the log. To add a check, add a
 function to `WATCH` or `RECONCILE`; keep personal data out of its summary.
 
+### Health probes (D-091)
+
+`markx/ops/health.py`. **Liveness** (`/api/v1/healthz/live`, and `/healthz`
+on the web app) says the process answers and touches nothing else.
+**Readiness** (`/api/v1/healthz/ready`) says the database answers as the
+application role, the schema is exactly this code's migration head
+(`behind` or `ahead` otherwise; `ahead` is accepted only with
+`MARKX_ALLOW_NEWER_SCHEMA`, for an acknowledged rollback), and both file
+stores answer (probed at most every 15 seconds). Public answers are fixed
+words; details go to the log. `python -m markx.ops.preflight` runs the same
+checks plus the configuration, in words, for `deploy.sh`. The worker
+touches `MARKX_WORKER_HEARTBEAT_FILE` after every pass; `python -m
+markx.worker --check-heartbeat` is its container check.
+`/api/v1/healthz` and `/api/v1/healthz/worker` (D-064) are unchanged.
+
+## Deployment (D-091)
+
+`infra/production/compose.yaml`: nginx (TLS, the only published ports) in
+front of the web app and the API on an internal network; PostgreSQL, the
+worker, the backup service and the one-time `migrate` step on a second
+internal network; only the API and the worker can reach the internet. The
+API trusts forwarded addresses from the proxy network only, and the web
+server passes the visitor's single address on to the API for its own calls
+(`apps/web/src/lib/api/forwarded.ts`). Migrations run once per release,
+under a PostgreSQL advisory lock (`migrations/env.py`). The web app's
+production image runs Next.js's standalone server after
+`apps/web/deploy/check-env.mjs` has checked its settings. Everything is in
+`docs/DEPLOYMENT.md`.
+
 ## The worker
 
 Blueprint F.8. `markx/worker/`, started with `uv run python -m markx.worker`.
@@ -391,7 +426,11 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 
 Environment variables only, prefixed `MARKX_` (`markx/core/config.py`). The
 defaults are for a laptop. On `staging` or `production` the application
-refuses to start with development secrets.
+refuses to start with development secrets, fake providers, local or MinIO
+storage, pictures on the site's own domain, a malformed encryption key,
+unset trusted proxies or debug logging, and the refusal names each setting
+without printing any value (D-084 to D-091). Every setting, and which
+service reads it, is listed in `docs/DEPLOYMENT.md`.
 
 Feature switches and limits live in the `settings` table with defaults in code
 (`markx/core/settings_store.py`).

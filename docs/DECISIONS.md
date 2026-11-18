@@ -2648,6 +2648,117 @@ nothing deleted. Not built: the buckets' own backups (versioning or
 replication, F.6 "the buckets need their own protection"; F-14), the CDN in front of the public bucket and its domain (F-15), the
 store logo and order-line pictures (columns without behaviour, as before).
 
+## D-091 The production deployment foundation: one server, Compose, nginx, prepared and rehearsed, not deployed
+
+**Follows** blueprint F.0 and F.13 (containers, one reverse proxy on one
+domain, Compose on one small server, secrets outside the repository, one
+command to deploy and one to roll back, nightly encrypted dumps), F.12
+(health), F.16 (`infra/` holds the proxy configuration; `docs/runbooks/`),
+H.2 and M.3. **Nothing was deployed, bought or created**: no server,
+domain, certificate, bucket or account. The founder asked for the
+foundation only, on 18 November 2026.
+
+**What was built** (details: `docs/DEPLOYMENT.md`):
+
+- **Images.** The API image is pinned to Python 3.13.18 and starts uvicorn
+  without a `Server` header and with a 20-second graceful shutdown. A new
+  web image (`apps/web/Dockerfile`): three stages, Next.js's standalone
+  server only (`MARKX_NEXT_OUTPUT=standalone` at build time; `npm run
+  build` and `next start` elsewhere are unchanged), the `node` user, no
+  sources or development tools. Both accept an optional `build_ca` BuildKit
+  secret for builders behind a TLS-inspecting proxy, never written into a
+  layer.
+- **`infra/production/compose.yaml`**, separate from the laptop file:
+  proxy, web, API, worker (also the scheduler, D-035), PostgreSQL 17.12
+  with data checksums, a backup service and a `migrate` step in its own
+  profile. Four networks: `edge` (the proxy only, the only published
+  ports), `frontend` (proxy, web, API; internal, a fixed subnet that becomes
+  `MARKX_TRUSTED_PROXIES`), `backend` (API, worker, migrations, backups,
+  PostgreSQL; internal), `egress` (API and worker only). Unprivileged users,
+  read-only root file systems, no capabilities, `no-new-privileges`,
+  `init`, memory limits for a 2 GB server, log rotation. Settings come from
+  root-only files in `/etc/markx`, one per service, so the web app never
+  sees a database password and only the migration step has the schema
+  owner's.
+- **nginx** (`nginxinc/nginx-unprivileged:1.28.2-alpine`; `infra/production/nginx/`):
+  HTTP to HTTPS on the one configured hostname, certificate challenges,
+  unknown names refused at the handshake, TLS 1.2 and 1.3 with
+  forward-secret ciphers, HSTS once, `/api/v1/dev/`, the docs and the API
+  description hidden, 1 MB bodies except the five upload routes (21 MB),
+  generous edge rate limits, `X-Forwarded-For` set (never appended), JSON
+  access logs with paths only, Docker's resolver so recreated containers
+  are found. Cloudflare in front is prepared, not enabled.
+- **Health** (`markx/ops/health.py`): liveness and readiness separated;
+  readiness checks the schema against the shipped migration head and both
+  file stores, in fixed words. `python -m markx.ops.preflight`. The worker's
+  heartbeat file and `--check-heartbeat`. The web app's `/healthz`.
+- **Migrations**: an advisory lock in `migrations/env.py`; one runner.
+- **`infra/production/deploy.sh`**: `check`, `deploy RELEASE` (build,
+  preflight, backup, migrate, preflight, start, verify), `rollback
+  RELEASE` (no migration), `backup`, `status`.
+- **`infra/production/rehearsal/rehearse.sh`**, run by CI: the whole stack
+  on the runner with throwaway settings and MinIO.
+- Runbooks: `docs/runbooks/`.
+
+**Configuration rules added for staging and production** (the existing
+rules of D-084, D-085, D-089 and D-090 stay): `MARKX_ENCRYPTION_KEY` must be
+a well-formed Fernet key (it failed only at first use before);
+`MARKX_TRUSTED_PROXIES` must be set explicitly (behind a proxy the default
+made every visitor one address); `MARKX_LOG_LEVEL` must not be `DEBUG`, and
+an unknown level is refused everywhere; `MARKX_PUBLIC_ORIGIN` must be a bare
+origin. A real server without an alert destination says so at start-up
+(a warning, not a refusal: the founder has no alert group yet). The web
+container refuses to start on staging or production without its settings
+(`apps/web/deploy/check-env.mjs`).
+
+**Defects found and fixed on the way** (each with a test that fails on the
+old code):
+
+1. **A refused start-up printed part of the raw configuration**, a database
+   password included (pydantic's `input_value`). `hide_input_in_errors`.
+2. **Every page's server-side search counted as one visitor**: the web
+   server called the API from its own address, so behind a proxy the whole
+   site would share one search limit (120 a minute, D-059). The web server
+   now passes the single address the proxy set, and the request id
+   (`apps/web/src/lib/api/forwarded.ts`); the API believes it only from the
+   proxy network.
+3. **`bootstrap.sh` reset every role's password to the laptop default on a
+   re-run without the variables**, which `restore.sh` does: a restore on a
+   real cluster would have stopped the API and left `dev-only` passwords on
+   production roles. A password is now reset only when its variable is
+   given; laptops, CI and the tests behave as before.
+4. **A missing bucket made the storage watch fail instead of alert**
+   (D-090): S3 answers a `HEAD` on a missing bucket with a bare 404, which
+   the adapter read as a missing file. `check_reachable` now reports it as
+   an outage (`NoSuchBucket`).
+5. Readiness on a database no migration had touched said `unknown`; it is
+   `behind`, so the first deploy's preflight accepts it.
+
+**Choices, and the alternatives not taken:**
+
+- **nginx, not Caddy or Traefik.** Caddy's automatic certificates need the
+  public domain and Let's Encrypt from the first start, and would sit
+  awkwardly with Cloudflare's origin certificates if the founder chooses
+  Cloudflare (M.2); nginx with mounted files works with either. Traefik
+  adds a dynamic configuration nobody here needs.
+- **Images built on the server from the commit**, no registry: one server,
+  no paid registry, and the commit is the release name. A registry and
+  signed images belong to a second server or CI deployments.
+- **The worker is the scheduler**; no separate cron container (D-035
+  already makes a second worker safe).
+- **Readiness refuses a newer schema** unless `MARKX_ALLOW_NEWER_SCHEMA`
+  acknowledges a compatible rollback: running old code on a schema it does
+  not know should be a decision, not an accident.
+- **The edge limits are generous** because Ethiopian mobile carriers put
+  many users behind one address; the API's limits stay the precise ones.
+
+**Not done, on purpose or because it needs the founder**: any deployment;
+off-server copies of the dumps (F-16); backups of stored files (F-14, still
+open); the certificate tool and the domain (F-17); an outside uptime
+monitor and error tracking (F-18); zero-downtime deploys (one copy of each
+service; the web server does not drain on SIGTERM); the host's firewall,
+updates and spending alarm. F-01, F-14 and F-15 stay open.
+
 ---
 
 ## Decisions that need the founder
@@ -2656,8 +2767,8 @@ store logo and order-line pictures (columns without behaviour, as before).
 request on 18 November 2026: the engineer's guess, which the founder must
 confirm or change before MarkX goes live. F-09 and F-10 (raised in D-086)
 were decided on 18 November 2026: see D-087 and D-088. F-11 to F-13
-(D-089, SMS) and F-14 and F-15 (D-090, file storage) are open and have no
-provisional answer: the code does the most cautious thing until the founder
+(D-089, SMS), F-14 and F-15 (D-090, file storage) and F-16 to F-18 (D-091,
+deployment) are open and have no provisional answer: the code does the most cautious thing until the founder
 decides.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
@@ -2904,6 +3015,43 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 - **Founder's approval required: yes** (DNS and the CDN account).
 
 ---
+
+### F-16 Where the database dumps are copied off the server (blueprint H.2, F.13)
+
+- **Today (D-091):** the backup service writes an encrypted dump at start-up
+  and every night to the server's own disk and keeps 30 days. Nothing copies
+  them anywhere else, so losing the server loses its backups.
+- **Options:** a private, versioned backup bucket at the same provider as
+  F-01 (blueprint M.3 lists "backups" among the dedicated buckets) with a
+  30-day lifecycle rule, written by the backup service; and the blueprint's
+  weekly copy to an encrypted drive the founder holds, by hand until then.
+- **Blocks:** the controlled launch should not start without an off-server
+  copy. **Founder's approval required: yes** (a paid bucket; where copies of
+  personal data live).
+
+### F-17 The site's domain, its certificate and whether Cloudflare is in front
+
+- **Today (D-091):** the proxy answers on one hostname (`MARKX_SITE_HOSTNAME`)
+  with a certificate from `/etc/markx/tls`; the examples use
+  `markx.example.invalid`. Nothing is registered.
+- **Options:** Let's Encrypt with certbot on the server (the challenge path
+  is ready), or Cloudflare in front with an origin certificate (blueprint
+  M.2: Proposed), which also needs the real-address snippet and a firewall
+  that admits Cloudflare only (`docs/runbooks/tls-certificates.md`). Whether
+  `www.` exists and redirects. Whether HSTS later includes subdomains.
+- **Founder's approval required: yes** (the domain, DNS, a Cloudflare
+  account). Together with F-15 (the picture domain).
+
+### F-18 An outside uptime monitor and error tracking (blueprint F.12)
+
+- **Today:** `/api/v1/healthz/ready`, `/healthz/live` and `/healthz/worker`
+  exist for a monitor; none is set up, and a failed nightly dump shows only
+  as an unhealthy container. No error tracker.
+- **Options:** a free uptime monitor polling the three endpoints and the
+  certificate's expiry, alerting the founder's Telegram group; an error
+  tracker on a free tier with personal data removed before sending.
+- **Founder's approval required: yes** (accounts; error tracking sends data
+  out).
 
 ## Open questions carried over from session 1
 

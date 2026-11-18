@@ -15,6 +15,24 @@ the checks actually printed.
 
 ---
 
+# Part A.00000 — The production deployment foundation (18 November 2026, D-091)
+
+Later sessions (D-084 to D-090) recorded their reports in
+`docs/DEVELOPMENT_STATUS.md` and `docs/DECISIONS.md` rather than here; so
+does this one. In short: MarkX now has production images for the API and
+the web app, a production Compose file with an nginx reverse proxy, a
+backup service and a one-time migration step (`infra/production/`),
+liveness and readiness probes, a preflight command, `deploy.sh` with
+deploy and rollback, a local rehearsal of the whole stack that CI runs, and
+runbooks (`docs/DEPLOYMENT.md`, `docs/runbooks/`). **Nothing was deployed and
+no account, server, domain or certificate was created.** MarkX is not
+production-ready: it cannot start on a real server until the founder
+decides F-01, F-11 and F-15, and it has no off-server backups (F-16) and no
+backups of stored files (F-14). The next engineering task is in
+`docs/DEVELOPMENT_STATUS.md`, "The exact next task".
+
+---
+
 # Part A.0000 — The tenth session: the buyer's and the seller's screens (17 November 2026)
 
 The web app's owner, on the founder's request to continue with the buyer and

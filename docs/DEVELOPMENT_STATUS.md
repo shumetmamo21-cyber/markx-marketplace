@@ -1,6 +1,25 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **object storage session**
+**Last updated:** 18 November 2026, by the **production deployment
+foundation session** (D-091): production images for the API and the web
+app; a separate production Compose file (`infra/production/`) with an
+nginx reverse proxy (HTTPS-only, TLS 1.2/1.3, HSTS, body and edge rate
+limits, the visitor's address set at the edge), PostgreSQL, the worker as
+scheduler, a nightly encrypted backup service and a one-time migration step
+under an advisory lock, on internal networks where only the proxy has ports
+and only the API and worker reach the internet; liveness and readiness
+separated, a preflight command and a worker heartbeat; stricter
+real-server configuration (Fernet key, explicit trusted proxies, no DEBUG,
+no raw configuration in a refused start-up) and a start-up check for the
+web container; `deploy.sh` (check, deploy, rollback, backup, status) and a
+local rehearsal of the whole stack that CI runs; runbooks in
+`docs/runbooks/` and `docs/DEPLOYMENT.md`. Four existing defects fixed on
+the way (a password in start-up errors, every page's search counted as one
+visitor, `bootstrap.sh` resetting real passwords to the laptop defaults on
+a restore, a missing bucket crashing the storage watch). **Nothing was
+deployed and no account, server, domain or certificate was created; MarkX
+is not production-ready** (F-01, F-14 and F-15 stay open; new founder items
+F-16 to F-18). Before it, the **object storage session**
 (D-090): one file-storage interface with four adapters chosen by
 configuration (the local folders, MinIO, Amazon S3 and Cloudflare R2, on
 boto3); seller documents, picture sources and problem photos in a private
@@ -151,6 +170,7 @@ creates), deployment. Nothing is deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| Production deployment foundation (D-091) | the commits after `a9941d2`; see `git log` | API and web production images, `infra/production/` (Compose, nginx, env templates, `deploy.sh`, the rehearsal), `markx/ops/health.py` and `preflight.py`, the worker heartbeat, the migration lock, stricter real-server configuration, the web start-up check and address forwarding, `bootstrap.sh` keeping real passwords, `check_reachable` on a missing bucket, `docs/DEPLOYMENT.md`, `docs/runbooks/`, CI's web image and rehearsal jobs. No migration |
 | Object storage (D-090) | the commit after `d4a29af`; see `git log` | `ObjectStore` with `local`, `minio`, `s3` and `r2` (boto3), the start-up checks, `file_storage` watch check, `scripts/copy_files_to_object_storage.py`, MinIO in Compose, CI and the journeys, `tests/storage/` (136 tests). No migration |
 | SMS foundation (D-089) | see `git log`; the commit after `3c7921c` | The SMS interface, the HTTPS adapter skeleton (no provider), `sms_messages` (migration `0015`), the resend cooldown, `sms.failures` and `sms.unfinished` alerts, the SMS start-up checks, `e2e/sign-in-cooldown.mjs`. 1251 API tests, 71 web unit tests |
 | F-09 option 2, F-10 recorded (D-087, D-088) | the commit after `9af18c7` | `PAYABLE` is now delivered, completed and disputed; migration `0014` (`trg_seller_orders_payment_at_handover`) refuses an advance payment record without touching existing ones; the web app shows "Record the payment" only from the handover on; F-09 and F-10 closed as D-087 and D-088 |
@@ -167,7 +187,8 @@ Phases are the blueprint's P1 to P16 (section L.1).
 
 | Phase | Name | State |
 | --- | --- | --- |
-| P1 | Project foundation | **Mostly done.** API skeleton, database pipeline, core helpers, **the web shell, the CI pipeline (`.github/workflows/ci.yml`) and the typed link between API and web** are done. **Containers for a laptop** (`apps/api/Dockerfile`, `infra/compose/compose.yaml`; API, worker, PostgreSQL; D-058) are done and built in CI; the web app is not in Compose yet. An automated page-weight check and the three technical reports are **not done**; the page weight was measured once (D-055) |
+| P1 | Project foundation | **Mostly done.** API skeleton, database pipeline, core helpers, **the web shell, the CI pipeline (`.github/workflows/ci.yml`) and the typed link between API and web** are done. **Containers for a laptop** (`apps/api/Dockerfile`, `infra/compose/compose.yaml`; API, worker, PostgreSQL; D-058) are done and built in CI; the web app is not in the laptop Compose file. **The production stack is prepared and rehearsed, not deployed** (D-091): the web image, `infra/production/` with the reverse proxy, `deploy.sh`, and a rehearsal in CI. The page-weight check runs in CI (D-084). The three technical reports are **not done** |
+| P2 (deployment parts) | | See P2 below: the nightly schedule now exists **on the server** (the backup service, D-091); the **off-server copy** does not (F-16) |
 | P2 | Database and backend foundation | **Mostly done.** Schema, three database roles, error format, request IDs, structured logs, **the worker process with the scheduler and the outbox dispatcher** are done and tested. **Encrypted backups, a scripted restore and a restore drill run in CI** (D-063); **the watch and reconciliation jobs, alerts with Telegram delivery when configured, and a worker health check** (D-064). **Not done:** error tracking (needs an account), the nightly schedule and the off-server copy (deployment), P2 criteria 3 to 5 (they need staging) |
 | P3 | Authentication and roles | **Mostly done on the API side.** Phone-code sign-in, sessions, staff sign-in, Telegram signature check and the permission tables are done and tested. Turnstile is built (D-085, untested against Cloudflare); the SMS side is built up to the provider (D-089) but **no SMS provider is chosen**, so no real code can be sent |
 | P4 | Customer storefront | **Mostly done for Release 1's buyer journey** (D-055): home, search with filters, product page with the offers table, shop page, sign-in, cart, checkout, orders, tracking. Pictures on the product card and page, reviews and report links (session ten, D-072, D-074). **Not done:** the category page as its own screen (search by category stands in), account settings and saved addresses screens, Telegram Mini App shell, server actions so changes work without script, automated browser tests in CI |
@@ -864,6 +885,20 @@ All of it under `apps/api` and `infra/`; `apps/web` was not modified.
 
 Be careful with these. They were written and never exercised.
 
+- **Everything in `infra/production/` against a real server** (D-091). The
+  Compose file, nginx, `deploy.sh` and the backup service run only in the
+  local rehearsal, with `MARKX_ENV=local`, MinIO and a self-signed
+  certificate. Never with a real certificate, real DNS, real buckets, a real
+  SMS provider or Turnstile's production widget, never for more than one
+  rehearsal's minutes (the nightly schedule has not waited for a night),
+  never under real load (the memory limits are estimates for a 2 GB
+  server), and never from Ethiopia. The staging/production configuration
+  rules are tested in unit tests and by the rehearsal's refusals only.
+- `docs/runbooks/` procedures that cannot be rehearsed: preparing a server,
+  the certificate (no tool is installed; the deploy hook named in
+  `tls-certificates.md` does not exist yet), recovering a lost server,
+  secret rotation, the monthly drill on a server.
+
 - Models for refunds, payouts, reviews, reports and analytics: the tables
   exist and are constrained; **no service, route or test uses them**.
   `product_requests` are written and never read by a route yet.
@@ -907,11 +942,17 @@ Be careful with these. They were written and never exercised.
   bot-check adapter (Turnstile) **exists but has never talked to
   Cloudflare**: it waits for the founder's keys (D-085). Until they are
   configured a real server refuses to start (D-084).
-- The reverse proxy, error tracking, the nightly backup schedule and the
-  off-server copy, an outside uptime monitor, the buckets themselves, their
-  own protection against loss (F-14) and the pictures' CDN and domain
-  (F-15). (Containers, backups, the drill and alerting exist; demo seed
-  data exists for laptops only.)
+- Any deployed server. The reverse proxy, the production Compose file and
+  the nightly backup schedule now exist **in the repository** (D-091) and
+  are rehearsed locally; none of it runs anywhere.
+- Error tracking (F-18), an outside uptime monitor (F-18), the off-server
+  copy of the database dumps (F-16), the site's domain and certificate
+  (F-17), the buckets themselves (F-01), their own protection against loss
+  (F-14) and the pictures' CDN and domain (F-15). An alert when a nightly
+  dump fails (it shows only as an unhealthy container). Zero-downtime
+  deploys. A container registry. The server's firewall, updates and the
+  spending alarm (host set-up, blueprint M.3). A tool to re-encrypt data
+  under a new `MARKX_ENCRYPTION_KEY` (`docs/runbooks/secret-rotation.md`).
 - Anything on AWS. Nothing has been deployed and no cloud resource was created.
 
 ## Lessons
@@ -960,6 +1001,24 @@ Be careful with these. They were written and never exercised.
   (D-074 here).
 
 ## Known problems
+
+- **MarkX cannot start on a real server today, by design** (D-084 to
+  D-091): no SMS provider (F-11), no buckets (F-01), no picture domain
+  (F-15), no Turnstile production widget. The production stack is ready
+  for them; it is not "production-ready".
+- **Database dumps stay on the server** (D-091): until F-16 is decided, the
+  founder copies the newest dump off the server by hand at least weekly
+  (`docs/runbooks/backup-and-restore.md`). Stored files have no backup at
+  all (F-14).
+- **A deploy restarts each service once** (one copy of each): a few seconds
+  of refused requests, and pages being rendered when the web server stops
+  fail (Next.js does not drain on SIGTERM).
+- **Edge rate limits are estimates** (20 requests a second, 60 sign-in
+  requests a minute per address). Many Ethiopian mobile users share one
+  carrier address; measure before tightening.
+- **Behind Cloudflare, the real-address snippet must be enabled first**
+  (`infra/production/nginx/snippets/cloudflare-real-ip.conf.example`), or
+  every visitor is one of Cloudflare's addresses to every limit.
 
 - **A part paid in advance before D-087 that cannot go ahead waits for
   staff with no button to close it.** No new such part can arise (a payment
@@ -1118,6 +1177,148 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Production deployment foundation** (D-091), on 18 November 2026, on the
+session's tree (commits `359e0c9` to the documentation commit), PostgreSQL
+17 and MinIO in Docker on the session's machine. Nothing was deployed; no
+outside account, domain, certificate authority or bucket was contacted.
+
+```text
+# API, the whole suite, on the final API code
+$ MARKX_TEST_MINIO_REQUIRED=1 uv run pytest -> 1487 passed in 613.13s (1387 before; 100 new)
+  tests/deployment (production configuration, liveness and readiness,
+  preflight, the API and worker refusing to start, the worker heartbeat),
+  tests/db/test_migration_lock.py (3), tests/storage/test_readiness_on_minio.py (3)
+$ uv run ruff check .            -> All checks passed!
+$ uv run ruff format --check .   -> 208 files already formatted
+$ uv run mypy markx              -> Success: no issues found in 126 source files
+$ uv run alembic upgrade head && uv run alembic check -> No new upgrade operations detected.
+$ uv run python -m scripts.check_openapi_copy --exact openapi.json -> matches the API exactly
+$ uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
+  -> still true; new: GET /api/v1/healthz/live, GET /api/v1/healthz/ready
+
+# the new rules against the old code (a9941d2's config.py with stubs for the
+# two new names): 15 of the 70 configuration tests fail, exactly the new
+# rules (Fernet key, bare origin, DEBUG, explicit trusted proxies, the raw
+# configuration in errors, log levels, the start-up warning); the 55 that
+# check the earlier rules pass on both
+# a9941d2's storage.py: the missing-bucket test fails (StoredFileMissing: check)
+# a9941d2's bootstrap.sh: a re-run without variables reset markx_app's real
+#   password to the laptop default (shown by hand: the dev password connected)
+
+# web
+$ npm run lint -> clean;  npm run typecheck -> clean
+$ npm test -> 90 passed (71 before; 19 new: forwarded.test.ts, deploy-env.test.ts)
+$ npm run gen:api && git diff --exit-code src/lib/api/schema.d.ts -> unchanged
+$ npm run build -> ok (the ordinary output, as CI builds it)
+
+# browser journeys, replayed locally as journeys.yml runs them (laptop Compose
+# stack, demo data, next start, Chromium)
+page-weight (every page within its budget), seller-dashboard, buyer-journey,
+staff-journey, admin-queues, shop-screens, setup-and-account,
+sign-in-cooldown, turnstile-widget -> all passed, console errors: none
+
+# security
+$ gitleaks 8.28.0 git (all 98 commits) -> no leaks found (after allow-listing
+  the tests' test-only Fernet key by value; it was the one finding)
+$ gitleaks dir (the 55 new or changed files) -> no leaks found
+$ uv run pip-audit -> No known vulnerabilities found
+$ node .github/scripts/npm-audit-gate.mjs apps/web -> passed (production: none;
+  development: the reviewed picomatch entry, allowed until 2026-12-31)
+
+# containers
+docker build apps/api, apps/web (with --secret build_ca: this machine reaches
+registries through a TLS-inspecting proxy) -> both build; api runs as markx
+(999), web as node (1000); no pytest, no sources, no dev dependencies; no
+/run/secrets in either image
+docker compose config: the laptop file, the laptop + CI files, the production
+file with the example settings -> valid
+
+# the production rehearsal (infra/production/rehearsal/rehearse.sh), final run
+rehearsal: 67 passed, 0 failed
+  PASS  the production Compose file is valid with the example settings
+  PASS  deploy.sh check refuses the example settings (placeholders, owners, no certificate)
+  PASS  deploy.sh refuses a stage other than staging or production
+  PASS  deploy.sh check passes for the rehearsal's server layout
+  PASS  the API refuses to start as production with development settings, naming them, no value
+  PASS  the worker refuses to start as production with development settings
+  PASS  preflight refuses the production configuration with exit 2, no value
+  PASS  the web app refuses to start as production without its site key (exit 2)
+  PASS  deploy.sh deploy: build, preflight, backup, migration, start, verify
+  PASS  the deploy log holds none of this run's secrets
+  PASS  the release is recorded
+  PASS  only the proxy publishes ports
+  PASS  PostgreSQL has no way out to the internet
+  PASS  the web app has no way out to the internet
+  PASS  the API can reach the internet (outside services)
+  PASS  the web app cannot reach PostgreSQL
+  PASS  the proxy cannot reach PostgreSQL
+  PASS  the API reaches PostgreSQL
+  PASS  the proxy reaches the API and the web app
+  PASS  api runs as an unprivileged user (markx)
+  PASS  api has a read-only root file system
+  PASS  worker runs as an unprivileged user (markx)
+  PASS  worker has a read-only root file system
+  PASS  web runs as an unprivileged user (node)
+  PASS  web has a read-only root file system
+  PASS  proxy runs as an unprivileged user (101)
+  PASS  proxy has a read-only root file system
+  PASS  HTTP is redirected to HTTPS on the site's hostname
+  PASS  the redirect never uses the visitor's Host header
+  PASS  certificate challenges are served over HTTP
+  PASS  an unknown hostname is refused at the TLS handshake
+  PASS  TLS 1.1 is refused (the local OpenSSL cannot offer it either; weaker evidence)
+  PASS  TLS 1.2 is accepted
+  PASS  TLS 1.3 is accepted
+  PASS  a page is served over HTTP/2
+  PASS  a page has HSTS exactly once
+  PASS  a page has its security policy
+  PASS  a page does not name its framework
+  PASS  the Server header has no version
+  PASS  the API is ready through the proxy
+  PASS  an API answer has HSTS exactly once
+  PASS  the API does not name its server
+  PASS  liveness answers
+  PASS  /api/v1/openapi.json is not public
+  PASS  /api/v1/docs is not public
+  PASS  /api/v1/dev/sms-inbox?phone=0911000000 is not public
+  PASS  a 2 MB JSON body is refused at the proxy (413)
+  PASS  a 5 MB upload reaches the API, which decides (403)
+  PASS  a 25 MB upload is refused at the proxy (413)
+  PASS  one visitor is one address: the API call and the page's own call count the visitor, never a forged or internal address
+  PASS  the edge rate limit answers 429 to a burst on sign-in
+  PASS  the worker's heartbeat check is healthy
+  PASS  the worker runs its scheduled jobs (/healthz/worker)
+  PASS  two migration runs at once both finish
+  PASS  and the schema did not change
+  PASS  backups are written encrypted, owner 999, mode 600 (2 so far)
+  PASS  the backup service is healthy
+  PASS  the latest dump restores into a new database at the same migration
+  PASS  the restore did not change the running site's passwords (preflight still passes)
+  PASS  deploy.sh rollback starts another release's images, verified
+  PASS  rollback refuses a release whose images are not here
+  PASS  proxy stops on SIGTERM in 1s (exit 0)
+  PASS  web stops on SIGTERM in 0s (exit 143)
+  PASS  api stops on SIGTERM in 1s (exit 143)
+  PASS  worker stops on SIGTERM in 0s (exit 0)
+  PASS  backup stops on SIGTERM in 1s (exit 0)
+  PASS  postgres stops on SIGTERM in 0s (exit 0)
+
+# NOT run: shellcheck (not installed here, and installing it was not
+# permitted in this workspace); bash -n on every script instead. actionlint
+# (not installed); the workflows were parsed as YAML.
+# NOT tested anywhere: a real server, a real certificate or DNS name, real
+# S3/R2, a real SMS provider, Turnstile's production widget, a night of the
+# backup schedule, load. See "What exists but is NOT tested".
+```
+
+Earlier runs of the rehearsal in this session failed on the rehearsal's own
+mistakes and on two real defects, all fixed before the final run: MinIO
+not started by `run --no-deps` (deploy.sh now takes
+`MARKX_DEPENDENCY_SERVICES`), a missing bucket raising instead of being an
+outage (fixed in `storage.py`), the readiness of an empty database
+(`unknown`, now `behind`), curl going through this machine's outbound proxy
+(`--noproxy`), and header lines ending in a carriage return.
 
 **Object storage** (D-090), on the commit after `d4a29af`, PostgreSQL 17
 and MinIO (`bitnamilegacy/minio:2025.7.23-debian-12-r5`) in Docker. No
@@ -1704,6 +1905,34 @@ These are written reminders; nothing in the code fires them.
 
 Two sessions may work in parallel: one owns `apps/web`, the other the back
 end. Work in this order within each. Finish and push each step first.
+
+**Deployment (D-091), before anything else touches `infra/production/`:**
+
+1. Confirm that CI's "Production stack rehearsal" job passed on the latest
+   commit; it is the only evidence the stack still works. Run
+   `sudo -E infra/production/rehearsal/rehearse.sh` locally after any change
+   to `infra/production/`, either Dockerfile, `markx/ops/health.py`,
+   `markx/core/config.py` or `apps/web/deploy/`.
+2. **The recommended next engineering task: off-server database backups
+   (F-16), code only, behind the existing adapter.** Extend the backup
+   service so each successful dump is also copied to a THIRD, private,
+   versioned bucket (`MARKX_BACKUP_BUCKET`, through the existing
+   `ObjectStore` interface; refused when it equals either file bucket),
+   with a restore that fetches from it, a test against MinIO, and a
+   `backup.failed` / `backup.stale` alert raised by the worker's watch from
+   a status row the backup writes. It stays unconnected until the founder
+   decides F-16 and creates the bucket; it is the largest gap between
+   "prepared" and "safe to launch" that needs no account to build.
+3. Then, still without accounts: the certificate deploy hook named in
+   `docs/runbooks/tls-certificates.md`; the re-encryption tool for
+   `MARKX_ENCRYPTION_KEY` (`docs/runbooks/secret-rotation.md`); a
+   draining stop for the web server.
+4. With the founder, in order, each only with written approval: F-17 (the
+   domain, the certificate route, Cloudflare or not), the server itself
+   (blueprint M.3, O.1), F-01 and F-15 (buckets and the picture domain),
+   F-11 (SMS), the Turnstile production widget, F-16 and F-18. Only then a
+   first staging deploy with `deploy.sh`, the post-deployment checklist, and
+   the blueprint's pre-launch security review (H.7).
 
 **The web app's owner (resuming):**
 
