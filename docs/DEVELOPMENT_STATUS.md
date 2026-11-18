@@ -1123,6 +1123,10 @@ $ browser journeys, against the API and the production build on this machine,
   staff-journey, admin-queues, shop-screens, setup-and-account -> passed,
   console errors: none; sign-in-cooldown (cooldown back at 60) -> "refused
   with 60 s left, in English and Amharic"; turnstile-widget (stand-in) -> passed
+$ GitHub Actions on 9b9f6db: CI #105 -> success (API: lint, format, mypy,
+  migrations, tests, both OpenAPI copies, backup and restore drill; web: lint,
+  types, unit tests, build; containers; security: Gitleaks, pip-audit, npm
+  audit); Browser journeys #15 -> success (including the new cooldown step)
 ```
 
 **F-09 option 2** (D-087), on the commit after `9af18c7`:
