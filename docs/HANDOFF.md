@@ -84,8 +84,29 @@ question** for the next session: a single worker pass in one admin journey
 run handled none of the outbox messages that were due, with no error
 anywhere; it did not recur (`docs/DEVELOPMENT_STATUS.md`, Known problems).
 
+**Third round** (the founder: "do it now from the list you can do with
+accuracy; if not, skip and summarise"). Done: a store's page shows its
+track record over 90 days (how many orders it accepts, how fast, how many
+deliveries succeed) and search can filter by product rating and seller
+level (`3511e0e`, D-080); a single worker pass (`--once`) now exits with an
+error when a job failed or the outbox could not be drained, so the open
+question above can no longer pass unnoticed (`c6b7a29`, D-079); and the six
+browser journeys run on GitHub's free runners against a fresh demo database
+when a commit message contains `[journeys]` (D-081). Their first run was
+cancelled by my own next push; fixed (`b4bff76`), run #4 passed all six
+with no console errors, and two journeys that printed console errors
+without failing now fail (`876c1d9`). Skipped, with the reason: Telegram
+sign-in and the Mini App (they need your bot); a rating on the product
+card (blueprint D.9's card does not have one); delivery speed as a filter
+and "total cost to the door" as a sort (search does not know the buyer's
+delivery zone yet: back-end work first); a native speaker's review of the
+Amharic (needs a person). Final checks: 951 API tests, 33 web unit tests,
+the web build (66 pages), every lint and type check clean; on GitHub, the
+six journeys (run #5) and CI run #81 passed on `876c1d9`.
+
 **Still to build on the web:** Telegram sign-in and the Mini App once the
-founder creates the bot; ratings on the product card (with the back end).
+founder creates the bot; delivery speed as a search filter and "total cost
+to the door" as a sort (they need the buyer's delivery zone in search).
 The Amharic text of this session is AI-drafted and needs a native speaker.
 
 **Waiting on the founder:** unchanged — F-01 to F-08 in `docs/DECISIONS.md`.
@@ -403,7 +424,7 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-078; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
+(D-001 to D-081; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
@@ -415,7 +436,7 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 948 passed, twelve to fourteen minutes
+uv run pytest                  # expect 951 passed, ten to fourteen minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json
@@ -439,7 +460,11 @@ and problem evidence with the shop's side, `node e2e/seller-dashboard.mjs`
 a new shop from its application to its first offer, and `node
 e2e/setup-and-account.mjs` staff setup, trust actions, the buyer's account,
 proposals and closing; `staff-journey.mjs` takes the secret too. Each signs a demo phone
-in once per run; the API allows five codes per phone per clock hour.
+in once per run; the API allows five codes per phone per clock hour. The
+same six journeys run on GitHub, against a fresh demo database, on a push
+whose commit message contains `[journeys]` (D-081); that job raises the
+limit on its throwaway database. Push with it after changing a screen they
+cover.
 
 **5. Task (the web app's owner):** first pick up any API additions made
 since the tenth session: `cd apps/api && uv run python -m

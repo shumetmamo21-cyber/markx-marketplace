@@ -1,13 +1,15 @@
 # Development status
 
-**Last updated:** 17 November 2026, tenth engineering session (the web app's
+**Last updated:** 18 November 2026, tenth engineering session (the web app's
 owner: the buyer's and the seller's screens — reviews and report links
 (D-072), pictures and problem evidence (D-074), the rest of the seller
 dashboard (D-075) — and, in a second round, every remaining screen the API
 supports: the buyer's account, the next-best offer, the category page,
 search suggestions, the shop's location, closing and product suggestions,
 the staff's trust actions, delivery zones and catalogue setup (D-076 to
-D-078)). The ninth session built every admin screen (D-069 to
+D-078); in a third round, a store's track record on its page, search by
+rating and seller level, a worker pass that reports failure, and the
+browser journeys on GitHub (D-079 to D-081)). The ninth session built every admin screen (D-069 to
 D-071); a back-end-only continuation in parallel added the seller
 performance figures and the weekly seller message (D-073), merged in this
 session.
@@ -91,7 +93,7 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
-| 10 (web owner) | `b2e11ce`, `1920e55`, the merge `d015261`, `ae10c83`, `326ae26`, `af02d59`, `ffa2720`; second round `822f564`, `751e2b0`, `47e9fec` and the documentation commit; see `docs/HANDOFF.md`, Part A.0000 | Reviews and report links for buyers, the shop's replies, `can_edit`/`can_reply` (D-072); thumbnails on the product card (`thumb_url`), the product page gallery, shops' photos, problem evidence (D-074); the rest of the seller dashboard and the application (D-075); then a store with open orders cannot close (D-076), every remaining screen the API supports (D-077) and the settings in Amharic (D-078); `e2e/shop-screens.mjs`, `e2e/seller-dashboard.mjs`, `e2e/setup-and-account.mjs`. 948 API tests, 33 web unit tests |
+| 10 (web owner) | `b2e11ce`, `1920e55`, the merge `d015261`, `ae10c83`, `326ae26`, `af02d59`, `ffa2720`; second round `822f564`, `751e2b0`, `47e9fec` and the documentation commit; third round `c6b7a29`, `3511e0e`, `8dc0264`, `94d5bd3`, `b4bff76`, `876c1d9` and the documentation commits; see `docs/HANDOFF.md`, Part A.0000 | Reviews and report links for buyers, the shop's replies, `can_edit`/`can_reply` (D-072); thumbnails on the product card (`thumb_url`), the product page gallery, shops' photos, problem evidence (D-074); the rest of the seller dashboard and the application (D-075); then a store with open orders cannot close (D-076), every remaining screen the API supports (D-077) and the settings in Amharic (D-078); `e2e/shop-screens.mjs`, `e2e/seller-dashboard.mjs`, `e2e/setup-and-account.mjs`; then a store's track record on its page and search by rating and seller level (D-080), a worker pass that reports failure (D-079) and the browser journeys on GitHub (D-081). 951 API tests, 33 web unit tests |
 
 ## Blueprint phase tracking
 
@@ -321,7 +323,8 @@ Code: `markx/offers/`. Routes: `/seller/{seller_id}/offers...`,
 ### The worker (blueprint F.8, D.16, P2)
 
 Code: `markx/worker/`. Command: `uv run python -m markx.worker` (`--once`
-runs one pass). Decisions D-034 and D-035.
+runs one pass and exits with 1 when a job failed or the outbox could not be
+drained, D-079). Decisions D-034 and D-035.
 
 - **Scheduled jobs**, one row each in `scheduled_jobs` (migration `0006`):
   `orders.expire_unanswered` every minute, `sellers.activate_due_payout_accounts`
@@ -338,7 +341,7 @@ runs one pass). Decisions D-034 and D-035.
   to the person's Telegram when they have linked it. **The only push adapter
   is a fake**; on a real server the factory refuses it, so nothing is ever
   pretended sent.
-- Tested (22 tests, `tests/worker/test_worker.py`): a committed message is
+- Tested (23 tests, `tests/worker/test_worker.py`): a committed message is
   delivered exactly once and one from a rolled-back transaction never (P2
   completion criterion 2); retries with growing delays; two workers never
   take the same row or run the same job; eight workers deliver 120 messages
@@ -679,7 +682,14 @@ build, and a check that the generated API types are current). First runs:
 Chromium against a fresh demo database, only on a push whose message
 contains `[journeys]` (or, once on the default branch, from the Actions
 tab). It raises the sign-in limits on its throwaway database, keeps the
-screenshots and server logs for a week. Its first run is recorded in the next commit.
+screenshots and server logs for a week. Its first tagged run (#2) was
+cancelled by the next ordinary push (fixed: see D-081). Run #4 on `b4bff76`
+passed in five minutes: all six journeys, each with "console errors:
+none". Run #5 on `876c1d9` (the buyer and staff journeys now fail on a
+console error, like the other four) passed too, in seven minutes. GitHub warns that the
+actions it uses (`checkout`, `setup-node`, `upload-artifact`, `setup-uv`)
+target Node.js 20 and are forced onto Node.js 24; a warning only, the same
+in `ci.yml`.
 
 ### The search evaluator (P8 criteria; D-054)
 
@@ -919,6 +929,29 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Tenth session, third round** (D-079 to D-081):
+
+```text
+# on the final tree (the API last changed in 3511e0e)
+$ cd apps/api && uv run pytest ->  951 passed in 595.30s (0:09:55)
+  ruff check -> All checks passed!; ruff format --check -> 184 files already formatted
+  mypy markx -> no issues found in 123 source files; alembic check -> no new upgrade operations
+  check_openapi_copy --exact, openapi.json and the web copy -> both match the API exactly
+$ cd apps/web && npm run lint, typecheck -> clean; npm test -> 33 passed (7 files)
+  npm run gen:api -> schema.d.ts unchanged; npm run build -> 66 pages
+# a rehearsal of the GitHub job on a fresh demo database (markx_ci), in its order
+$ seller-dashboard, buyer-journey, staff-journey, admin-queues, shop-screens -> passed, "console errors: none"
+$ setup-and-account -> 7 steps passed, then 429 rate_limited in step 8 (the demo buyer's sixth code in the hour)
+  after raising the two sign-in limits on that database, as the job now does:
+$ setup-and-account -> 13 steps passed, "console errors: none"
+# on GitHub (Browser journeys workflow)
+  run #2 on 94d5bd3: cancelled while building the web app (the next push; D-081)
+  run #4 on b4bff76: success; seller-dashboard 11 steps, buyer 6, staff 6,
+    admin 15, shop-screens 14, setup-and-account 13; each "console errors: none"
+  run #5 on 876c1d9: success; all six again, every journey now failing on a console error
+  GitHub Actions CI run #81 on 876c1d9: success (API, web app, containers)
+```
+
 **Tenth session, second round** (the remaining screens, D-076 to D-078):
 
 ```text
@@ -1082,7 +1115,7 @@ application code contains no `type: ignore`; the suite treats warnings as
 errors. **Never run two test sessions at once**: they share `markx_test`
 (session five lost one run to that).
 
-Recounted by the tenth session from `pytest --collect-only` (948 tests, 48 files):
+Recounted by the tenth session from `pytest --collect-only` (951 tests, 48 files):
 
 | File | Tests |
 | --- | --- |
@@ -1119,10 +1152,10 @@ Recounted by the tenth session from `pytest --collect-only` (948 tests, 48 files
 | `tests/api/test_next_best_offer.py` | 5 |
 | `tests/api/test_offers.py` | 42 |
 | `tests/api/test_ops.py` | 8 |
-| `tests/api/test_performance.py` | 4 |
+| `tests/api/test_performance.py` | 5 |
 | `tests/api/test_pictures.py` | 15 |
 | `tests/api/test_reports.py` | 4 |
-| `tests/api/test_reviews.py` | 9 |
+| `tests/api/test_reviews.py` | 10 |
 | `tests/api/test_search.py` | 30 |
 | `tests/api/test_seller_closing.py` | 2 |
 | `tests/api/test_search_evaluation.py` | 6 |
@@ -1133,8 +1166,8 @@ Recounted by the tenth session from `pytest --collect-only` (948 tests, 48 files
 | `tests/api/test_seller_staff_permissions.py` | 23 |
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_tracking.py` | 2 |
-| `tests/worker/test_worker.py` | 22 |
-| **Total** | **948** |
+| `tests/worker/test_worker.py` | 23 |
+| **Total** | **951** |
 
 Counted by `uv run pytest --collect-only -q` on the final head.
 
@@ -1192,9 +1225,9 @@ end. Work in this order within each. Finish and push each step first.
 1. F-08 once the founder answers: a retention job for search logs and
    rate-limit counters.
 2. Photos on reviews (C-18), following the problem-photo pipeline (D-062).
-3. Ratings in search ranking and filters (D.8), and the seller rating in
-   the product page's offer ranking, as one change with the web app
-   (D-061).
+3. Ratings in search ranking (D.8; the rating filter exists, D-080), and
+   the seller rating in the product page's offer ranking, as one change
+   with the web app (D-061).
 4. The real adapters, each behind its existing interface, once the founder
    decides where things live (F-01): object storage for pictures and
    documents, SMS, Telegram push.

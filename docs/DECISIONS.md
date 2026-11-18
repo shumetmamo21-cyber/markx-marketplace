@@ -1922,6 +1922,13 @@ job raises `auth.otp_per_phone_per_hour` to 30 and `auth.otp_per_ip_per_hour`
 to 200 on its throwaway database, through `settings_store` before the API
 starts; the limits themselves are tested in `tests/api/test_auth_otp.py`.
 
+Every push still starts the workflow; without `[journeys]` its one job is
+skipped. The first tagged run was cancelled while it built the web app,
+because the next push (a documentation commit) joined the same concurrency
+group, which cancels runs in progress. The group's name now ends in whether
+the run will really work (`true` or `false`), so an ordinary push can only
+cancel another empty run.
+
 ---
 
 ## Decisions that need the founder
