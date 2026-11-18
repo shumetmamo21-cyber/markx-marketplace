@@ -1213,6 +1213,28 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Notification system** (D-092), on 18 November 2026, commits `43bec22`,
+`f1c9a35`, `9dd87eb` (on `bd091bd`), PostgreSQL 17 in Docker on the
+session's machine, no MinIO locally. No outside service was contacted.
+
+```text
+# API, the whole suite
+$ uv run pytest                  -> 1504 passed, 57 skipped in 672.26s
+  (the 57 skipped are the MinIO storage tests; CI runs them with MinIO)
+  new: tests/api/test_notification_delivery.py (72), two in
+  tests/deployment/test_production_config.py
+$ uv run ruff check . / ruff format --check .   -> passed
+$ uv run mypy markx              -> Success: no issues found in 128 source files
+$ uv run alembic upgrade head && uv run alembic check -> No new upgrade operations detected.
+$ uv run python -m scripts.check_openapi_copy --exact openapi.json -> matches exactly
+  (no route or schema changed)
+# web
+$ npm test -> 90 passed; npm run lint -> clean; npm run typecheck -> clean
+# GitHub, on 9dd87eb
+CI #119 (push): success; CI #120 (pull request #1): success;
+Browser journeys #19: success (secret scan and dependency audits are CI jobs)
+```
+
 **Production deployment foundation** (D-091), on 18 November 2026, on the
 session's tree (commits `359e0c9` to the documentation commit), PostgreSQL
 17 and MinIO in Docker on the session's machine. Nothing was deployed; no
