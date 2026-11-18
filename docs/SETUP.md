@@ -111,11 +111,13 @@ docker compose -f infra/compose/compose.yaml up --build
 ```
 
 This starts PostgreSQL 17 (creating the three roles and the `markx`
-database the first time), applies the migrations, then runs the API on
-`http://127.0.0.1:8000` and the worker. Every port listens on your own
-machine only, and every password is a laptop default that the API refuses
-on staging or production. `MARKX_PG_PORT` and `MARKX_API_PORT` choose other
-ports when 5432 or 8000 are taken. `docker compose -f
+database the first time) and MinIO with the buckets `markx-private` and
+`markx-public` (D-090), applies the migrations, then runs the API on
+`http://127.0.0.1:8000` and the worker, both keeping their files in MinIO.
+Every port listens on your own machine only, and every password is a laptop
+default that the API refuses on staging or production. `MARKX_PG_PORT`,
+`MARKX_MINIO_PORT` and `MARKX_API_PORT` choose other ports when 5432, 9000
+or 8000 are taken. `docker compose -f
 infra/compose/compose.yaml down` stops it; adding `-v` also deletes its
 database and uploaded files.
 
@@ -128,6 +130,12 @@ container's database:
 MARKX_DATABASE_URL=postgresql+psycopg://markx_app:markx_app_dev-only@127.0.0.1:5432/markx \
   uv run python -m scripts.seed_demo
 ```
+
+A worker pass or the demo data run from your machine against the Compose
+stack must use the same MinIO, or the pictures they handle go to your own
+folder instead: set the storage values from section 4e with
+`MARKX_STORAGE_ENDPOINT_URL=http://127.0.0.1:9000`, as the journeys workflow
+does.
 
 If Docker Hub refuses pulls ("429 Too Many Requests"), build the image
 from a mirror of the same Python image:
@@ -162,6 +170,75 @@ it a backup cannot be read, by anyone. On a server, a nightly cron line
 such as `15 2 * * * cd /srv/markx && infra/backup/backup.sh markx
 --keep-days 30` runs it; that, and the copy away from the server, are
 deployment settings.
+
+## 4e. Object storage on a laptop: MinIO (D-090)
+
+Without any setting, files go to two folders under `MARKX_STORAGE_DIR`
+(`private/` and `public/`). To use object storage as a server does, run
+MinIO (Compose in section 4c already does) and point the API and the worker
+at it:
+
+```bash
+docker run -d --name markx-minio -p 127.0.0.1:9000:9000 \
+  -e MINIO_ROOT_USER=markx-dev-only -e MINIO_ROOT_PASSWORD=markx-minio-dev-only-password \
+  -e MINIO_DEFAULT_BUCKETS=markx-private,markx-public \
+  bitnamilegacy/minio:2025.7.23-debian-12-r5
+
+export MARKX_FILE_STORAGE_PROVIDER=minio
+export MARKX_STORAGE_ENDPOINT_URL=http://127.0.0.1:9000
+export MARKX_STORAGE_ACCESS_KEY_ID=markx-dev-only
+export MARKX_STORAGE_SECRET_ACCESS_KEY=markx-minio-dev-only-password
+export MARKX_STORAGE_PRIVATE_BUCKET=markx-private
+export MARKX_STORAGE_PUBLIC_BUCKET=markx-public
+```
+
+MinIO no longer publishes images on Docker Hub; this is Bitnami's last
+build of MinIO, used on laptops and in CI only. **MinIO is never for a real
+server**: staging and production refuse it.
+
+**The object storage tests** (`tests/storage/`) need a MinIO with those
+two development keys on `127.0.0.1:9000` (the `docker run` line above; the
+buckets are not needed, each run makes and removes its own). Without MinIO
+they are skipped on a laptop; CI sets `MARKX_TEST_MINIO_REQUIRED=1`, which
+turns a missing MinIO into a failure. `MARKX_TEST_MINIO_ENDPOINT`,
+`MARKX_TEST_MINIO_ACCESS_KEY` and `MARKX_TEST_MINIO_SECRET_KEY` point them
+elsewhere. Nothing in them reaches Amazon or Cloudflare.
+
+### File storage settings
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MARKX_FILE_STORAGE_PROVIDER` | `local` | `local` or `minio` (laptop and tests only), `s3` (Amazon S3) or `r2` (Cloudflare R2). Staging and production refuse `local` and `minio` |
+| `MARKX_STORAGE_ENDPOINT_URL` | none | The S3 API endpoint: required for `minio` and `r2` (`https://<account id>.r2.cloudflarestorage.com`); for `s3` leave it empty to use AWS's endpoint for the region. A bare origin: no user, path, query or fragment; `https://` on real servers |
+| `MARKX_STORAGE_REGION` | `us-east-1` (`auto` for `r2`) | Required for `s3`: the buckets' region |
+| `MARKX_STORAGE_ACCESS_KEY_ID`, `MARKX_STORAGE_SECRET_ACCESS_KEY` | none | One key scoped to the two buckets only. **From the server's secret store only**; never AWS's own credential chain |
+| `MARKX_STORAGE_PRIVATE_BUCKET` | none | Documents, picture sources, problem photos. **Never public**, and never given a public domain |
+| `MARKX_STORAGE_PUBLIC_BUCKET` | none | Rendered pictures, behind the CDN. Must be a different bucket |
+| `MARKX_STORAGE_SERVER_SIDE_ENCRYPTION` | `auto` | `auto` (AES256 on S3; R2 always encrypts), `AES256` or `none` |
+| `MARKX_STORAGE_CONNECT_TIMEOUT_SECONDS`, `MARKX_STORAGE_READ_TIMEOUT_SECONDS` | `5`, `15` | How long to wait before an upload or a picture fails with 503 |
+| `MARKX_STORAGE_MAX_OBJECT_BYTES` | `20000000` | The largest file written or read |
+| `MARKX_PUBLIC_MEDIA_BASE_URL` | `/api/v1/media` | On a real server the pictures' CDN address: `https://`, on a host other than the site's (F-15) |
+
+**Choosing the provider for real is the founder's decision (F-01)**, and so
+is protecting the buckets against loss (F-14). No bucket or account has
+been created.
+
+### Copying an existing installation's files (D-090)
+
+Only with the founder's written approval, and never automatically:
+
+```bash
+# with the MARKX_STORAGE_* values of the buckets set, and the database the
+# files belong to in MARKX_DATABASE_URL:
+uv run python -m scripts.copy_files_to_object_storage --from-dir ./var/storage   # dry run
+uv run python -m scripts.copy_files_to_object_storage --from-dir ./var/storage \
+    --execute --founder-approved                                                # copy and verify
+```
+
+It copies every file the database refers to under the same key, reads each
+copy back, never deletes or changes a local file or a row, and never
+overwrites an object already in a bucket. Keep the local folder until the
+copy has been checked and the founder agrees it can go.
 
 ## 5. Run the API
 

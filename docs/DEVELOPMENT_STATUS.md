@@ -1,7 +1,21 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **SMS foundation session**
-(D-089): the provider-independent SMS interface (`send(phone, text, *,
+**Last updated:** 18 November 2026, by the **object storage session**
+(D-090): one file-storage interface with four adapters chosen by
+configuration (the local folders, MinIO, Amazon S3 and Cloudflare R2, on
+boto3); seller documents, picture sources and problem photos in a private
+bucket and rendered pictures in a separate public one; the API's personal
+five-minute links unchanged and no bucket address ever given to a browser;
+every store refusing anything but a real JPEG, PNG or WebP of its declared
+type, oversized files and unsafe keys; outages as a 503 that names nothing;
+a watch check for an unreachable store and for a private bucket that has
+turned public; staging and production refusing to start without `s3` or
+`r2` or with pictures on the site's own domain; MinIO in Compose, in CI's
+API tests and in the browser journeys; and a copy tool for existing files
+that only runs with the founder's approval. **Tested against MinIO only: no
+Amazon or Cloudflare account or bucket exists, and no document was copied
+anywhere** (F-01 stays open; new founder items F-14 and F-15). Before it,
+the **SMS foundation session** (D-089): the provider-independent SMS interface (`send(phone, text, *,
 reference) -> SmsResult`), a standard-library HTTPS adapter with a
 placeholder wire format, delivery records in `sms_messages` (migration
 `0015`; never the text or the code), a 60-second per-number resend cooldown
@@ -117,9 +131,12 @@ card and page, shops' own photos and problem evidence (D-074), and the rest
 of the seller dashboard, from the application to performance (D-075).
 In a second round it built every remaining screen the API supports (D-077),
 refused closing a store with orders in progress (D-076) and gave the
-settings their Amharic descriptions (D-078). **Not built:** Telegram sign-in
-and the bot (they need the bot the founder creates), deployment. Nothing is
-deployed anywhere.
+settings their Amharic descriptions (D-078). **Files** (documents,
+pictures, problem photos) go through one storage interface that works with
+the local folders, MinIO, Amazon S3 or Cloudflare R2 by configuration
+(D-090), tested against MinIO; no S3 or R2 bucket exists yet (F-01). **Not
+built:** Telegram sign-in and the bot (they need the bot the founder
+creates), deployment. Nothing is deployed anywhere.
 
 ## Sessions so far
 
@@ -134,6 +151,7 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| Object storage (D-090) | the commit after `d4a29af`; see `git log` | `ObjectStore` with `local`, `minio`, `s3` and `r2` (boto3), the start-up checks, `file_storage` watch check, `scripts/copy_files_to_object_storage.py`, MinIO in Compose, CI and the journeys, `tests/storage/` (136 tests). No migration |
 | SMS foundation (D-089) | see `git log`; the commit after `3c7921c` | The SMS interface, the HTTPS adapter skeleton (no provider), `sms_messages` (migration `0015`), the resend cooldown, `sms.failures` and `sms.unfinished` alerts, the SMS start-up checks, `e2e/sign-in-cooldown.mjs`. 1251 API tests, 71 web unit tests |
 | F-09 option 2, F-10 recorded (D-087, D-088) | the commit after `9af18c7` | `PAYABLE` is now delivered, completed and disputed; migration `0014` (`trg_seller_orders_payment_at_handover`) refuses an advance payment record without touching existing ones; the web app shows "Record the payment" only from the handover on; F-09 and F-10 closed as D-087 and D-088 |
 | Order and payment integrity (D-086) | `9af18c7` | Paid parts never end undelivered without staff (migration `0013`, `paid_orders_waiting` alert, buyer's Cancel hidden); `order_item_id` withheld from stores; weekly report: cancellations split by who ended them, one savepoint per store; `cancel_by_buyer`, `confirm_received`, `record_direct_payment` read the clock after the lock; commission and ledger gaps recorded (F-10) |
@@ -153,8 +171,8 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P2 | Database and backend foundation | **Mostly done.** Schema, three database roles, error format, request IDs, structured logs, **the worker process with the scheduler and the outbox dispatcher** are done and tested. **Encrypted backups, a scripted restore and a restore drill run in CI** (D-063); **the watch and reconciliation jobs, alerts with Telegram delivery when configured, and a worker health check** (D-064). **Not done:** error tracking (needs an account), the nightly schedule and the off-server copy (deployment), P2 criteria 3 to 5 (they need staging) |
 | P3 | Authentication and roles | **Mostly done on the API side.** Phone-code sign-in, sessions, staff sign-in, Telegram signature check and the permission tables are done and tested. Turnstile is built (D-085, untested against Cloudflare); the SMS side is built up to the provider (D-089) but **no SMS provider is chosen**, so no real code can be sent |
 | P4 | Customer storefront | **Mostly done for Release 1's buyer journey** (D-055): home, search with filters, product page with the offers table, shop page, sign-in, cart, checkout, orders, tracking. Pictures on the product card and page, reviews and report links (session ten, D-072, D-074). **Not done:** the category page as its own screen (search by category stands in), account settings and saved addresses screens, Telegram Mini App shell, server actions so changes work without script, automated browser tests in CI |
-| P5 | Product catalogue | **Mostly done on the API side.** Categories, typed attributes, brands, products, variants, translations, staff create/approve/merge/archive, aliases, the restricted-goods list and seller product proposals are done and tested. **The image pipeline** (D-062): upload, metadata removal, WebP in two sizes within the D.26 budgets, rendered by the worker, moderation; criterion 3 is met by automated tests on a laptop. Pictures on the product card and page are shown (D-074). **Not done:** seed data, a real bucket and CDN adapter; merging a product that has offers is still refused (see D-026) |
-| P6 | Seller onboarding and dashboard | **Done on the API side.** Application, private document upload, staff review queue, verification levels with the checks behind the badge, owner and manager members, store page, payout account, dashboard counts. The web screens (session ten, D-075): application, documents, team, store settings, legal details, payout account, overview. **Not done:** share cards and QR code, ownership transfer, closing a shop on the web, a real file-storage adapter |
+| P5 | Product catalogue | **Mostly done on the API side.** Categories, typed attributes, brands, products, variants, translations, staff create/approve/merge/archive, aliases, the restricted-goods list and seller product proposals are done and tested. **The image pipeline** (D-062): upload, metadata removal, WebP in two sizes within the D.26 budgets, rendered by the worker, moderation; criterion 3 is met by automated tests on a laptop. Pictures on the product card and page are shown (D-074). The S3 and R2 bucket adapter exists (D-090, tested against MinIO). **Not done:** seed data, a real bucket and its CDN (F-01, F-15); merging a product that has offers is still refused (see D-026) |
+| P6 | Seller onboarding and dashboard | **Done on the API side.** Application, private document upload, staff review queue, verification levels with the checks behind the badge, owner and manager members, store page, payout account, dashboard counts. The web screens (session ten, D-075): application, documents, team, store settings, legal details, payout account, overview. Documents can live in a private S3 or R2 bucket (D-090). **Not done:** share cards and QR code, ownership transfer, closing a shop on the web, the real private bucket itself (F-01) |
 | P7 | Seller listings and inventory | **Done on the API side.** Offers, price history, inventory and movements, quick edit, product proposals, the ranked offers list, the check-in, the stale-offer job **now run by the worker**, and a staff takedown that holds (D-032). The web screens: offers with quick edit (session six), add an offer and the shop's own photos (session ten). **Not done:** the seller Telegram bot, product proposals from a seller on the web |
 | P8 | Search and product discovery | **Mostly done on the API side.** Search documents kept fresh through the outbox with an hourly rebuild (D-051); normalisation, letter merging and skeleton keys; prefix, sound and trigram matching; filters and sorting; suggestions and "did you mean"; the product-request form; the query log, the zero-result report and the synonym tool (D-052). **Throttled per address** (D-059). **Not done:** the two completion criteria (a golden set of 100 real queries, and timings at real size), "total cost to the door" as a sort, rating and delivery-speed filters, edge caching and pages readable by search engines (they need the web app) |
 | P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Not done:** the web screens, the legal disclosure wording (a founder input), and guest checkout as such: a visitor's cart survives signing in, but the order is placed by a signed-in account (see D-036) |
@@ -858,6 +876,13 @@ Be careful with these. They were written and never exercised.
   `seller_metrics_daily`; neither table exists in the schema. D-073.)
 - `TelegramAlertSender` is tested against a stand-in for Telegram's API,
   never against Telegram itself (no bot or group exists yet).
+- **The `s3` and `r2` storage adapters** (D-090) are tested against MinIO,
+  which speaks the same S3 API, and their configuration (endpoint, region,
+  addressing, encryption header) is checked without a network; **they have
+  never talked to Amazon S3 or Cloudflare R2**: no account or bucket exists
+  (F-01). R2's acceptance of the exact requests MarkX sends (Content-MD5, no
+  newer checksums, no encryption header) is taken from its S3 compatibility,
+  not tested.
 - `commission_rules`: read by checkout, never written by any route.
 
 ## What does not exist
@@ -873,16 +898,19 @@ Be careful with these. They were written and never exercised.
 - Store logo upload, share cards, QR code.
 - The seller Telegram bot and the real push adapter: the worker delivers
   pushes to a fake.
-- A real private-storage adapter (F-01), and a real SMS provider: the
-  adapter exists but speaks only MarkX's placeholder format until a
-  provider is chosen (F-11) and its wire format written (D-089). No
+- A real private bucket for documents and a public one for pictures (F-01):
+  the S3 and R2 adapters exist (D-090) and a real server refuses to start
+  without one, but no account or bucket has been created. A real SMS
+  provider: the adapter exists but speaks only MarkX's placeholder format
+  until a provider is chosen (F-11) and its wire format written (D-089). No
   delivery-report webhook. The
   bot-check adapter (Turnstile) **exists but has never talked to
   Cloudflare**: it waits for the founder's keys (D-085). Until they are
   configured a real server refuses to start (D-084).
 - The reverse proxy, error tracking, the nightly backup schedule and the
-  off-server copy, an outside uptime monitor, a real public-storage bucket
-  and CDN. (Containers, backups, the drill and alerting exist; demo seed
+  off-server copy, an outside uptime monitor, the buckets themselves, their
+  own protection against loss (F-14) and the pictures' CDN and domain
+  (F-15). (Containers, backups, the drill and alerting exist; demo seed
   data exists for laptops only.)
 - Anything on AWS. Nothing has been deployed and no cloud resource was created.
 
@@ -1080,14 +1108,65 @@ Be careful with these. They were written and never exercised.
   "Decisions that need the founder", as part of the launch checklist. Each
   is marked `PROVISIONAL (F-0n, D-083)` in the code, and
   `tests/unit/test_provisional_decisions.py` keeps the markers in place.
-  F-01 still blocks the launch: the private document store does not exist
-  until the founder creates the account (a real environment refuses to store
-  a document until then).
+  F-01 still blocks the launch: the adapters for S3 and R2 now exist
+  (D-090), but the private document store itself does not exist until the
+  founder chooses the provider and creates the account and buckets; a real
+  server refuses to start until then. Copying any file there needs the
+  founder's written approval.
 - **Search logs and rate-limit counters are now deleted daily**
   (`retention.prune`, provisional periods of 180 days and one day; F-08,
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Object storage** (D-090), on the commit after `d4a29af`, PostgreSQL 17
+and MinIO (`bitnamilegacy/minio:2025.7.23-debian-12-r5`) in Docker. No
+Amazon or Cloudflare account was contacted; no real document was uploaded.
+
+```text
+$ MARKX_TEST_MINIO_REQUIRED=1 uv run pytest -> 1387 passed in 653.95s (0:10:53)   (1251 before; 136 new)
+  tests/storage -> 136 passed (61 contract on the local folders and on MinIO,
+  53 configuration, 14 API and worker on MinIO, 8 copy tool)
+# the new rules against the old code (d4a29af), as configuration and store
+# probes that import nothing new:
+  a real server with its files on its own disk  -> DID NOT RAISE (old starts)
+  pictures served from the site's own domain    -> old refuses only r2 itself
+  choosing r2 or minio by configuration         -> old: "Input should be 'local'"
+  one bucket for documents and pictures         -> old refuses only r2 itself
+  HTML, and an SVG declared as a PNG, stored    -> DID NOT RAISE (old stores them)
+  -> 6 failed on the old code; the same 6 passed on the new
+# each protection taken out of the new code, one at a time (a scratch copy):
+  the byte check -> 7 failed; a missing bucket read as a missing file -> 1 failed;
+  the endpoint left to the SDK (AWS_ENDPOINT_URL honoured) -> 1 failed;
+  the privacy canary blinded -> 1 failed; the endpoint's error text logged ->
+  1 failed; MinIO allowed on production -> 2 failed; one bucket for both ->
+  1 failed; the permission re-check at opening removed -> 1 failed (and the
+  existing local test too); the private no-store header dropped -> 1 failed
+  (logging a refused credential's error text changed nothing: that text names
+  no key, bucket or endpoint, so there was nothing to catch)
+  ruff check -> All checks passed!; ruff format --check -> 200 files already formatted
+  mypy markx -> no issues found in 124 source files
+  alembic check -> no new upgrade operations (no migration in this session)
+  check_openapi_copy, both copies -> match exactly (no API schema change)
+  pip-audit (boto3 1.44.5 and its stubs included) -> No known vulnerabilities found
+  npm audit gate -> passed; gitleaks 8.28.0: history (98 commits) -> no leaks;
+  every changed or new file -> no leaks
+$ web: lint clean; typecheck clean; npm test -> 71 passed; npm run build ok
+  (two new message strings, storage_unavailable, in both languages)
+$ Compose (laptop file plus the CI override, on spare ports): MinIO healthy,
+  both buckets created, migrations, API and worker healthy; the API image
+  (built here from a scratch copy of the Dockerfile that only adds this
+  workspace's proxy certificate) runs as markx, holds no pytest and no type
+  stubs, imports boto3 1.44.5
+$ browser journeys against that Compose, demo data seeded, the workflow's
+  settings and storage values applied:
+  page-weight -> every page within its budget; seller-dashboard, buyer-journey,
+  staff-journey, admin-queues, shop-screens, setup-and-account -> passed,
+  console errors: none
+  afterwards in MinIO: markx-private 26 objects (20 seller documents, 3
+  picture sources, 2 problem photos, the watch's canary), markx-public 6
+  rendered pictures; the local folder held only the development inboxes
+```
 
 **SMS foundation** (D-089), on the commit after `3c7921c`, local PostgreSQL 17
 in Docker. No SMS provider was contacted; no real SMS was sent.
@@ -1671,8 +1750,10 @@ end. Work in this order within each. Finish and push each step first.
    the seller rating in the product page's offer ranking, as one change
    with the web app (D-061).
 4. The real adapters, each behind its existing interface, once the founder
-   decides where things live (F-01): object storage for pictures and
-   documents, SMS, Telegram push.
+   decides where things live: SMS (F-11) and Telegram push. **Object
+   storage is built** (D-090): once the founder decides F-01 and creates
+   the buckets, set the `MARKX_STORAGE_*` values; protecting the buckets
+   (F-14) and the pictures' CDN domain (F-15) wait for the founder.
 5. The search golden set, only when the founder sends real queries (D-054).
 
 Rules this session asks the next one to keep (in addition to `AGENTS.md`):

@@ -2473,6 +2473,181 @@ no delivery-report webhook, no purge of old challenges or records, no
 change to Turnstile, nothing deployed. SMS for notifications has its
 purpose and record but no sender yet (the outbox has no SMS channel).
 
+## D-090 Object storage: one interface, local folders, MinIO, Amazon S3 and Cloudflare R2
+
+**Follows** blueprint F.6 ("S3-compatible object storage behind an
+adapter", a public bucket for pictures behind the CDN, a private bucket for
+documents), G.11 (documents are "Sensitive"), H.2 and H.3, and closes the
+engineering half of D-020's **Open** part. **Built and tested against a
+local MinIO server only. No Amazon or Cloudflare account was created,
+contacted or configured; no document was copied anywhere.** Which provider
+holds sellers' documents is still the founder's F-01: nothing here makes
+that choice.
+
+**What was there before.** `PrivateStorage.put(key, data)` and `get`, and
+`PublicStorage.put(key, data, content_type)` and `get`, each with one
+local-disk adapter that raised on staging and production at the moment of
+use. A real server could *start* with them; it then failed every document
+upload and every picture.
+
+**The interface** (`markx/core/storage.py`, `ObjectStore`): `put(key, data,
+content_type)`, `get`, `head` (size, content type, last modified),
+`exists`, `delete`, `signed_url(key, expires_in)`. `PrivateStorage` and
+`PublicStorage` remain its names at the call sites, so the features that
+store files (seller documents, picture sources and renderings, problem
+photos) changed only to pass the content type they already knew. The
+factories `get_private_storage()` and `get_public_storage()` choose the
+adapter from `MARKX_FILE_STORAGE_PROVIDER`:
+
+| Provider | Adapter | Where it is allowed |
+| --- | --- | --- |
+| `local` | `LocalObjectStore`: `private/` and `public/` under `MARKX_STORAGE_DIR` | Laptop and tests (the default) |
+| `minio` | `S3ObjectStore`, path-style, no encryption header | Laptop, Compose and tests |
+| `s3` | `S3ObjectStore`, virtual-hosted, `ServerSideEncryption=AES256` | Any; the region is required |
+| `r2` | `S3ObjectStore`, path-style, region `auto`, R2 encrypts by itself | Any; the endpoint must be `https://<account>.r2.cloudflarestorage.com` |
+
+**The SDK** is the AWS SDK for Python, `boto3` (with `boto3-stubs[s3]` for
+the strict type checks; both in `uv.lock`, both audited by `pip-audit` in
+CI). It is maintained by AWS and is the client Cloudflare and MinIO
+themselves document for their S3 APIs. One client per configuration is
+shared by the two stores. It is built with MarkX's own keys only, never
+the AWS credential chain (environment variables, `~/.aws`, instance
+metadata), because the founder's other AWS resources must never be reached
+by accident (AGENTS.md section 2), and with the endpoint always given, so an
+`AWS_ENDPOINT_URL` variable cannot send files elsewhere (both tested).
+Timeouts are 5 s to connect and 15 s to read, with one retry, so a dead
+provider fails a request in seconds. MarkX sends its own Content-MD5 on
+every write (S3, R2 and MinIO all check it) and compares a single-part
+object's ETag with the MD5 of what it reads; the SDK's newer default
+checksums are turned off because not every S3-compatible service accepts
+them.
+
+**Configuration** (`markx/core/config.py`): `MARKX_STORAGE_ENDPOINT_URL`
+(a bare `http(s)://` origin, no user, path, query or fragment),
+`MARKX_STORAGE_REGION`, `MARKX_STORAGE_ACCESS_KEY_ID` and
+`MARKX_STORAGE_SECRET_ACCESS_KEY` (both `SecretStr`, absent from logs, reprs
+and validation errors), `MARKX_STORAGE_PRIVATE_BUCKET` and
+`MARKX_STORAGE_PUBLIC_BUCKET` (3 to 63 lowercase letters, digits and
+hyphens, **and two different buckets**), the two timeouts,
+`MARKX_STORAGE_MAX_OBJECT_BYTES` (20 MB) and
+`MARKX_STORAGE_SERVER_SIDE_ENCRYPTION` (`auto`, `AES256` or `none`). A
+missing or malformed value stops the start with a message naming it.
+**Staging and production now refuse to start** with `local` or `minio`
+(MinIO is a laptop and test stand-in; files on the server's own disk are
+lost with it and have no backup of their own, F.6), with an `http://`
+storage endpoint, or with a `MARKX_PUBLIC_MEDIA_BASE_URL` that is not an
+`https://` address on a host other than the site's (F.6: "a separate
+cookieless domain"). The factories still refuse local storage there as a
+second barrier.
+
+**Security rules, kept and added.**
+
+- **Documents and problem photos stay behind the API's own links.** The
+  five-minute link signed for one signed-in person, the check that the
+  person may *still* see the file when it is opened, and the audit row for
+  every view (D-020, D-062) are unchanged: the API reads the object and
+  answers with its bytes. **No bucket address, object key or provider link
+  is ever given to a browser for a private file.** A provider's presigned
+  link would work for anyone who holds it, which is exactly what D-020's
+  identity-bound links exist to prevent, so `signed_url` exists in the
+  interface (for operations, capped at five minutes, refused by the local
+  adapter) and **no route uses it**. Tested: the link is the API's, a
+  stranger, a visitor and staff without the capability are refused, a
+  demoted staff member's unexpired link stops working, expiry still applies,
+  and an anonymous request for the object, the bucket or its listing gets
+  403 from MinIO.
+- **Only pictures are stored.** Every store, whatever the caller checked
+  before, refuses a content type other than JPEG, PNG or WebP, bytes that
+  are not what the declared type says (from their signature), an empty file
+  and anything over the size limit, and refuses to *read* an object over
+  the limit. The upload checks before it (decode and re-encode, metadata
+  stripped, `images.max_upload_bytes`, `sellers.document_max_bytes`) are
+  unchanged and still run first. Keys are generated by the server, carry no
+  personal data, cannot be guessed, and must match the same strict pattern
+  as before, on every operation.
+- **The two buckets.** Private objects are written with `Cache-Control:
+  no-store`; rendered pictures with `public, max-age=31536000, immutable`
+  and `image/webp`. MarkX never sets an access list on an object: whether
+  the public bucket is readable through the CDN is the bucket's own setting.
+  On a laptop both MinIO buckets are private and the API serves pictures
+  itself (`/api/v1/media`, dev tools only, as before).
+- **Failures name nothing.** Any provider failure becomes
+  `StorageUnavailable`: a 503 `storage_unavailable` ("Files cannot be stored
+  or read right now"), logged with the store, the operation and the
+  provider's error code only (no key, bucket, endpoint or credential, and
+  the SDK's own exception is not chained into the traceback). A missing
+  object stays "not found"; a missing *bucket* is an outage, never "not
+  found". An upload that cannot be stored leaves no row and no audit entry;
+  a render that cannot reach the store stays `processing` and the outbox
+  retries it.
+- **The watch** (`markx/ops/checks.py`, `file_storage`, every five
+  minutes): `storage.unreachable:private` / `:public` (critical) when a
+  bucket does not answer with MarkX's keys, and
+  **`storage.private_bucket_public`** (critical) when a one-pixel canary,
+  `ops/privacy-canary.png`, written to the private bucket can be read
+  without credentials. On R2 the S3 endpoint always asks for credentials,
+  so this check cannot see a public `r2.dev` or custom domain on the
+  private bucket; that setting must simply never be turned on.
+
+**MinIO for tests and Compose.** MinIO no longer publishes images on Docker
+Hub (`minio/minio` is gone there, and `quay.io` is not reachable from the
+building session), so the image is Bitnami's last build of MinIO
+2025.7.23, `bitnamilegacy/minio:2025.7.23-debian-12-r5`, pinned by digest
+in `infra/compose/compose.yaml` and `.github/workflows/ci.yml`. It is a
+frozen image used only on laptops and in CI, never on a server. If it ever
+disappears, any S3-compatible test server will do; only the image line
+changes. The Compose file now runs MinIO with the buckets `markx-private`
+and `markx-public`, and the API and worker use it; the browser journeys on
+GitHub therefore store every document, picture and problem photo in MinIO.
+CI starts MinIO beside PostgreSQL for the API tests and sets
+`MARKX_TEST_MINIO_REQUIRED=1`, so a missing MinIO fails the run instead of
+skipping its tests; on a laptop without MinIO those tests skip.
+
+**Moving existing files** (`scripts/copy_files_to_object_storage.py`). Not
+run by anyone, and never by itself. It reads the database's references
+(seller documents, picture sources, both renderings of every rendered
+picture, problem photos), reads each file from a local `MARKX_STORAGE_DIR`,
+and copies it into the configured buckets under the **same key**, so every
+row keeps pointing at its file. A dry run by default; `--execute` writes and
+then reads each copy back to compare it. It never deletes or changes a
+local file, never changes a row, and never overwrites an object already in
+a bucket (one with the same key and different bytes is reported "in the
+way"). `--execute` also requires `--founder-approved`, because it copies
+sellers' identity documents to a provider: that flag is given only with the
+founder's written approval (F-01). Its report names rows by database id,
+never by file key. Today there is nothing to move: no real document has
+ever been uploaded (F-01).
+
+**Tests.** `tests/storage/`: `test_object_store.py` (the contract on both
+the local folders and MinIO: round trips for each picture type, delete,
+missing objects, refused types, lying bytes, unsafe keys on every operation,
+size limits on write and read, cache headers, two separate buckets, the
+checksum, signed links that expire after one second and never live more than
+five minutes, anonymous readers refused, wrong secret, unknown key, missing
+bucket, a closed port and a server that never answers, each failing in
+seconds and naming no key, bucket, endpoint or secret in the error or in any
+field of any log record); `test_storage_config.py` (what each provider needs,
+what a real server refuses, each provider's endpoint, region, addressing and
+encryption, AWS environment variables ignored, switching providers by
+configuration alone); `test_storage_on_minio.py` (the real API and worker on
+MinIO: documents, their links and their permissions, pictures through the
+worker into the public bucket and back through the media route, problem
+photos, an upload and an opening while the store is away, a render that
+waits for the store and then finishes, and the three watch findings);
+`test_copy_tool.py` (dry run, copy, verify, never overwrite, missing and
+lying files, every table's references, the founder's flag, end to end).
+Each new protection was also checked the other way: the rules were taken
+out one at a time (the byte check, the missing-bucket rule, the fixed
+endpoint, the privacy canary, logging the provider's error text, MinIO on a
+real server, one bucket for both, the re-check at opening, the private
+cache header) and each time a test failed.
+
+**Not done, by instruction.** No account, bucket, CDN or DNS name created;
+nothing deployed; no real document uploaded or copied; no automatic copy;
+nothing deleted. Not built: the buckets' own backups (versioning or
+replication, F.6 "the buckets need their own protection"; F-14), the CDN in front of the public bucket and its domain (F-15), the
+store logo and order-line pictures (columns without behaviour, as before).
+
 ---
 
 ## Decisions that need the founder
@@ -2481,8 +2656,9 @@ purpose and record but no sender yet (the outbox has no SMS channel).
 request on 18 November 2026: the engineer's guess, which the founder must
 confirm or change before MarkX goes live. F-09 and F-10 (raised in D-086)
 were decided on 18 November 2026: see D-087 and D-088. F-11 to F-13
-(D-089, SMS) are open and have no provisional answer: the code does the
-most cautious thing until the founder decides.** Treat this list as part of the launch
+(D-089, SMS) and F-14 and F-15 (D-090, file storage) are open and have no
+provisional answer: the code does the most cautious thing until the founder
+decides.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -2493,13 +2669,19 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 
 - **Provisional answer (D-083):** Cloudflare R2, private and encrypted. Not created: the founder must create the account and confirm before going live.
 
-- **Today:** `markx/core/storage.py` has one adapter, local disk, and it
-  raises on a `staging` or `production` configuration (D-020). No document has
-  ever left a laptop.
+- **Today (D-090):** the adapters exist for Amazon S3 and Cloudflare R2 (and
+  MinIO for laptops and tests), chosen by `MARKX_FILE_STORAGE_PROVIDER`, and a
+  real server refuses to start without one of `s3` or `r2`. **No account or
+  bucket exists, nothing was configured, and no document has ever left a
+  laptop.** Deciding F-01 is now configuration, not code: create the two
+  buckets (private for documents, public for pictures), a key scoped to
+  them alone, and set the `MARKX_STORAGE_*` values on the server. Copying
+  any existing file needs the founder's written approval
+  (`scripts/copy_files_to_object_storage.py --execute --founder-approved`).
 - **Recommendation:** a private, S3-compatible bucket at Cloudflare R2:
   server-side encryption on, no public access, reached only through the
-  existing five-minute signed links. The adapter interface does not change, so
-  it is one new class. The blueprint already records R2 as an alternative with
+  existing five-minute signed links. (Written before D-090: "the adapter
+  interface does not change, so it is one new class". It is now built.) The blueprint already records R2 as an alternative with
   10 GB free and no download fees (F.6, marked [V]). If the founder would
   rather keep one provider, a private S3 bucket in the isolated MarkX AWS
   account (blueprint M.3) is equally correct and costs a little more.
@@ -2695,6 +2877,32 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 - **Founder's approval required: no** for the thresholds; **yes** for the
   budget's unit, which is a spending rule.
 
+### F-14 How the stored files are protected against loss (blueprint F.6)
+
+- **Today (D-090):** files live in the buckets only. The database backup
+  (D-063) does not include them, and nothing copies them anywhere else.
+- **Options:** turn on the provider's object versioning (S3; R2 has no
+  versioning, so a second bucket and a scheduled copy), and a lifecycle rule
+  that keeps old versions for 30 days; or a scheduled copy of both buckets
+  to a second provider or the founder's encrypted drive (blueprint F.13).
+  Each costs storage. A restore drill for files, beside the database drill,
+  belongs to either.
+- **Blocks:** not development; the controlled launch should not start
+  without it.
+- **Founder's approval required: yes** (a paid setting and where copies of
+  personal documents may live).
+
+### F-15 The pictures' own domain (blueprint F.6)
+
+- **Today (D-090):** a real server refuses to start unless
+  `MARKX_PUBLIC_MEDIA_BASE_URL` is an `https://` address on a host other
+  than the site's. The web app needs the same origin in `MARKX_MEDIA_ORIGIN`
+  (its security policy) at build time.
+- **Options:** a subdomain such as `media.markx.et` on the CDN in front of
+  the public bucket (R2's custom domain, or CloudFront for S3). The private
+  bucket must never get a public domain.
+- **Founder's approval required: yes** (DNS and the CDN account).
+
 ---
 
 ## Open questions carried over from session 1
@@ -2702,8 +2910,10 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 1. **The blueprint's file name.** It is committed as
    `MARKX_MASTER_BLUEPRINT.md`, as instructed. Its own first lines still say
    its file name is "All In One MarkX master Blue Print.md". The content was
-   not edited, to keep it byte-identical to the upload. Say so if the header
-   should be updated.
+   not edited, to keep it byte-identical to the upload. On 18 November 2026
+   the founder confirmed that "All In One MarkX master Blue Print.md" is the
+   blueprint's correct name; the repository's copy keeps its file name until
+   the founder asks for anything else.
 2. **Blueprint section O, questions 1 to 6** are still open: where production
    personal data may live, AWS credits and region, acceptance of the Proposed
    decisions, and the founder's time. F-01 above is the same question as O.1

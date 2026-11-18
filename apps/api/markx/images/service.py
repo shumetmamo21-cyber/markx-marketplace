@@ -101,6 +101,7 @@ class CleanUpload:
     data: bytes
     width: int
     height: int
+    content_type: str
 
 
 def clean_upload(db: Session, data: bytes) -> CleanUpload:
@@ -114,11 +115,13 @@ def clean_upload(db: Session, data: bytes) -> CleanUpload:
             "image_too_large", f"The photo must be under {max_bytes // 1_000_000} MB."
         )
     try:
-        clean, _ = sanitize_image(data)
+        clean, content_type = sanitize_image(data)
         upright = decode_clean(clean)
     except NotAnImage as exc:
         raise ValidationFailed("image_not_a_photo", "Send a JPEG, PNG or WebP photo.") from exc
-    return CleanUpload(data=clean, width=upright.width, height=upright.height)
+    return CleanUpload(
+        data=clean, width=upright.width, height=upright.height, content_type=content_type
+    )
 
 
 def _lock_product_uploads(db: Session, product_id: uuid.UUID) -> None:
@@ -156,7 +159,7 @@ def _store_and_queue(
     # Keys carry no personal data and cannot be guessed from the ids.
     token = secrets.token_hex(12)
     source_key = f"product-image-sources/{product.id}/{image_id}-{token}"
-    get_private_storage().put(source_key, upload.data)
+    get_private_storage().put(source_key, upload.data, upload.content_type)
     image = ProductImage(
         id=image_id,
         product_id=product.id,
@@ -379,7 +382,7 @@ def _add_problem_photo(
         raise ValidationFailed("image_not_a_photo", "Send a JPEG, PNG or WebP photo.") from exc
     photo_id = uuid7()
     file_key = f"problem-photos/{case.id}/{photo_id}-{secrets.token_hex(16)}"
-    get_private_storage().put(file_key, rendered.data)
+    get_private_storage().put(file_key, rendered.data, "image/webp")
     photo = ProblemPhoto(
         id=photo_id, case_id=case.id, author_type=author_type, uploaded_by_user_id=actor.user_id,
         file_key=file_key, width=rendered.width, height=rendered.height,

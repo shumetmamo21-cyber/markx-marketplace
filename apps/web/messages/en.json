@@ -393,6 +393,7 @@
     "too_many_documents": "This shop has too many documents on file.",
     "document_not_found": "That document was not found.",
     "document_file_missing": "The file for this document is missing.",
+    "storage_unavailable": "Files cannot be saved or opened right now. Please try again in a few minutes.",
     "account_number_invalid": "An account number has 6 to 30 digits.",
     "payout_account_unchecked": "The payout account must be in the shop's own name.",
     "already_member": "That person is already in the team.",

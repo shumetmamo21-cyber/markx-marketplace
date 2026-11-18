@@ -33,10 +33,30 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 30
+      # D-090: the object storage tests run against a real MinIO, never
+      # against Amazon or Cloudflare. The same pinned image as Compose; the
+      # tests make and remove their own buckets.
+      minio:
+        image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
+        env:
+          MINIO_ROOT_USER: markx-dev-only
+          MINIO_ROOT_PASSWORD: markx-minio-dev-only-password
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -fsS http://127.0.0.1:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     env:
       PGHOST: 127.0.0.1
       PGUSER: postgres
       PGPASSWORD: postgres_dev_only
+      MARKX_TEST_MINIO_ENDPOINT: http://127.0.0.1:9000
+      MARKX_TEST_MINIO_ACCESS_KEY: markx-dev-only
+      MARKX_TEST_MINIO_SECRET_KEY: markx-minio-dev-only-password
+      # A missing MinIO fails the run here instead of skipping its tests.
+      MARKX_TEST_MINIO_REQUIRED: "1"
     defaults:
       run:
         working-directory: apps/api

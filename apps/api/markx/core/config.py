@@ -57,9 +57,39 @@ class Config(BaseSettings):
     # CDN's own cookieless domain; on a laptop the API's media route.
     public_media_base_url: str = "/api/v1/media"
 
-    # Where identity and licence documents are kept. Only the local-disk
-    # adapter exists; it is refused on real servers (see markx/core/storage.py).
-    file_storage_provider: Literal["local"] = "local"
+    # Where uploaded files live (blueprint F.6; D-090): sellers' identity and
+    # licence documents, picture sources and problem photos in the PRIVATE
+    # bucket, rendered product pictures in the PUBLIC bucket behind the CDN.
+    #   local  folders under MARKX_STORAGE_DIR; a laptop and the tests only
+    #   minio  a MinIO server; a laptop, Compose and the tests only
+    #   s3     Amazon S3 (or another S3 endpoint given in MARKX_STORAGE_ENDPOINT_URL)
+    #   r2     Cloudflare R2 (MARKX_STORAGE_ENDPOINT_URL is the account's endpoint)
+    # Staging and production refuse local and minio. Which provider holds the
+    # documents for real is the founder's decision F-01; nothing here makes it.
+    file_storage_provider: Literal["local", "minio", "s3", "r2"] = "local"
+    # The S3 API endpoint. Required for minio and r2; for s3 leave it empty to
+    # use AWS's own endpoint for the region.
+    storage_endpoint_url: str | None = None
+    # minio: any (default us-east-1); s3: the buckets' region (required); r2: auto.
+    storage_region: str | None = None
+    # One access key for both buckets, scoped to them alone. From the host's
+    # secret store only. Both are SecretStr, so neither reaches a log, a repr
+    # or a validation error. There is deliberately no fallback to AWS's own
+    # credential chain (environment, ~/.aws, instance metadata): MarkX never
+    # picks up credentials that were not made for it (AGENTS.md section 2).
+    storage_access_key_id: SecretStr | None = None
+    storage_secret_access_key: SecretStr | None = None
+    storage_private_bucket: str | None = None
+    storage_public_bucket: str | None = None
+    storage_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    storage_read_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    # The largest object MarkX writes or reads. Uploads are capped lower by
+    # their own settings (images.max_upload_bytes, sellers.document_max_bytes).
+    storage_max_object_bytes: int = Field(default=20_000_000, gt=0, le=100_000_000)
+    # Encryption at rest requested on every write. "auto" asks S3 for AES256
+    # and leaves R2 (which always encrypts) and MinIO (which needs its own key
+    # service for it) to their defaults.
+    storage_server_side_encryption: Literal["auto", "AES256", "none"] = "auto"
 
     # SMS (D-089). "fake" writes to the development inbox and is for a laptop
     # and the tests only; staging and production refuse it. "http" is the
@@ -222,6 +252,67 @@ class Config(BaseSettings):
             raise ValueError("SMS provider: " + "; ".join(problems))
         return self
 
+    @field_validator("storage_endpoint_url")
+    @classmethod
+    def _storage_endpoint_is_a_bare_origin(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        problem = _endpoint_problem(value.strip())
+        if problem is not None:
+            raise ValueError(f"MARKX_STORAGE_ENDPOINT_URL {problem}")
+        return value.strip().rstrip("/")
+
+    @model_validator(mode="after")
+    def _object_storage_needs_its_settings(self) -> Config:
+        if self.file_storage_provider == "local":
+            return self
+        problems: list[str] = []
+        provider = self.file_storage_provider
+        for name, bucket in (
+            ("MARKX_STORAGE_PRIVATE_BUCKET", self.storage_private_bucket),
+            ("MARKX_STORAGE_PUBLIC_BUCKET", self.storage_public_bucket),
+        ):
+            if not bucket:
+                problems.append(f"{name} must be set")
+            elif not _BUCKET_NAME.fullmatch(bucket):
+                problems.append(
+                    f"{name} must be 3 to 63 lowercase letters, digits and hyphens, "
+                    "starting and ending with a letter or digit"
+                )
+        if (
+            self.storage_private_bucket
+            and self.storage_private_bucket == self.storage_public_bucket
+        ):
+            # Blueprint F.6: documents never share a bucket with public pictures.
+            problems.append("the private and the public bucket must be two different buckets")
+        for name, secret in (
+            ("MARKX_STORAGE_ACCESS_KEY_ID", self.storage_access_key_id),
+            ("MARKX_STORAGE_SECRET_ACCESS_KEY", self.storage_secret_access_key),
+        ):
+            if secret is None or not secret.get_secret_value().strip():
+                problems.append(f"{name} must be set")
+        endpoint = self.storage_endpoint_url
+        if provider in ("minio", "r2") and not endpoint:
+            problems.append(f"MARKX_STORAGE_ENDPOINT_URL must be set for {provider}")
+        if provider == "r2" and endpoint:
+            host = (urlsplit(endpoint).hostname or "").lower()
+            if not host.endswith(".r2.cloudflarestorage.com"):
+                problems.append(
+                    "MARKX_STORAGE_ENDPOINT_URL for r2 must be the account's "
+                    "https://<account id>.r2.cloudflarestorage.com endpoint"
+                )
+        if provider == "s3" and not (self.storage_region or "").strip():
+            problems.append("MARKX_STORAGE_REGION must be set for s3, e.g. eu-central-1")
+        if problems:
+            raise ValueError("File storage: " + "; ".join(problems))
+        return self
+
+    @property
+    def storage_region_name(self) -> str:
+        if self.storage_region and self.storage_region.strip():
+            return self.storage_region.strip()
+        return "auto" if self.file_storage_provider == "r2" else "us-east-1"
+
     @property
     def trusted_proxy_list(self) -> list[str]:
         return _split(self.trusted_proxies)
@@ -256,6 +347,28 @@ class Config(BaseSettings):
         # D-089: the fake SMS sender writes codes to a file instead of a phone.
         if self.sms_provider == "fake":
             problems.append("MARKX_SMS_PROVIDER must be a real SMS provider, not the fake")
+        # D-090: files on the server's own disk are lost with the server and
+        # have no backup of their own (F.6); MinIO here is a laptop and test
+        # stand-in. Which real provider holds the documents is F-01.
+        if self.file_storage_provider in ("local", "minio"):
+            problems.append(
+                "MARKX_FILE_STORAGE_PROVIDER must be real object storage (s3 or r2), "
+                f"not {self.file_storage_provider}"
+            )
+        elif self.storage_endpoint_url and not self.storage_endpoint_url.startswith("https://"):
+            problems.append("MARKX_STORAGE_ENDPOINT_URL must be an https:// endpoint")
+        # F.6: pictures come from their own cookieless domain, never the site's.
+        media = urlsplit(self.public_media_base_url)
+        site_host = urlsplit(self.public_origin).hostname
+        if media.scheme != "https" or not media.hostname:
+            problems.append(
+                "MARKX_PUBLIC_MEDIA_BASE_URL must be the picture CDN's https:// address"
+            )
+        elif media.hostname == site_host:
+            problems.append(
+                "MARKX_PUBLIC_MEDIA_BASE_URL must be on its own domain, not the site's, "
+                "so pictures are served without the site's cookies"
+            )
         if problems:
             raise ValueError("unsafe configuration for a real environment: " + "; ".join(problems))
         return self
@@ -289,6 +402,33 @@ def _sms_url_problem(url: str) -> str | None:
         return "must not carry a user name or password; the key goes in MARKX_SMS_API_KEY"
     if parts.query or parts.fragment:
         return "must not carry a query or fragment; a key never goes in a URL"
+    if port is not None and not 0 < port < 65536:
+        return "has an invalid port"
+    if any(character.isspace() for character in url):
+        return "contains a space"
+    return None
+
+
+# S3 bucket names without dots, which would break HTTPS with virtual-hosted
+# addressing.
+_BUCKET_NAME = re.compile(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]")
+
+
+def _endpoint_problem(url: str) -> str | None:
+    """Why a URL is not a bare http(s) origin, in words; None when it is one."""
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return "is not a valid URL"
+    if parts.scheme not in ("https", "http"):
+        return "must start with https:// (or http:// for MinIO on a laptop)"
+    if not parts.hostname:
+        return "must name a host"
+    if parts.username or parts.password:
+        return "must not carry a user name or password; the keys have their own settings"
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        return "must be the endpoint only, with no path, query or fragment"
     if port is not None and not 0 < port < 65536:
         return "has an invalid port"
     if any(character.isspace() for character in url):

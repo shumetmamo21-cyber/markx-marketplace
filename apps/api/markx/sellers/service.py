@@ -574,7 +574,7 @@ def upload_document(
     document_id = uuid7()
     # The key carries no personal data and cannot be guessed from the ids.
     file_key = f"seller-documents/{seller.id}/{document_id}-{secrets.token_hex(16)}"
-    get_private_storage().put(file_key, clean)
+    get_private_storage().put(file_key, clean, content_type)
     document = SellerDocument(
         id=document_id,
         seller_id=seller.id,

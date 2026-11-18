@@ -497,6 +497,15 @@ def _production(**overrides: Any) -> dict[str, Any]:
         "sms_api_url": ENDPOINT,
         "sms_api_key": API_KEY,
         "sms_sender_id": "MarkX",
+        # A real server also keeps its files in real object storage, and its
+        # pictures on their own domain (D-090).
+        "file_storage_provider": "r2",
+        "storage_endpoint_url": "https://0123456789abcdef.r2.cloudflarestorage.com",
+        "storage_access_key_id": "test-only-storage-key-id",
+        "storage_secret_access_key": "test-only-storage-secret",
+        "storage_private_bucket": "markx-test-private",
+        "storage_public_bucket": "markx-test-public",
+        "public_media_base_url": "https://media.markx.example",
     }
     settings.update(overrides)
     return settings

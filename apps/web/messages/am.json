@@ -393,6 +393,7 @@
     "too_many_documents": "ይህ ሱቅ በጣም ብዙ ሰነዶች አሉት።",
     "document_not_found": "ያ ሰነድ አልተገኘም።",
     "document_file_missing": "የዚህ ሰነድ ፋይል አልተገኘም።",
+    "storage_unavailable": "ፋይሎችን አሁን ማስቀመጥም ሆነ መክፈት አልተቻለም። እባክዎ ከጥቂት ደቂቃዎች በኋላ እንደገና ይሞክሩ።",
     "account_number_invalid": "የሂሳብ ቁጥር ከ6 እስከ 30 አሃዝ አለው።",
     "payout_account_unchecked": "የክፍያ መቀበያ ሂሳቡ በሱቁ ስም መሆን አለበት።",
     "already_member": "ያ ሰው አስቀድሞ በቡድኑ ውስጥ ነው።",

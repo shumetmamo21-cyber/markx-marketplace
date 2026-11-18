@@ -16,7 +16,8 @@ domain.
 | PostgreSQL | Schema for all of Release 1 (68 tables), three roles |
 | Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account, the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
-| Containers, CI | Built: a Compose file for a laptop (D-058) and CI on every push. **The reverse proxy and any deployment do not exist** |
+| File storage | Built (D-090): one interface; local folders, MinIO, Amazon S3 and Cloudflare R2 by configuration. Tested against MinIO only; **no bucket or account exists** (F-01) |
+| Containers, CI | Built: a Compose file for a laptop with PostgreSQL and MinIO (D-058, D-090) and CI on every push. **The reverse proxy and any deployment do not exist** |
 
 ## Repository layout
 
@@ -28,7 +29,7 @@ apps/
     markx/
       core/                 config, database, errors, HTTP plumbing, Money,
                             phone, Ethiopic text, codes, security, rate limits,
-                            settings store, private file storage, image checks
+                            settings store, file storage (D-090), image checks
       accounts/             users, login codes, sessions, staff, addresses,
                             permissions (the blueprint's C.3 and C.4 tables)
       audit/                the append-only audit log
@@ -74,7 +75,8 @@ apps/
 infra/
   postgres/                 bootstrap.sql and bootstrap.sh: roles and database
   backup/                   backup.sh, restore.sh, drill.sh (D-063)
-  compose/                  API, worker and PostgreSQL on a laptop (D-058)
+  compose/                  API, worker, PostgreSQL and MinIO on a laptop
+                            (D-058, D-090)
 docs/
 ```
 
@@ -247,13 +249,45 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   `tests/db/test_fulfilment_contention.py` for the races (100 checkouts of
   the last unit, and every pair of operations that share locks).
 
-## Private files
+## File storage
 
-Identity and licence photos go through `PrivateStorage`
-(`markx/core/storage.py`). They are never served by path. A person opens one
-through `/documents/{id}/content` with a five-minute link signed for that
-person, while signed in. Problem photos work the same way
-(`/problem-photos/{id}/content`). Only the local-disk adapter exists.
+Blueprint F.6; D-020, D-062, D-090. `markx/core/storage.py`. Two stores,
+never one bucket:
+
+- **Private** (`get_private_storage()`): identity and licence photos, the
+  cleaned sources of product pictures, problem photos. Never public, never
+  served by path. A person opens a document through
+  `/documents/{id}/content`, a problem photo through
+  `/problem-photos/{id}/content`, each with a five-minute link signed for
+  that person, while signed in and still allowed to see it; the API reads
+  the object and answers with its bytes. **No bucket address, object key or
+  provider link ever reaches a browser for these files.**
+- **Public** (`get_public_storage()`): the rendered WebP pictures, served by
+  the CDN's own cookieless domain on a real server
+  (`MARKX_PUBLIC_MEDIA_BASE_URL`) and by the API's media route on a laptop.
+
+Both are an `ObjectStore`: `put(key, data, content_type)`, `get`, `head`,
+`exists`, `delete`, `signed_url`. `MARKX_FILE_STORAGE_PROVIDER` picks the
+adapter: `local` (`LocalObjectStore`, folders under `MARKX_STORAGE_DIR`, the
+default for laptops and tests), or `minio`, `s3` or `r2` (`S3ObjectStore`,
+one boto3 client per configuration with each provider's endpoint, region,
+addressing and encryption). Staging and production refuse `local` and
+`minio` at start-up. Every store refuses anything but a JPEG, PNG or WebP
+whose bytes match its declared type, anything over
+`MARKX_STORAGE_MAX_OBJECT_BYTES`, and any key outside the strict pattern;
+callers still decode and re-encode every upload first. A provider failure
+is `StorageUnavailable` (503 `storage_unavailable`), which names no key,
+bucket, endpoint or credential; a missing object is `StoredFileMissing`.
+No feature deletes a file. To store a new kind of file, generate an
+unguessable key with no personal data in it, pass the content type, and
+serve private files only through a personal link like the two above.
+
+`scripts/copy_files_to_object_storage.py` copies an existing local
+installation's files into the buckets under the same keys: a dry run by
+default, never deleting or overwriting, and needing the founder's written
+approval to copy (D-090). The watch's `file_storage` check alerts when a
+bucket stops answering or the private bucket can be read without
+credentials.
 
 ## Pictures
 
@@ -262,9 +296,10 @@ re-encoded at once (`core/images.sanitize_image`), so the camera's metadata
 never reaches storage, and kept privately as the picture's source. The
 worker (`images.render`) renders WebP in two fixed sizes into
 `PublicStorage` and marks the picture `ready`; only ready pictures are
-listed. On a laptop the API serves public files at `/api/v1/media/...`; on a
-real server they belong on the CDN's cookieless domain
-(`MARKX_PUBLIC_MEDIA_BASE_URL`).
+listed. On a laptop the API serves public files at `/api/v1/media/...`
+(from the folder or from MinIO, D-090); on a real server they belong on the
+CDN's cookieless domain (`MARKX_PUBLIC_MEDIA_BASE_URL`), which the start-up
+check requires to be an `https://` address on its own host.
 
 ## Monitoring
 
@@ -347,8 +382,8 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | Telegram push | `markx/notifications/push.py` | Fake only; no bot |
 | Bot check | `markx/core/botcheck.py` | **Cloudflare Turnstile** built and tested against stand-ins, **not yet against Cloudflare** (no keys yet; D-085). The development check on a laptop and in tests only; a real server refuses to start with it (D-084). Widget: `apps/web/src/components/TurnstileWidget.tsx` |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
-| Private file storage | `markx/core/storage.py` | Local disk only; refused on real servers |
-| Public picture storage | `markx/core/storage.py` | Local disk only; refused on real servers |
+| Private file storage | `markx/core/storage.py` | Local disk, MinIO, Amazon S3, Cloudflare R2 (D-090). **Tested against MinIO only**; no S3 or R2 bucket exists (F-01). A real server refuses to start without `s3` or `r2` |
+| Public picture storage | `markx/core/storage.py` | The same adapters, a second bucket. No CDN or picture domain yet (F-15) |
 | Alerts to Telegram | `markx/ops/alerts.py` | Built; tested against a stand-in; no group or bot yet |
 | Payments, couriers, AI | | Not started |
 

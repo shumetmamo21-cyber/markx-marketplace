@@ -23,6 +23,13 @@ from sqlalchemy.orm import Session
 
 from markx.catalog.models import ImageStatus, ProductImage
 from markx.core import ratelimit, settings_store
+from markx.core.config import get_config
+from markx.core.storage import (
+    S3ObjectStore,
+    StorageUnavailable,
+    get_private_storage,
+    get_public_storage,
+)
 from markx.notifications.models import Outbox, SmsMessage, SmsStatus
 from markx.offers.models import Inventory, InventoryReservation, ReservationStatus
 from markx.orders.models import Order, OrderItem, OrderStatusEvent, SellerOrder, SellerOrderStatus
@@ -499,6 +506,63 @@ def waiting_reports(db: Session, now: datetime) -> list[Finding]:
     ]
 
 
+# A one-pixel PNG the watch writes to the private bucket and then asks for
+# without credentials (D-090). It holds nothing; its key says what it is for.
+PRIVACY_CANARY_KEY = "ops/privacy-canary.png"
+PRIVACY_CANARY = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108000000003a7e9b55"
+    "0000000a4944415478da6360000000020001e527defc0000000049454e44ae426082"
+)
+
+
+def file_storage(db: Session, now: datetime) -> list[Finding]:
+    """Both buckets answer with MarkX's keys, and the private one refuses a
+    reader without credentials (F.6, G.11; D-090). Nothing to check when the
+    files are on a laptop's disk."""
+    if get_config().file_storage_provider == "local":
+        return []
+    findings: list[Finding] = []
+    private, public = get_private_storage(), get_public_storage()
+    reachable: dict[str, bool] = {}
+    for store in (private, public):
+        assert isinstance(store, S3ObjectStore)
+        try:
+            store.check_reachable()
+            reachable[store.name] = True
+        except StorageUnavailable as exc:
+            reachable[store.name] = False
+            findings.append(_unreachable(store.name, exc.reason))
+    if reachable["private"]:
+        assert isinstance(private, S3ObjectStore)
+        try:
+            private.put(PRIVACY_CANARY_KEY, PRIVACY_CANARY, "image/png")
+            exposed = private.readable_without_credentials(PRIVACY_CANARY_KEY)
+        except StorageUnavailable as exc:
+            findings.append(_unreachable("private", exc.reason))
+        else:
+            if exposed:
+                findings.append(
+                    Finding(
+                        key="storage.private_bucket_public",
+                        severity="critical",
+                        summary="The private file store answers readers without credentials: "
+                        "sellers' identity documents may be public. Make the bucket private now.",
+                        details={"store": "private"},
+                    )
+                )
+    return findings
+
+
+def _unreachable(store: str, reason: str) -> Finding:
+    return Finding(
+        key=f"storage.unreachable:{store}",
+        severity="critical",
+        summary=f"The {store} file store cannot be used ({reason}): uploads, documents "
+        "and pictures fail until it answers.",
+        details={"store": store, "reason": reason},
+    )
+
+
 WATCH: tuple[Check, ...] = (
     failing_jobs,
     overdue_jobs,
@@ -512,6 +576,7 @@ WATCH: tuple[Check, ...] = (
     stuck_images,
     held_reviews,
     waiting_reports,
+    file_storage,
 )
 
 

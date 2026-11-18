@@ -16,6 +16,7 @@ dependencies = [
     "cryptography",
     "pillow",
     "python-multipart",
+    "boto3>=1.44.5",
 ]
 
 [dependency-groups]
@@ -25,6 +26,7 @@ dev = [
     "ruff",
     "mypy",
     "pip-audit",
+    "boto3-stubs[s3]>=1.44.5",
 ]
 
 [tool.pytest.ini_options]

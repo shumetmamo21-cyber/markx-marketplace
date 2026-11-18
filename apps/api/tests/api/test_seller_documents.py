@@ -124,7 +124,7 @@ def test_storage_keys_cannot_escape_the_private_folder(tmp_path: Path) -> None:
     storage = LocalPrivateStorage(tmp_path)
     for key in ("../outside", "/etc/passwd", "a/../../b", "a//b", "A/B", ""):
         with pytest.raises(ValueError, match="unsafe storage key"):
-            storage.put(key, b"x")
+            storage.put(key, image_bytes(), "image/png")
 
 
 def test_real_servers_refuse_the_development_storage(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -132,6 +132,7 @@ def test_real_servers_refuse_the_development_storage(monkeypatch: pytest.MonkeyP
 
     class Real:
         is_real_environment = True
+        file_storage_provider = "local"
 
     monkeypatch.setattr(storage, "get_config", lambda: Real())
     with pytest.raises(RuntimeError, match="development only"):

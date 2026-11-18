@@ -266,7 +266,8 @@ def test_a_source_that_cannot_be_rendered_is_marked_failed(bazaar: Bazaar, db: D
     row = db.get(ProductImage, uuid.UUID(uploaded.json()["id"]))
     assert row is not None
     assert row.source_key is not None
-    get_private_storage().put(row.source_key, b"damaged on disk")
+    # Damaged in storage: still a JPEG's first bytes, but no picture after them.
+    get_private_storage().put(row.source_key, b"\xff\xd8\xff damaged in storage", "image/jpeg")
     _render()
     (detail,) = bazaar.staff.get(f"/admin/catalog/products/{bazaar.product['id']}/images").json()
     assert detail["status"] == "failed"
