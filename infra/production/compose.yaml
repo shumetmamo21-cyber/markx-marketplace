@@ -1,0 +1,333 @@
+# MarkX on one server: the production (and staging) Compose file
+# (blueprint F.13, M.3; D-091).
+#
+# NOTHING HERE IS DEPLOYED. No server, domain, certificate, bucket or account
+# exists for MarkX; this file is ready for the day the founder creates them.
+# Read docs/DEPLOYMENT.md first, then docs/runbooks/.
+#
+#   reverse proxy (nginx, 80/443) -> web (Next.js)   -> API (internal calls)
+#                                 -> API (FastAPI)  -> PostgreSQL 17
+#   worker (jobs, outbox, schedules)                -> PostgreSQL 17
+#   backup (nightly encrypted dump on this server)  -> PostgreSQL 17
+#   migrate (one-time step, never started by "up")  -> PostgreSQL 17
+#
+# Only the proxy publishes ports. PostgreSQL, the API, the web app and the
+# worker are on internal networks with no port on the host. The web app and
+# PostgreSQL cannot reach the internet at all; the API and the worker can,
+# for the outside services (Turnstile, SMS, object storage, Telegram).
+#
+# Run it through infra/production/deploy.sh, or by hand:
+#
+#   docker compose -f infra/production/compose.yaml \
+#     --env-file /etc/markx/compose.env <command>
+#
+# Settings come from files OUTSIDE the repository, in MARKX_CONFIG_DIR
+# (default /etc/markx), readable by root only; examples in env/*.example.
+# No secret is ever written into this file, an image or Git.
+
+name: markx-${MARKX_ENV:?set MARKX_ENV in compose.env to staging or production}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# The API, the worker and the migration step: one image, three commands. It
+# is built once, by the api service (deploy.sh builds before anything runs).
+x-api-image: &api-image
+  image: ${MARKX_IMAGE_PREFIX:-markx}/api:${MARKX_RELEASE:?set MARKX_RELEASE to the release being run}
+
+# Said here, not in the env files, so they cannot drift from this file.
+x-api-environment: &api-environment
+  MARKX_ENV: ${MARKX_ENV}
+  # The proxy and the web server reach the API from the frontend network
+  # only; nothing else may set the visitor's address (SEC-3, D-084).
+  MARKX_TRUSTED_PROXIES: ${MARKX_FRONTEND_SUBNET:-172.30.10.0/24}
+  MARKX_STORAGE_DIR: /tmp/markx-storage
+
+x-hardening: &hardening
+  init: true
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:17.12
+    restart: unless-stopped
+    env_file:
+      # POSTGRES_PASSWORD and the three MARKX_DB_*_PASSWORD values.
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/postgres.env
+    environment:
+      POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8 --data-checksums
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres:/markx-bootstrap:ro
+      - ../compose/initdb.sh:/docker-entrypoint-initdb.d/10-markx.sh:ro
+    networks:
+      - backend
+    shm_size: 256m
+    # A clean shutdown writes a checkpoint; give it time.
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "markx"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: ${MARKX_POSTGRES_MEMORY:-768m}
+    logging: *logging
+
+  # The one-time migration step (D-091). Never started by `up`: it belongs
+  # to the `migrate` profile, and deploy.sh runs it once per release, after
+  # a fresh backup and before the new release starts. A second copy started
+  # by mistake waits on the migration lock and then does nothing.
+  migrate:
+    <<: [*api-image, *hardening]
+    profiles: ["migrate"]
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/api.env
+      # Only this step has the schema owner's password.
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/migrate.env
+    environment: *api-environment
+    networks:
+      - backend
+    tmpfs:
+      - /tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: [*api-image, *hardening]
+    build:
+      context: ../../apps/api
+    restart: unless-stopped
+    command:
+      - uvicorn
+      - markx.main:app
+      - --host=0.0.0.0
+      - --port=8000
+      - --workers=${MARKX_API_WORKERS:-2}
+      - --no-proxy-headers
+      - --no-server-header
+      - --timeout-graceful-shutdown=20
+    env_file:
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/api.env
+    environment: *api-environment
+    networks:
+      frontend: {}
+      backend: {}
+      egress: {}
+    tmpfs:
+      - /tmp
+    # Healthy means READY: the database answers, the schema is this
+    # release's, and both file stores answer (D-091). The proxy waits for it.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz/ready', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${MARKX_API_MEMORY:-640m}
+
+  # The background worker is also the scheduler: every scheduled job is a
+  # row it locks (D-035), so a second worker is safe and needs no change.
+  worker:
+    <<: [*api-image, *hardening]
+    restart: unless-stopped
+    command: ["python", "-m", "markx.worker"]
+    env_file:
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/api.env
+    environment:
+      <<: *api-environment
+      MARKX_WORKER_HEARTBEAT_FILE: /run/markx/worker.heartbeat
+    networks:
+      backend: {}
+      egress: {}
+    tmpfs:
+      - /tmp
+      - /run/markx:uid=999,gid=999,mode=0700
+    # Live: a pass finished in the last five minutes (D-091). Whether the
+    # scheduled jobs actually ran is /api/v1/healthz/worker (D-064), for the
+    # outside monitor.
+    healthcheck:
+      test: ["CMD", "python", "-m", "markx.worker", "--check-heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # SIGTERM: finish the row in hand, then leave (runner.py).
+    stop_grace_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${MARKX_WORKER_MEMORY:-512m}
+
+  web:
+    <<: *hardening
+    image: ${MARKX_IMAGE_PREFIX:-markx}/web:${MARKX_RELEASE}
+    build:
+      context: ../../apps/web
+      args:
+        # Written into the build's security policy (F.6); the same value is
+        # checked at start-up below, so the two cannot differ.
+        MARKX_MEDIA_ORIGIN: ${MARKX_MEDIA_ORIGIN:?set MARKX_MEDIA_ORIGIN to the picture CDN origin}
+        MARKX_API_ORIGIN: http://api:8000
+    restart: unless-stopped
+    env_file:
+      # MARKX_TURNSTILE_SITE_KEY (public, but the founder's own widget's).
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/web.env
+    environment:
+      MARKX_ENV: ${MARKX_ENV}
+      NODE_ENV: production
+      MARKX_API_ORIGIN: http://api:8000
+      MARKX_PUBLIC_ORIGIN: ${MARKX_PUBLIC_ORIGIN:?set MARKX_PUBLIC_ORIGIN to https://<the site hostname>}
+      MARKX_MEDIA_ORIGIN: ${MARKX_MEDIA_ORIGIN}
+    networks:
+      - frontend
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000,mode=0700
+    stop_grace_period: 30s
+    depends_on:
+      api:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: ${MARKX_WEB_MEMORY:-512m}
+
+  proxy:
+    <<: *hardening
+    image: nginxinc/nginx-unprivileged:1.28.2-alpine
+    restart: unless-stopped
+    ports:
+      - "${MARKX_PUBLIC_BIND:-0.0.0.0}:${MARKX_HTTP_PORT:-80}:8080"
+      - "${MARKX_PUBLIC_BIND:-0.0.0.0}:${MARKX_HTTPS_PORT:-443}:8443"
+    environment:
+      MARKX_SITE_HOSTNAME: ${MARKX_SITE_HOSTNAME:?set MARKX_SITE_HOSTNAME to the site's hostname}
+      MARKX_HSTS_MAX_AGE: ${MARKX_HSTS_MAX_AGE:-31536000}
+      # Fill in only these two; leave nginx's own $variables alone.
+      NGINX_ENVSUBST_FILTER: "^MARKX_"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      # fullchain.pem and privkey.pem (docs/runbooks/tls-certificates.md).
+      - ${MARKX_TLS_DIR:-/etc/markx/tls}:/etc/nginx/tls:ro
+      # Certificate challenges, written by the certificate tool on the host.
+      - ${MARKX_ACME_DIR:-/var/lib/markx/acme}:/var/www/acme:ro
+    tmpfs:
+      - /tmp
+      - /etc/nginx/conf.d:uid=101,gid=101
+    networks:
+      - edge
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    stop_grace_period: 15s
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${MARKX_PROXY_MEMORY:-128m}
+
+  # One encrypted dump a day at MARKX_BACKUP_HOUR_UTC, plus one at start-up,
+  # into MARKX_BACKUP_HOST_DIR on THIS server (D-063, D-091). It is not an
+  # off-server copy: the blueprint's copy to object storage and to the
+  # founder's drive are not connected (docs/runbooks/backup-and-restore.md).
+  # Stored files are NOT in it (F-14).
+  backup:
+    image: postgres:17.12
+    restart: unless-stopped
+    user: "999:999"
+    entrypoint: ["/markx-backup/scheduled.sh"]
+    env_file:
+      # PGPASSWORD of markx_migrator, the hour and the retention.
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/backup.env
+    environment:
+      PGHOST: postgres
+      PGUSER: markx_migrator
+      MARKX_BACKUP_DIR: /backups
+      MARKX_BACKUP_PASSPHRASE_FILE: /run/secrets/backup.key
+    volumes:
+      - ../backup:/markx-backup:ro
+      # restore.sh creates a restored database's roles with bootstrap.sh.
+      - ../postgres:/postgres:ro
+      - ${MARKX_BACKUP_HOST_DIR:-/var/backups/markx}:/backups
+      - ${MARKX_CONFIG_DIR:-/etc/markx}/backup.key:/run/secrets/backup.key:ro
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      # The last good backup is less than 26 hours old.
+      test: ["CMD", "/markx-backup/scheduled.sh", "--check"]
+      interval: 5m
+      timeout: 10s
+      retries: 2
+      start_period: 15m
+      start_interval: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${MARKX_BACKUP_MEMORY:-256m}
+    logging: *logging
+
+networks:
+  # The only network with published ports: the proxy alone is on it.
+  edge: {}
+  # Proxy, web and API. No way out to the internet. The API believes
+  # forwarded addresses from this subnet only.
+  frontend:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${MARKX_FRONTEND_SUBNET:-172.30.10.0/24}
+  # API, worker, migrations, backups and PostgreSQL. No way out either.
+  backend:
+    internal: true
+  # The way out, for the API and the worker only.
+  egress: {}
+
+volumes:
+  # The database. Never removed by deploy.sh; `docker compose down -v`
+  # would delete it, so never run that on a real server.
+  postgres-data:

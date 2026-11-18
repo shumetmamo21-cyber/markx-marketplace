@@ -1,0 +1,94 @@
+# Rendered at start-up by the image's envsubst step into /etc/nginx/conf.d
+# (D-091). Only ${MARKX_SITE_HOSTNAME} and ${MARKX_HSTS_MAX_AGE} are filled
+# in; every other $name is nginx's own variable.
+
+# The container's own health check (not published).
+server {
+    listen 127.0.0.1:8081;
+    access_log off;
+    location = /health {
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+}
+
+# Port 80: certificate challenges, then a permanent redirect to HTTPS on the
+# site's one hostname, whatever name the visitor used.
+server {
+    listen 8080 default_server;
+    server_name _;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/acme;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://${MARKX_SITE_HOSTNAME}$request_uri;
+    }
+}
+
+# Port 443, any other name (a scanner using the bare address): no certificate
+# is shown and the connection is refused.
+server {
+    listen 8443 ssl default_server;
+    ssl_reject_handshake on;
+}
+
+# The site.
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name ${MARKX_SITE_HOSTNAME};
+
+    include /etc/nginx/snippets/tls.conf;
+    # include /etc/nginx/snippets/cloudflare-real-ip.conf;   # see its .example
+
+    # HTTPS only, for MARKX_HSTS_MAX_AGE seconds. No includeSubDomains or
+    # preload: those bind every subdomain and are the founder's decision with
+    # the domain (the API made the same choice, D-084).
+    add_header Strict-Transport-Security "max-age=${MARKX_HSTS_MAX_AGE}" always;
+
+    limit_conn markx_connections 64;
+
+    # Sign-in, codes and staff sign-in: a tighter edge limit (H.2).
+    location ^~ /api/v1/auth/ {
+        limit_req zone=markx_signin burst=30 nodelay;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+
+    # Never public on a real server. The API already leaves out its dev
+    # routes and its interactive docs there; the description is not needed
+    # by any browser.
+    location ^~ /api/v1/dev/ { return 404; }
+    location ^~ /api/v1/docs { return 404; }
+    location = /api/v1/openapi.json { return 404; }
+
+    # The five routes that take a file (seller documents, pictures, problem
+    # photos; D-062, D-090). The API checks the real limit; this only stops
+    # a body larger than any setting allows (MARKX_STORAGE_MAX_OBJECT_BYTES).
+    location ~ ^/api/v1/(admin/catalog/products/[^/]+/images|me/orders/[^/]+/seller-orders/[^/]+/problem/photos|seller/[^/]+/(documents|orders/[^/]+/problem/photos|products/[^/]+/photos))$ {
+        client_max_body_size 21m;
+        client_body_timeout 60s;
+        limit_req zone=markx_requests burst=40 nodelay;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+
+    # Every other API call: JSON of at most 1 MB (http block).
+    location /api/ {
+        limit_req zone=markx_requests burst=80 nodelay;
+        include /etc/nginx/snippets/proxy-api.conf;
+    }
+
+    # The web app's own files carry their own long cache headers.
+    location /_next/static/ {
+        include /etc/nginx/snippets/proxy-web.conf;
+    }
+
+    # Pages.
+    location / {
+        limit_req zone=markx_requests burst=80 nodelay;
+        include /etc/nginx/snippets/proxy-web.conf;
+    }
+}
