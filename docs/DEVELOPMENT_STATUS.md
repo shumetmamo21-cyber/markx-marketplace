@@ -1247,6 +1247,41 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Telegram account connection** (D-093), on 18 November 2026, commits
+`9d0a5ef` to `76b16b0` (on `366f8f9`), PostgreSQL 17 in Docker on the
+session's machine, no MinIO locally. **Telegram was never contacted: every
+webhook call in these tests and journeys was made by the test or the
+journey itself, with test-only values.**
+
+```text
+# API, the whole suite, on the final code (after the lock-order fix)
+$ uv run pytest                  -> 1596 passed, 57 skipped in 769.01s
+  (the 57 skipped are the MinIO storage tests; CI runs them with MinIO)
+  new: tests/api/test_telegram_linking.py (89), one each in
+  test_auth_telegram.py, test_retention.py, test_security_hardening.py
+$ uv run ruff check . / ruff format --check .   -> passed
+$ uv run mypy markx              -> Success: no issues found in 129 source files
+$ uv run alembic upgrade head && uv run alembic check -> No new upgrade operations detected.
+$ scripts.check_openapi_copy --exact openapi.json, and the web copy -> match exactly
+# tests checked against deliberately broken code (then restored):
+  no expiry check -> 1 failure; secret not compared -> 6; no advisory lock and
+  no unique-constraint fallback -> the concurrent-link test fails; the old
+  lock order -> DeadlockDetected (500) in 4 of 5 runs of the new contention test
+# web
+$ npm test -> 102 passed (12 new); npm run lint -> clean; npm run typecheck -> clean;
+  npm run build -> success
+# browser journeys, locally (uvicorn + next start, PostgreSQL 17, local files)
+$ node e2e/telegram-connection.mjs off -> passed (en, am, 360 px)
+$ node e2e/telegram-connection.mjs on  -> all 9 steps passed (test-only values)
+$ setup-and-account, buyer-journey, seller-dashboard, page-weight -> passed,
+  no console errors
+# secret scan: gitleaks 8.28.0 over the whole history -> no leaks found
+# GitHub, on 76b16b0
+Browser journeys #20: success, including "Telegram connection, switched off",
+"... switched on with test-only values" and "Telegram linking off again"
+CI #123 (push) and #124 (pull request #1): see below
+```
+
 **Notification system** (D-092), on 18 November 2026, commits `43bec22`,
 `f1c9a35`, `9dd87eb` (on `bd091bd`), PostgreSQL 17 in Docker on the
 session's machine, no MinIO locally. No outside service was contacted.
