@@ -12,8 +12,11 @@ on:
 permissions:
   contents: read
 
+# A push without "[journeys]" still starts a run, whose job is skipped. The
+# group's name says whether a run will really work, so such a push can only
+# cancel another empty run, never a journey run in progress.
 concurrency:
-  group: journeys-${{ github.ref }}
+  group: journeys-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[journeys]') }}
   cancel-in-progress: true
 
 jobs:
