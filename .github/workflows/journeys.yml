@@ -1,0 +1,127 @@
+# The browser journeys (apps/web/e2e/*.mjs) against a fresh demo database, in
+# Chromium, on GitHub's free hosted runners. Nothing here is deployed or paid
+# for. They take a quarter of an hour, so they run only when asked: from the
+# Actions tab (once this file is on the default branch), or on a push whose
+# commit message contains "[journeys]" (D-081).
+name: Browser journeys
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeys-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    name: Browser journeys (demo data, Chromium)
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[journeys]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # A throwaway database inside the runner; the development-only
+          # password of docs/SETUP.md. Not a secret.
+          POSTGRES_PASSWORD: postgres_dev_only
+          POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: postgres_dev_only
+      # Demo data and the development SMS inbox exist only here (D-056).
+      MARKX_ENV: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: The API, its database and the demo data
+        working-directory: apps/api
+        run: |
+          uv sync --locked
+          ../../infra/postgres/bootstrap.sh markx
+          uv run alembic upgrade head
+          uv run python -m scripts.seed_demo | tee "$RUNNER_TEMP/seed.log"
+          secret=$(sed -n 's/.*Staff authenticator secret: *\([A-Z2-7=]*\).*/\1/p' "$RUNNER_TEMP/seed.log" | head -1)
+          test -n "$secret"
+          echo "::add-mask::$secret"
+          echo "MARKX_DEMO_TOTP_SECRET=$secret" >> "$GITHUB_ENV"
+
+      - name: Start the API
+        working-directory: apps/api
+        run: |
+          nohup uv run uvicorn markx.main:app --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8000/api/v1/healthz > /dev/null && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/api.log"; exit 1
+
+      - name: Build and start the web app
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+          nohup npm run start > "$RUNNER_TEMP/web.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/en > /dev/null && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/web.log"; exit 1
+
+      # The journeys load Playwright from the web app's folder; it is not one
+      # of the app's dependencies, so it is installed here without saving.
+      - name: Install Playwright and Chromium
+        working-directory: apps/web
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          mkdir -p "$RUNNER_TEMP/shots"
+
+      # One journey per step, so a failure names its journey. The demo buyer
+      # signs in once in each of five journeys: the API's limit of five codes
+      # per phone an hour is met exactly, so each runs once.
+      - name: Seller dashboard
+        working-directory: apps/web
+        run: node e2e/seller-dashboard.mjs "$RUNNER_TEMP/shots"
+      - name: Buyer journey
+        working-directory: apps/web
+        run: node e2e/buyer-journey.mjs "$RUNNER_TEMP/shots"
+      - name: Staff decide a problem
+        working-directory: apps/web
+        run: node e2e/staff-journey.mjs "$RUNNER_TEMP/shots"
+      - name: Admin screens
+        working-directory: apps/web
+        run: node e2e/admin-queues.mjs "$RUNNER_TEMP/shots"
+      - name: Reviews, reports, pictures and problem evidence
+        working-directory: apps/web
+        run: node e2e/shop-screens.mjs "$RUNNER_TEMP/shots"
+      - name: Setup, trust actions, account, proposals and closing
+        working-directory: apps/web
+        run: node e2e/setup-and-account.mjs "$RUNNER_TEMP/shots"
+
+      - name: Keep the screenshots and server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journeys
+          path: |
+            ${{ runner.temp }}/shots
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
+          retention-days: 7

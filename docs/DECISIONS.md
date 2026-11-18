@@ -1899,6 +1899,27 @@ may change it.
 Additive changes (D-061): one test each (`test_performance.py`,
 `test_reviews.py`).
 
+## D-081 The browser journeys run on GitHub when asked
+
+**Follows** blueprint P1 (automated checks) and the boundary "no paid
+resources". **Accepted.**
+
+`.github/workflows/journeys.yml` runs all six browser journeys in Chromium
+on GitHub's free hosted runners against a fresh demo database: PostgreSQL
+17 as a service, the roles and migrations, `seed_demo` (its staff secret
+masked in the log and handed to the journeys), the API and the production
+web build started in the background, then one step per journey, the
+screenshots and both server logs kept for a week. It takes about a quarter
+of an hour, so it does not run on every push: only on a push whose commit
+message contains `[journeys]`, or from the Actions tab once the file is on
+the default branch (GitHub starts manual workflows only from there).
+Playwright is installed without being saved as a dependency of the web app.
+
+The journeys fit one fresh database and one hour of the API's sign-in
+limits: the demo buyer signs in once in each of five of them, exactly the
+five codes a phone may ask for in an hour, and all of them together stay
+under the twenty per network address. Run each journey once per hour.
+
 ---
 
 ## Decisions that need the founder

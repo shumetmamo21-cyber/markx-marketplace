@@ -353,3 +353,8 @@ and the API allows five codes per phone per clock hour; a refused code
 (`rate_limited`) means waiting for the next hour. Give a folder as the last
 argument to keep screenshots (`seller-dashboard.mjs` also keeps one of every
 page when a step fails).
+
+On GitHub the same journeys run against a fresh demo database when asked:
+push a commit whose message contains `[journeys]` (or, once the workflow is
+on the default branch, use "Run workflow" on the Actions tab). The run keeps
+its screenshots and server logs as an artifact for a week (D-081).
