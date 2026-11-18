@@ -1166,6 +1166,11 @@ $ browser journeys against that Compose, demo data seeded, the workflow's
   afterwards in MinIO: markx-private 26 objects (20 seller documents, 3
   picture sources, 2 problem photos, the watch's canary), markx-public 6
   rendered pictures; the local folder held only the development inboxes
+$ GitHub Actions on 19e8078: CI #109 (push) -> success: API 1387 passed in
+  684.00s with MinIO required (none skipped), both OpenAPI copies, DRILL
+  PASSED; web; containers; security (Gitleaks, pip-audit, npm audit).
+  CI #110 (pull request #1) -> success. Browser journeys #16 -> success, on
+  Compose with MinIO
 ```
 
 **SMS foundation** (D-089), on the commit after `3c7921c`, local PostgreSQL 17
