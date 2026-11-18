@@ -1321,8 +1321,14 @@ request event) is the same commit. Browser journeys #17 passed. Fixed in
 the next commit: the build-CA secret lives in its own override file
 (`rehearsal/compose.build-ca.yaml`), added only when `MARKX_BUILD_CA` is set,
 and `MARKX_COMPOSE_OVERRIDE` takes several files. The rehearsal passed again
-locally after the fix (67 passed, 0 failed). Its result on GitHub is in the
-final report of this session, and must be confirmed by the next one.
+locally after the fix (67 passed, 0 failed). **On GitHub, on `59b1b82`:**
+CI #115 (push) passed every job: API (lint, format, types, migrations, the
+suite, both API-description checks, the drill), web, security (Gitleaks
+over every commit, pip-audit, the npm gate), containers (both images, the
+production file with the example settings, the web image's checks), and
+"Production stack rehearsal" (67 passed, 0 failed, in under three
+minutes). CI #116 (the pull request event, same commit) passed. Browser
+journeys #18 passed.
 
 Earlier runs of the rehearsal in this session failed on the rehearsal's own
 mistakes and on two real defects, all fixed before the final run: MinIO
