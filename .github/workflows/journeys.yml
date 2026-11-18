@@ -68,6 +68,20 @@ jobs:
           echo "::add-mask::$secret"
           echo "MARKX_DEMO_TOTP_SECRET=$secret" >> "$GITHUB_ENV"
 
+      # The journeys sign the same demo phones in many times in one hour;
+      # the API's limits against attackers (five codes a phone, twenty an
+      # address) are not what they test, so this throwaway database allows more.
+      - name: Room for every journey's sign-ins
+        working-directory: apps/api
+        run: |
+          uv run python - <<'PY'
+          from markx.core import settings_store
+          from markx.core.db import session_scope
+          with session_scope() as db:
+              settings_store.set_setting(db, "auth.otp_per_phone_per_hour", 30)
+              settings_store.set_setting(db, "auth.otp_per_ip_per_hour", 200)
+          PY
+
       - name: Start the API
         working-directory: apps/api
         run: |
@@ -93,9 +107,7 @@ jobs:
           npx playwright install --with-deps chromium
           mkdir -p "$RUNNER_TEMP/shots"
 
-      # One journey per step, so a failure names its journey. The demo buyer
-      # signs in once in each of five journeys: the API's limit of five codes
-      # per phone an hour is met exactly, so each runs once.
+      # One journey per step, so a failure names its journey.
       - name: Seller dashboard
         working-directory: apps/web
         run: node e2e/seller-dashboard.mjs "$RUNNER_TEMP/shots"

@@ -1915,10 +1915,12 @@ message contains `[journeys]`, or from the Actions tab once the file is on
 the default branch (GitHub starts manual workflows only from there).
 Playwright is installed without being saved as a dependency of the web app.
 
-The journeys fit one fresh database and one hour of the API's sign-in
-limits: the demo buyer signs in once in each of five of them, exactly the
-five codes a phone may ask for in an hour, and all of them together stay
-under the twenty per network address. Run each journey once per hour.
+The six journeys sign the demo buyer in more often in one hour than the
+API's limit against attackers allows (five codes a phone; found when the
+last journey was refused in a local rehearsal on a fresh database). The
+job raises `auth.otp_per_phone_per_hour` to 30 and `auth.otp_per_ip_per_hour`
+to 200 on its throwaway database, through `settings_store` before the API
+starts; the limits themselves are tested in `tests/api/test_auth_otp.py`.
 
 ---
 
