@@ -69,6 +69,12 @@ export function telegramPanel(connection: TelegramConnection, { link, requesting
   }
 }
 
+/** The status alone, as of now. For server pages rendered per request,
+ * where "now" is the moment of that request. */
+export function telegramStatus(connection: TelegramConnection, now: number = Date.now()): TelegramStatus {
+  return telegramPanel(connection, { link: null, requesting: false, now }).status;
+}
+
 /** Only a link to Telegram's own t.me address with a start parameter is ever
  * offered to the person; anything else from the API is not shown. */
 export function safeTelegramLink(link: string | null | undefined): string | null {

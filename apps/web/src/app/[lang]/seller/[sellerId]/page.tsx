@@ -9,6 +9,7 @@ import { fill, isLocale, type Messages } from "@/lib/i18n";
 import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
 import { getMe } from "@/lib/session";
+import { telegramStatus } from "@/lib/telegram";
 
 import { sellerMenu } from "./menu";
 
@@ -27,10 +28,12 @@ export default async function SellerOverview({ params }: PageProps<"/[lang]/sell
   if (!isLocale(lang)) notFound();
   const t = await getMessages(lang);
   const api = await serverApi();
-  const [seller, dashboard, me] = await Promise.all([
+  const [seller, dashboard, me, telegram] = await Promise.all([
     api.GET("/api/v1/seller/{seller_id}", { params: { path: { seller_id: sellerId } } }),
     api.GET("/api/v1/seller/{seller_id}/dashboard", { params: { path: { seller_id: sellerId } } }),
     getMe(),
+    // The signed-in person's own connection, never a colleague's (D-093).
+    api.GET("/api/v1/me/telegram", {}),
   ]);
   const s = t.seller;
   const shop = seller.data;
@@ -77,6 +80,14 @@ export default async function SellerOverview({ params }: PageProps<"/[lang]/sell
       ) : null}
 
       {d ? <p className="text-slate">{fill(s.counts, { active: d.active_offers, paused: d.paused_offers, stale: d.prices_to_confirm, low: d.low_stock_offers })}</p> : null}
+
+      {telegram.data ? (
+        <section aria-labelledby="telegram-alerts" className="space-y-1 rounded-card border border-line bg-white p-4">
+          <h2 id="telegram-alerts" className="font-bold">{s.telegramTitle}</h2>
+          <p>{fill(s.telegramState, { status: t.account.telegram.status[telegramStatus(telegram.data)] })}</p>
+          <Link href={`/${lang}/account#telegram`} className="inline-flex min-h-12 items-center font-semibold underline">{s.telegramManage}</Link>
+        </section>
+      ) : null}
 
       {checks.length ? (
         <section aria-labelledby="checked" className="rounded-card border border-line bg-white p-4">

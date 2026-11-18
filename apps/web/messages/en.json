@@ -687,7 +687,10 @@
     "locationFailed": "The phone did not give a location. Type it in or try again.",
     "proposeTitle": "Suggest a product for the catalogue",
     "proposeLead": "MarkX checks every suggestion and may merge it with a product it already has. Once approved, add your offer for it.",
-    "proposeLink": "Not in the catalogue? Suggest it"
+    "proposeLink": "Not in the catalogue? Suggest it",
+    "telegramTitle": "Order alerts in Telegram",
+    "telegramState": "Your Telegram: {status}.",
+    "telegramManage": "Set it up in your account"
   },
   "admin": {
     "title": "MarkX staff",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import am from "../../messages/am.json";
 import en from "../../messages/en.json";
-import { safeTelegramLink, type TelegramConnection, telegramPanel } from "./telegram";
+import { safeTelegramLink, type TelegramConnection, telegramPanel, telegramStatus } from "./telegram";
 
 const NOW = Date.parse("2026-11-18T12:00:00Z");
 const LINK = `https://t.me/markx_test_only_bot?start=${"A".repeat(43)}`;
@@ -54,6 +54,12 @@ describe("the Telegram section (D-093)", () => {
     expect(view(connection("expired"))).toMatchObject({ status: "expired", start: "newLink" });
     expect(view(connection("failed"))).toMatchObject({ status: "failed", start: "tryAgain", tone: "bad" });
     expect(view(connection("disconnected"))).toMatchObject({ status: "disconnected", start: "connect" });
+  });
+
+  it("gives server pages the status alone", () => {
+    expect(telegramStatus(connection("pending", { expires_at: "2026-11-18T12:09:00Z" }), NOW)).toBe("waiting");
+    expect(telegramStatus(connection("pending", { expires_at: "2026-11-18T11:00:00Z" }), NOW)).toBe("expired");
+    expect(telegramStatus(connection("not_connected", { available: false }), NOW)).toBe("unavailable");
   });
 
   it("shows connected as connected, with only disconnect", () => {

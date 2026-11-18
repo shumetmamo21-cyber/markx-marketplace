@@ -687,7 +687,10 @@
     "locationFailed": "ስልኩ ቦታ አልሰጠም። ይጻፉት ወይም እንደገና ይሞክሩ።",
     "proposeTitle": "ለካታሎጉ ምርት ይጠቁሙ",
     "proposeLead": "ማርክኤክስ እያንዳንዱን ጥቆማ ያረጋግጣል፤ ካለው ምርት ጋር ሊያዋህደውም ይችላል። ከጸደቀ በኋላ ቅናሽዎን ያክሉለት።",
-    "proposeLink": "ካታሎጉ ውስጥ የለም? ይጠቁሙ"
+    "proposeLink": "ካታሎጉ ውስጥ የለም? ይጠቁሙ",
+    "telegramTitle": "የትዕዛዝ ማሳወቂያዎች በቴሌግራም",
+    "telegramState": "ቴሌግራምዎ፦ {status}።",
+    "telegramManage": "በመለያዎ ውስጥ ያዘጋጁት"
   },
   "admin": {
     "title": "የማርክኤክስ ሰራተኞች",
