@@ -8,10 +8,10 @@ import { describeNotification } from "./notifications";
 // including the ones a condition chooses, like order.ready_for_collection).
 // A new template in the API needs words here too.
 const TEMPLATES = [
-  "auth.new_sign_in", "offer.removed_by_staff", "offer.restored_by_staff", "order.cancelled_by_buyer",
+  "auth.new_sign_in", "dispute.decided", "dispute.decided_for_seller", "offer.removed_by_staff", "offer.restored_by_staff", "order.cancelled_by_buyer",
   "order.cancelled_not_fulfilled", "order.cancelled_not_fulfilled_for_seller", "order.completed",
   "order.completed_for_seller", "order.delivered", "order.delivery_failed", "order.expired_unanswered",
-  "order.handover_code_reissued", "order.next_best_offer", "order.out_for_delivery", "order.payment_recorded",
+  "order.approaching_response_deadline", "order.handover_code_reissued", "order.next_best_offer", "order.out_for_delivery", "order.payment_recorded",
   "order.placed", "order.placed_for_seller", "order.problem_buyer_added", "order.problem_reported",
   "order.problem_reported_for_seller", "order.problem_seller_replied", "order.ready", "order.ready_for_collection",
   "order.refunded", "order.refunded_for_seller",
