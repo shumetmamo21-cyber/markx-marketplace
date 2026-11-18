@@ -219,12 +219,37 @@ def test_a_real_server_without_an_alert_destination_says_so_at_start_up(
 ) -> None:
     monkeypatch.delenv("MARKX_TELEGRAM_BOT_TOKEN", raising=False)
     warnings = Config(**production()).startup_warnings()
-    assert len(warnings) == 1
-    assert "MARKX_ALERT_TELEGRAM_CHAT_ID" in warnings[0]
+    about_alerts = [w for w in warnings if "MARKX_ALERT_TELEGRAM_CHAT_ID" in w]
+    assert len(about_alerts) == 1
+    # D-092: nor does it have a Telegram push provider, and it says that too.
+    assert len(warnings) == 2
     configured = Config(
         **production(
             telegram_bot_token="123456:TEST-ONLY-bot-token-not-a-real-secret",
             alert_telegram_chat_id="-1000000000000",
+            telegram_push_provider="bot_api",
         )
     )
     assert configured.startup_warnings() == []
+
+
+def test_a_real_server_without_a_push_provider_starts_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D-092: no bot exists yet, so a real server must start without one, use
+    no push provider at all, and say so in words at start-up."""
+    monkeypatch.delenv("MARKX_TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("MARKX_TELEGRAM_PUSH_PROVIDER", raising=False)
+    config = Config(**production())
+    assert config.push_provider == "none"
+    assert any("no Telegram push provider" in w for w in config.startup_warnings())
+    assert Config(env="local").push_provider == "fake"
+
+
+def test_a_real_server_refuses_the_fake_push_sender_and_bot_api_needs_its_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MARKX_TELEGRAM_BOT_TOKEN", raising=False)
+    assert "MARKX_TELEGRAM_PUSH_PROVIDER" in refusal(telegram_push_provider="fake")
+    with pytest.raises(ValidationError, match="MARKX_TELEGRAM_BOT_TOKEN"):
+        Config(**production(telegram_push_provider="bot_api"))

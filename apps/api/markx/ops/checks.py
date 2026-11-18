@@ -30,7 +30,13 @@ from markx.core.storage import (
     get_private_storage,
     get_public_storage,
 )
-from markx.notifications.models import Outbox, SmsMessage, SmsStatus
+from markx.notifications.models import (
+    DeliveryStatus,
+    NotificationDelivery,
+    Outbox,
+    SmsMessage,
+    SmsStatus,
+)
 from markx.offers.models import Inventory, InventoryReservation, ReservationStatus
 from markx.orders.models import Order, OrderItem, OrderStatusEvent, SellerOrder, SellerOrderStatus
 from markx.payments.models import FeeCharge, LedgerEntry
@@ -440,6 +446,128 @@ def sms_unfinished(db: Session, now: datetime) -> list[Finding]:
     ]
 
 
+# -- notifications (D-092) ---------------------------------------------------------------
+
+# Must match markx.notifications.delivery.SMS_BUDGET_BUCKET (a test checks).
+NOTIFICATION_SMS_BUCKET = "sms:notification:daily"
+NOT_DELIVERED = (DeliveryStatus.FAILED.value, DeliveryStatus.UNKNOWN.value)
+UNAVAILABLE_LOOKBACK = timedelta(days=1)
+
+
+def notification_sms_budget(db: Session, now: datetime) -> list[Finding]:
+    """The notification SMS budget, its own and never the sign-in codes'
+    (D-092): most of today's is gone, or all of it."""
+    budget = settings_store.get_int(db, "notifications.sms_daily_budget")
+    sent = ratelimit.current(NOTIFICATION_SMS_BUCKET, timedelta(days=1), now=now)
+    if sent == 0:
+        return []
+    if sent >= budget:
+        severity, words = "critical", "spent: no more order alerts go out by SMS today"
+    elif sent >= budget * SMS_WARNING_SHARE:
+        severity, words = "warning", "nearly spent"
+    else:
+        return []
+    return [
+        Finding(
+            key="notifications.sms_budget",
+            severity=severity,
+            summary=f"The daily notification SMS budget is {words} ({sent} of {budget}). "
+            "Sign-in codes have their own budget and are not affected.",
+            details={"sent": sent, "budget": budget},
+        )
+    ]
+
+
+def notification_delivery_failures(db: Session, now: datetime) -> list[Finding]:
+    """Notifications that failed, or may not have arrived, on an outside
+    channel in the last hour (D-092): a provider is down, a key is wrong, or
+    a worker keeps dying mid-send."""
+    rows = db.execute(
+        select(NotificationDelivery.channel, NotificationDelivery.reason, func.count())
+        .where(
+            NotificationDelivery.status.in_(NOT_DELIVERED),
+            NotificationDelivery.completed_at >= now - timedelta(hours=1),
+            NotificationDelivery.completed_at <= now,
+        )
+        .group_by(NotificationDelivery.channel, NotificationDelivery.reason)
+        .order_by(NotificationDelivery.channel, NotificationDelivery.reason)
+    ).all()
+    total = sum(count for _, _, count in rows)
+    if total < settings_store.get_int(db, "notifications.failure_alert_min"):
+        return []
+    by_reason = {f"{channel}:{reason}": count for channel, reason, count in rows}
+    return [
+        Finding(
+            key="notifications.delivery_failures",
+            severity="critical",
+            summary=f"{total} notification(s) failed or may not have arrived outside the app in "
+            f"the last hour ({', '.join(f'{k}: {v}' for k, v in by_reason.items())}). "
+            "The in-app messages are there; sellers may be missing order alerts.",
+            details={"total": total, "by_reason": by_reason},
+        )
+    ]
+
+
+def notification_channel_unavailable(db: Session, now: datetime) -> list[Finding]:
+    """Notifications that would have gone out but had no provider (D-092): a
+    person linked Telegram and no Telegram provider is configured."""
+    rows = db.execute(
+        select(NotificationDelivery.channel, func.count())
+        .where(
+            NotificationDelivery.status == DeliveryStatus.UNAVAILABLE.value,
+            NotificationDelivery.completed_at >= now - UNAVAILABLE_LOOKBACK,
+            NotificationDelivery.completed_at <= now,
+        )
+        .group_by(NotificationDelivery.channel)
+        .order_by(NotificationDelivery.channel)
+    ).all()
+    if not rows:
+        return []
+    by_channel = dict(rows)
+    total = sum(by_channel.values())
+    return [
+        Finding(
+            key="notifications.channel_unavailable",
+            severity="warning",
+            summary=f"{total} notification(s) in the last day could not leave the app because "
+            f"no provider is configured ({', '.join(f'{c}: {n}' for c, n in by_channel.items())}"
+            "). They are in the in-app list only.",
+            details={"by_channel": by_channel},
+        )
+    ]
+
+
+def stale_notification_deliveries(db: Session, now: datetime) -> list[Finding]:
+    """Deliveries left half-done (D-092): `sending` or `retrying` for longer
+    than `notifications.stale_alert_minutes`. A worker died mid-send, or the
+    outbox is not draining."""
+    minutes = settings_store.get_int(db, "notifications.stale_alert_minutes")
+    rows = db.execute(
+        select(NotificationDelivery.channel, NotificationDelivery.status, func.count())
+        .where(
+            NotificationDelivery.status.in_(
+                (DeliveryStatus.SENDING.value, DeliveryStatus.RETRYING.value)
+            ),
+            NotificationDelivery.updated_at < now - timedelta(minutes=minutes),
+        )
+        .group_by(NotificationDelivery.channel, NotificationDelivery.status)
+        .order_by(NotificationDelivery.channel, NotificationDelivery.status)
+    ).all()
+    if not rows:
+        return []
+    by_state = {f"{channel}:{status}": count for channel, status, count in rows}
+    total = sum(by_state.values())
+    return [
+        Finding(
+            key="notifications.stale",
+            severity="warning",
+            summary=f"{total} notification(s) have been half-sent for more than {minutes} "
+            f"minutes ({', '.join(f'{k}: {v}' for k, v in by_state.items())}).",
+            details={"by_state": by_state, "minutes": minutes},
+        )
+    ]
+
+
 def stuck_images(db: Session, now: datetime) -> list[Finding]:
     count = db.scalar(
         select(func.count())
@@ -573,6 +701,10 @@ WATCH: tuple[Check, ...] = (
     sms_budget,
     sms_failures,
     sms_unfinished,
+    notification_sms_budget,
+    notification_delivery_failures,
+    notification_channel_unavailable,
+    stale_notification_deliveries,
     stuck_images,
     held_reviews,
     waiting_reports,

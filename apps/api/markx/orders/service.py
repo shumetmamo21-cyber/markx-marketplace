@@ -83,7 +83,9 @@ from markx.orders.models import (
     OrderItem,
     OrderStatusEvent,
     PaymentMode,
+    ReminderKind,
     SellerOrder,
+    SellerOrderReminder,
     SellerOrderStatus,
 )
 from markx.orders.status import (
@@ -1161,6 +1163,64 @@ def expire_unanswered_orders(db: Session, *, now: datetime | None = None) -> int
     return len(due)
 
 
+def remind_approaching_deadline(db: Session, *, now: datetime | None = None) -> int:
+    """Scheduled job (D-092): remind a store's order handlers, once, that an
+    order is still unanswered and its response deadline is close.
+
+    Due: the seller order is still `placed`, its deadline is within
+    `orders.response_reminder_minutes` and has not passed, and there was
+    room for a reminder at all (the order is older than the lead time before
+    its deadline). The order is locked as `expire_unanswered_orders` locks
+    it, so an answer or the expiry that holds it is waited for or skipped,
+    and its status is checked again under the lock: a confirmed, declined,
+    cancelled or expired order is never reminded. The reminder row's primary
+    key makes "once" a database rule, in the same transaction as the
+    notifications. Returns how many orders were reminded.
+    """
+    now = now or _now()
+    lead = timedelta(minutes=settings_store.get_int(db, "orders.response_reminder_minutes"))
+    already = select(SellerOrderReminder.seller_order_id).where(
+        SellerOrderReminder.seller_order_id == SellerOrder.id,
+        SellerOrderReminder.kind == ReminderKind.RESPONSE_DEADLINE.value,
+    )
+    due = list(
+        db.scalars(
+            select(SellerOrder)
+            .where(
+                SellerOrder.status == SellerOrderStatus.PLACED,
+                SellerOrder.response_deadline > now,
+                SellerOrder.response_deadline <= now + lead,
+                SellerOrder.created_at < SellerOrder.response_deadline - lead,
+                ~already.exists(),
+            )
+            .order_by(SellerOrder.id)
+            .limit(EXPIRY_BATCH)
+            .with_for_update(key_share=True, skip_locked=True)
+        )
+    )
+    reminded = 0
+    for seller_order in due:
+        if seller_order.status != SellerOrderStatus.PLACED:
+            continue  # answered between the read and the lock
+        inserted = db.execute(
+            insert(SellerOrderReminder)
+            .values(
+                seller_order_id=seller_order.id,
+                kind=ReminderKind.RESPONSE_DEADLINE.value,
+                sent_at=now,
+            )
+            .on_conflict_do_nothing()
+            .returning(SellerOrderReminder.seller_order_id)
+        ).scalar_one_or_none()
+        if inserted is None:
+            continue
+        _notify_seller(
+            db, seller_order, _parent(db, seller_order), "order.approaching_response_deadline"
+        )
+        reminded += 1
+    return reminded
+
+
 # -- fulfilment: the second half of the life cycle (G.6, J.9, J.10) -----------------------
 
 
@@ -1918,6 +1978,10 @@ def resolve_dispute(
         complete_seller_order(
             db, seller_order, actor_type=ActorType.STAFF, actor_user_id=actor.user_id, now=now
         )
+        # The decision itself, to both sides (D-092): completion alone does
+        # not say that staff looked at the problem and decided.
+        _notify_buyer(db, seller_order, order, "dispute.decided")
+        _notify_seller(db, seller_order, order, "dispute.decided_for_seller")
     else:
         _move(
             db, seller_order, SellerOrderStatus.REFUNDED, actor_type=ActorType.STAFF,

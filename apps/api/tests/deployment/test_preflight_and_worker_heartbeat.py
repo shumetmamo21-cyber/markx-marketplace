@@ -45,8 +45,10 @@ def test_preflight_passes_against_the_test_database(capsys: pytest.CaptureFixtur
 def test_preflight_fails_when_a_migration_is_missing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # The database is at the real head; a release that knows one more is ahead of it.
+    current = health.expected_schema_heads()
     monkeypatch.setattr(health, "expected_schema_heads", lambda: frozenset({"9999"}))
-    monkeypatch.setattr(health, "known_revisions", lambda: frozenset({"9999", "0015"}))
+    monkeypatch.setattr(health, "known_revisions", lambda: frozenset({"9999", *current}))
     assert preflight.main([]) == 1
     assert "schema: behind" in capsys.readouterr().out
     # Before the migration step, pending migrations are expected.

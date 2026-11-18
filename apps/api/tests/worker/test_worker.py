@@ -94,6 +94,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
     report = run_once(now)
     assert {o.name: o.result for o in report.jobs} == {
         "orders.expire_unanswered": 0,
+        "orders.remind_approaching_deadline": 0,  # no order (D-092)
         "orders.complete_after_problem_window": 0,
         "orders.cancel_overdue_fulfilment": 0,
         "offers.mark_stale": 0,
@@ -117,6 +118,7 @@ def test_the_worker_runs_the_jobs_that_were_waiting_for_it(db: Session) -> None:
     assert pruned >= 1
     assert outcomes == {
         "orders.expire_unanswered": (True, 0),
+        "orders.remind_approaching_deadline": (True, 0),
         "orders.complete_after_problem_window": (True, 0),
         "orders.cancel_overdue_fulfilment": (True, 0),
         "offers.mark_stale": (True, 1),

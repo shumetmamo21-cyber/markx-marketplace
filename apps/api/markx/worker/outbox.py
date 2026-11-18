@@ -20,21 +20,20 @@ never has one. The worker handles one row per transaction:
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from markx.accounts.models import User
 from markx.core.db import session_scope
 from markx.images import service as images
-from markx.notifications.models import Notification, Outbox
+from markx.notifications import delivery
+from markx.notifications.models import Outbox
 from markx.notifications.push import get_push_sender
 from markx.notifications.service import TOPIC_PUSH
+from markx.notifications.sms import get_sms_sender
 from markx.ops import service as ops
 from markx.reviews import service as reviews
 from markx.search import service as search
@@ -62,31 +61,15 @@ def retry_delay(attempts: int) -> timedelta:
 
 
 def push_notification(db: Session, row: Outbox) -> None:
-    """Send an in-app notification on to the person's Telegram, if they have
-    linked it. The in-app record already exists; this adds the push."""
-    payload: dict[str, Any] = row.payload
-    notification = db.get(Notification, uuid.UUID(str(payload["notification_id"])))
-    if notification is None:
-        return  # the person's account, and its notifications, were deleted
-    user = db.get(User, notification.user_id)
-    if user is None or user.telegram_id is None or user.status != "active":
-        return  # no channel to push to; the in-app list is the record
-    # The delivery record, written with the row's completion: both or neither.
-    db.add(
-        Notification(
-            user_id=user.id,
-            channel="telegram",
-            template=notification.template,
-            params=notification.params,
-        )
-    )
-    db.flush()
-    get_push_sender().send(
-        telegram_id=user.telegram_id,
-        template=notification.template,
-        params=dict(notification.params),
-        language=user.language,
-        idempotency_key=str(row.id),
+    """Carry an in-app notification to the channels outside the app: the
+    person's Telegram, and SMS for order alerts when that is switched on
+    (D-092). The in-app record already exists and never depends on a
+    provider. A channel with no provider is recorded `unavailable`, never
+    raised; a channel that should be tried again raises DeliveryRetry, and
+    the row is retried after its growing delay."""
+    # Looked up here, not bound at import, so a test can swap a sender.
+    delivery.deliver(
+        db, row, delivery.Senders(push=lambda: get_push_sender(), sms=lambda: get_sms_sender())
     )
 
 

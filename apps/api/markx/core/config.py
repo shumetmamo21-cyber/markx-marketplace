@@ -135,6 +135,15 @@ class Config(BaseSettings):
     # The founder's private Telegram group for alerts (blueprint F.12; D-064).
     # With the bot token set, alerts go there; otherwise to the log.
     alert_telegram_chat_id: str | None = None
+    # Who carries notifications to people's Telegram (D-092). "none": nobody;
+    # every Telegram delivery is recorded `unavailable` and the in-app list
+    # still has the message. "fake" writes to a development file and is for a
+    # laptop and the tests only; staging and production refuse it. "bot_api"
+    # is the adapter for Telegram's Bot API (markx/notifications/push.py),
+    # which needs MARKX_TELEGRAM_BOT_TOKEN. Unset means "fake" on a laptop and
+    # in the tests and "none" on a real server: no bot exists yet.
+    telegram_push_provider: Literal["none", "fake", "bot_api"] | None = None
+    telegram_push_timeout_seconds: float = Field(default=8.0, gt=0, le=30)
 
     totp_issuer: str = "MarkX"
 
@@ -276,6 +285,14 @@ class Config(BaseSettings):
             raise ValueError("SMS provider: " + "; ".join(problems))
         return self
 
+    @model_validator(mode="after")
+    def _bot_api_needs_the_token(self) -> Config:
+        if self.telegram_push_provider == "bot_api" and not (self.telegram_bot_token or "").strip():
+            raise ValueError(
+                "Telegram push provider: MARKX_TELEGRAM_BOT_TOKEN must be set for bot_api"
+            )
+        return self
+
     @field_validator("storage_endpoint_url")
     @classmethod
     def _storage_endpoint_is_a_bare_origin(cls, value: str | None) -> str | None:
@@ -342,6 +359,13 @@ class Config(BaseSettings):
         return _split(self.trusted_proxies)
 
     @property
+    def push_provider(self) -> str:
+        """The Telegram push provider in effect (D-092)."""
+        if self.telegram_push_provider is not None:
+            return self.telegram_push_provider
+        return "none" if self.is_real_environment else "fake"
+
+    @property
     def is_real_environment(self) -> bool:
         return self.env in ("staging", "production")
 
@@ -391,6 +415,12 @@ class Config(BaseSettings):
         # SEC-2 (D-084): the fake bot check accepts any token, even none.
         if self.bot_check_provider == "fake":
             problems.append("MARKX_BOT_CHECK_PROVIDER must be a real bot check, not the fake")
+        # D-092: the fake push sender writes messages to a file, not to Telegram.
+        if self.telegram_push_provider == "fake":
+            problems.append(
+                "MARKX_TELEGRAM_PUSH_PROVIDER must be none or bot_api on a real server, "
+                "not the fake"
+            )
         # D-089: the fake SMS sender writes codes to a file instead of a phone.
         if self.sms_provider == "fake":
             problems.append("MARKX_SMS_PROVIDER must be a real SMS provider, not the fake")
@@ -430,6 +460,12 @@ class Config(BaseSettings):
             warnings.append(
                 "alerts reach only the log: set MARKX_TELEGRAM_BOT_TOKEN and "
                 "MARKX_ALERT_TELEGRAM_CHAT_ID once the founder's alert group exists"
+            )
+        if self.push_provider == "none":
+            warnings.append(
+                "no Telegram push provider: notifications reach the in-app list only, and "
+                "every Telegram delivery is recorded as unavailable (D-092); seller order "
+                "alerts need a real channel before launch"
             )
         return warnings
 

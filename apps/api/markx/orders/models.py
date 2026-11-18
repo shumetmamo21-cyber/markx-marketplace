@@ -264,3 +264,25 @@ class OrderStatusEvent(UUIDPrimaryKey, Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ReminderKind(StrEnum):
+    # The seller has not answered and the response deadline is close (D-092).
+    RESPONSE_DEADLINE = "response_deadline"
+
+
+class SellerOrderReminder(Base):
+    """A reminder already sent about one seller order (D-092). The primary key
+    makes "once" a database rule: the job inserts the row in the same
+    transaction as the notifications, and a second insert does nothing."""
+
+    __tablename__ = "seller_order_reminders"
+    __table_args__ = (in_check("kind", ReminderKind),)
+
+    seller_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("seller_orders.id", ondelete="RESTRICT"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(Text, primary_key=True)
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

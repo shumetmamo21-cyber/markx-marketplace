@@ -338,6 +338,75 @@ _SPECS: tuple[SettingSpec, ...] = (
         1,
         1440,
     ),
+    # Notifications (D-092). SMS for notifications is OFF until the founder
+    # chooses a provider and approves what it costs (N-1); its budget is its
+    # own, so order alerts can never use up the sign-in codes' budget.
+    SettingSpec(
+        "notifications.sms_enabled",
+        False,
+        "bool",
+        "Send order notifications by SMS as well as in the app. Off until the founder chooses "
+        "a channel and approves the cost (N-1, D-092).",
+    ),
+    SettingSpec(
+        "notifications.sms_only_without_telegram",
+        True,
+        "bool",
+        "When notification SMS is on, send it only to people Telegram cannot reach: not "
+        "linked, or no Telegram provider configured (D-092).",
+    ),
+    SettingSpec(
+        "notifications.sms_daily_budget",
+        200,
+        "int",
+        "Notification SMS MarkX may send per day, separate from the sign-in codes' budget; "
+        "sending stops when spent (D-092).",
+        0,
+        1_000_000,
+    ),
+    SettingSpec(
+        "notifications.sms_per_person_per_hour",
+        6,
+        "int",
+        "Notification SMS one person may receive per hour (D-092).",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "notifications.sms_cooldown_seconds",
+        120,
+        "int",
+        "Seconds between two notification SMS to the same number; one that comes sooner is "
+        "skipped, the in-app message stays (D-092).",
+        0,
+        3600,
+    ),
+    SettingSpec(
+        "notifications.failure_alert_min",
+        3,
+        "int",
+        "Notifications that failed or went unconfirmed on an outside channel in the last hour "
+        "at which the founder is alerted (D-092).",
+        1,
+        10_000,
+    ),
+    SettingSpec(
+        "notifications.stale_alert_minutes",
+        30,
+        "int",
+        "Minutes a notification may wait half-sent before the founder is alerted (D-092).",
+        5,
+        1440,
+    ),
+    SettingSpec(
+        "orders.response_reminder_minutes",
+        10,
+        "int",
+        "Minutes before an unanswered order's deadline at which its shop is reminded, once "
+        "(D-092).",
+        1,
+        720,
+    ),
     # Trust
     SettingSpec(
         "disputes.decision_due_hours",

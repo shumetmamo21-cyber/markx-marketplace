@@ -174,6 +174,9 @@ def test_a_reported_problem_stops_completion_until_staff_decide(
     assert templates["order.problem_reported_for_seller"] == 1
     assert templates["order.problem_seller_replied"] == 1
     assert templates["order.problem_buyer_added"] == 1
+    # The decision itself, to the buyer and the store's order handler (D-092).
+    assert templates["dispute.decided"] == 1
+    assert templates["dispute.decided_for_seller"] == 1
 
 
 def test_a_refund_with_the_goods_returned_puts_the_stock_back_and_charges_no_fee(

@@ -62,6 +62,13 @@ JOBS: tuple[Job, ...] = (
         timedelta(minutes=1),
         lambda db, now: orders.expire_unanswered_orders(db, now=now),
     ),
+    # The once-only reminder before the deadline (D-092), after the expiry so
+    # an order that has just expired is never reminded.
+    Job(
+        "orders.remind_approaching_deadline",
+        timedelta(minutes=1),
+        lambda db, now: orders.remind_approaching_deadline(db, now=now),
+    ),
     Job(
         "orders.complete_after_problem_window",
         timedelta(minutes=5),
