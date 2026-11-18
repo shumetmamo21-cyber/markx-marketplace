@@ -6,6 +6,7 @@ real values are set in the host's secret store or a protected env file.
 
 from __future__ import annotations
 
+import base64
 import ipaddress
 import re
 from functools import lru_cache
@@ -23,7 +24,12 @@ _DEV_ONLY_MARKER = "dev-only"
 
 
 class Config(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MARKX_", env_file=".env", extra="ignore")
+    # hide_input_in_errors (D-091): a refused start-up names the settings that
+    # are wrong, never their values; without it pydantic prints part of the
+    # raw configuration, passwords included, into the container's log.
+    model_config = SettingsConfigDict(
+        env_prefix="MARKX_", env_file=".env", extra="ignore", hide_input_in_errors=True
+    )
 
     env: Environment = "local"
 
@@ -140,8 +146,20 @@ class Config(BaseSettings):
 
     # How long the worker rests between passes when nothing is waiting.
     worker_poll_seconds: float = 5.0
+    # A file the running worker touches after every pass (D-091), so a
+    # container check can tell a live loop from a hung one without a
+    # database. Unset: no file is written (a laptop, the tests).
+    worker_heartbeat_file: Path | None = None
 
     log_level: str = "INFO"
+
+    @field_validator("log_level")
+    @classmethod
+    def _log_level_is_a_level(cls, value: str) -> str:
+        level = value.strip().upper()
+        if level not in _LOG_LEVELS:
+            raise ValueError(f"MARKX_LOG_LEVEL must be one of {', '.join(_LOG_LEVELS)}")
+        return level
 
     @field_validator("trusted_proxies")
     @classmethod
@@ -341,6 +359,29 @@ class Config(BaseSettings):
             problems.append("MARKX_COOKIE_SECURE must be true")
         if not self.public_origin.startswith("https://"):
             problems.append("MARKX_PUBLIC_ORIGIN must be an https:// origin")
+        elif _endpoint_problem(self.public_origin) is not None:
+            problems.append(
+                "MARKX_PUBLIC_ORIGIN must be the bare origin the browser sees, such as "
+                "https://markx.example, with no path, query or trailing text"
+            )
+        # D-091: column encryption fails at the first use of a malformed key
+        # (a staff sign-in, a payout account), long after start-up.
+        if not _is_fernet_key(self.encryption_key):
+            problems.append(
+                "MARKX_ENCRYPTION_KEY must be a Fernet key (44 characters of URL-safe "
+                "base64; see .env.example for the command that makes one)"
+            )
+        # D-091: behind a reverse proxy the default (127.0.0.1) would make every
+        # visitor share the proxy's address, so one busy minute would throttle
+        # the whole country's sign-ins and searches. It must be said on purpose.
+        if "trusted_proxies" not in self.model_fields_set:
+            problems.append(
+                "MARKX_TRUSTED_PROXIES must be set explicitly to the reverse proxy's "
+                "address or network (docs/DEPLOYMENT.md)"
+            )
+        # D-091: debug logs may carry more than the production log rules allow.
+        if self.log_level == "DEBUG":
+            problems.append("MARKX_LOG_LEVEL must not be DEBUG on a real server")
         # SEC-2 (D-084): the fake bot check accepts any token, even none.
         if self.bot_check_provider == "fake":
             problems.append("MARKX_BOT_CHECK_PROVIDER must be a real bot check, not the fake")
@@ -372,6 +413,30 @@ class Config(BaseSettings):
         if problems:
             raise ValueError("unsafe configuration for a real environment: " + "; ".join(problems))
         return self
+
+    def startup_warnings(self) -> list[str]:
+        """What a real server can run without but should not, in words, for the
+        log at start-up (D-091). Never a value, only the setting's name."""
+        if not self.is_real_environment:
+            return []
+        warnings: list[str] = []
+        if not (self.telegram_bot_token and self.alert_telegram_chat_id):
+            warnings.append(
+                "alerts reach only the log: set MARKX_TELEGRAM_BOT_TOKEN and "
+                "MARKX_ALERT_TELEGRAM_CHAT_ID once the founder's alert group exists"
+            )
+        return warnings
+
+
+_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+def _is_fernet_key(value: str) -> bool:
+    try:
+        decoded = base64.urlsafe_b64decode(value.encode("ascii"))
+    except (ValueError, UnicodeEncodeError):
+        return False
+    return len(decoded) == 32 and len(value) == 44
 
 
 def _is_turnstile_test_key(secret: str, site_key: str | None) -> bool:

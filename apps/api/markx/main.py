@@ -6,6 +6,8 @@ response, and an anti-forgery guard on every request that changes data.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, FastAPI, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -32,6 +34,7 @@ from markx.notifications.sms import read_dev_sms_inbox
 from markx.offers.router import admin_router as offers_admin_router
 from markx.offers.router import public_router as offers_public_router
 from markx.offers.router import router as offers_router
+from markx.ops.health import readiness
 from markx.ops.router import admin_router as ops_admin_router
 from markx.ops.router import public_router as ops_public_router
 from markx.orders.router import admin_router as orders_admin_router
@@ -68,6 +71,20 @@ def _health_router() -> APIRouter:
             )
         return JSONResponse(content={"status": "ok", "api": "up", "database": "up"})
 
+    @router.get("/healthz/live")
+    def healthz_live() -> JSONResponse:
+        """Liveness (D-091): the process answers. Touches nothing outside it,
+        so an outage elsewhere never gets a healthy API restarted."""
+        return JSONResponse(content={"status": "alive"})
+
+    @router.get("/healthz/ready")
+    def healthz_ready() -> JSONResponse:
+        """Readiness (D-091): the database answers, its schema is the one this
+        release expects, and both file stores answer. 503 until all three
+        hold. Words only; details go to the log."""
+        result = readiness()
+        return JSONResponse(status_code=200 if result.ready else 503, content=result.public())
+
     return router
 
 
@@ -85,6 +102,8 @@ def _dev_router() -> APIRouter:
 def create_app() -> FastAPI:
     config = get_config()
     configure_logging(config.log_level)
+    for warning in config.startup_warnings():
+        logging.getLogger("markx.config").warning(warning)
     app = FastAPI(
         title="MarkX API",
         version="0.1.0",

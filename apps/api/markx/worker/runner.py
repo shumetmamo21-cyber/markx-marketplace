@@ -15,9 +15,11 @@ from __future__ import annotations
 import logging
 import signal
 import threading
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from markx.core.config import get_config
 from markx.core.logging import configure_logging
@@ -67,12 +69,40 @@ def run_once(
     return PassReport(jobs=outcomes, outbox=drained)
 
 
+# A pass that has not finished for this long means the loop is hung (D-091).
+# Generous on purpose: one pass may render pictures or rebuild search.
+HEARTBEAT_STALE_AFTER_SECONDS = 300.0
+
+
+def touch_heartbeat(path: Path | None) -> None:
+    """Record that a pass just finished. Never stops the worker: a full or
+    read-only disk is reported by the container check, not by a crash."""
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    except OSError:
+        logger.warning("could not write the worker heartbeat file", exc_info=True)
+
+
+def heartbeat_is_fresh(path: Path, *, now: float | None = None) -> bool:
+    """Whether the last pass finished within HEARTBEAT_STALE_AFTER_SECONDS."""
+    try:
+        modified = path.stat().st_mtime
+    except OSError:
+        return False
+    return (time.time() if now is None else now) - modified <= HEARTBEAT_STALE_AFTER_SECONDS
+
+
 def run_forever(stop: threading.Event | None = None) -> None:
     config = get_config()
     stop = stop or threading.Event()
     logger.info("worker started", extra={"poll_seconds": config.worker_poll_seconds})
+    touch_heartbeat(config.worker_heartbeat_file)
     while not stop.is_set():
         report = run_once()
+        touch_heartbeat(config.worker_heartbeat_file)
         # A full batch means more is waiting: go again without the pause.
         if report.outbox.handled < outbox.DEFAULT_BATCH:
             stop.wait(config.worker_poll_seconds)
@@ -88,9 +118,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="run the due jobs, handle every due outbox message, and exit",
     )
+    parser.add_argument(
+        "--check-heartbeat",
+        action="store_true",
+        help="exit 0 if the running worker finished a pass recently (a container "
+        "health check; needs MARKX_WORKER_HEARTBEAT_FILE), else 1",
+    )
     arguments = parser.parse_args(argv)
 
+    if arguments.check_heartbeat:
+        path = get_config().worker_heartbeat_file
+        return 0 if path is not None and heartbeat_is_fresh(path) else 1
+
     configure_logging(get_config().log_level)
+    for warning in get_config().startup_warnings():
+        logger.warning(warning)
     if arguments.once:
         # Everything that is due, however many batches that is (D-082).
         report = run_once(outbox_limit=None)

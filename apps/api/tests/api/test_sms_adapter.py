@@ -485,7 +485,7 @@ def _production(**overrides: Any) -> dict[str, Any]:
     settings: dict[str, Any] = {
         "env": "production",
         "secret_key": "test-only-not-a-real-secret-at-least-32-characters",
-        "encryption_key": "test-only-not-a-real-encryption-key",
+        "encryption_key": "dGVzdC1vbmx5LW5vdC1hLXJlYWwta2V5LTMyYnl0ZXM=",  # base64 of a test-only phrase (D-091: a Fernet key)
         "database_url": "postgresql+psycopg://markx_app:test-only-password@db:5432/markx",
         "migration_database_url": "postgresql+psycopg://markx_migrator:test-only-password@db:5432/markx",
         "cookie_secure": True,

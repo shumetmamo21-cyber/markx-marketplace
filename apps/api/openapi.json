@@ -14483,6 +14483,46 @@
         ]
       }
     },
+    "/api/v1/healthz/live": {
+      "get": {
+        "description": "Liveness (D-091): the process answers. Touches nothing outside it,\nso an outage elsewhere never gets a healthy API restarted.",
+        "operationId": "healthz_live_api_v1_healthz_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/healthz/ready": {
+      "get": {
+        "description": "Readiness (D-091): the database answers, its schema is the one this\nrelease expects, and both file stores answer. 503 until all three\nhold. Words only; details go to the log.",
+        "operationId": "healthz_ready_api_v1_healthz_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/v1/healthz/worker": {
       "get": {
         "description": "503 when no scheduled job has started for five minutes: the worker is\ndown or stuck (F.12; P2: \"an outage alerts the founder\"). Point the\noutside uptime monitor here as well as at `/healthz`.",
