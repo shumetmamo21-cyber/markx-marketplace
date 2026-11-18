@@ -146,6 +146,12 @@ class Config(BaseSettings):
 
     # How long the worker rests between passes when nothing is waiting.
     worker_poll_seconds: float = 5.0
+    # A code rollback (docs/runbooks/rollback.md; D-091): an older release
+    # finds a schema a newer release migrated, which readiness reports as
+    # "ahead" and refuses. Set to true ONLY for a rollback to a release the
+    # newer release's notes call compatible with its migrations; remove it
+    # when rolling forward again.
+    allow_newer_schema: bool = False
     # A file the running worker touches after every pass (D-091), so a
     # container check can tell a live loop from a hung one without a
     # database. Unset: no file is written (a laptop, the tests).

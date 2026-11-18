@@ -75,13 +75,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     _say(f"file storage: {storage}")
 
     ok = database == "up" and storage != "down"
-    if schema != "current":
+    if schema == "ahead" and config.allow_newer_schema:
+        _say("  warning: the database is newer than this release (MARKX_ALLOW_NEWER_SCHEMA=true:")
+        _say("  an acknowledged rollback; remove the setting when rolling forward)")
+    elif schema != "current":
         if schema == "behind" and arguments.allow_pending_migrations:
             _say("  note: migrations are pending; run the one-time migration step next")
         else:
             ok = False
             if schema == "ahead":
                 _say("  the database is newer than this release: do not start it")
+                _say("  (docs/runbooks/rollback.md explains when and how a rollback is allowed)")
     _say("preflight: PASSED" if ok else "preflight: FAILED")
     return 0 if ok else 1
 

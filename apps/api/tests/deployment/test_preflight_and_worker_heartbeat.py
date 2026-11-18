@@ -157,3 +157,18 @@ def test_check_heartbeat_exit_codes(tmp_path: Path) -> None:
     assert _run(["-m", "markx.worker", "--check-heartbeat"], env).returncode == 1
     unset = {k: v for k, v in os.environ.items() if k != "MARKX_WORKER_HEARTBEAT_FILE"}
     assert _run(["-m", "markx.worker", "--check-heartbeat"], unset).returncode == 1
+
+
+def test_preflight_accepts_a_newer_database_only_for_an_acknowledged_rollback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(health, "expected_schema_heads", lambda: frozenset({"0001"}))
+    monkeypatch.setattr(health, "known_revisions", lambda: frozenset({"0001"}))
+    monkeypatch.setenv("MARKX_ALLOW_NEWER_SCHEMA", "true")
+    get_config.cache_clear()
+    try:
+        assert preflight.main([]) == 0
+        assert "an acknowledged rollback" in capsys.readouterr().out
+    finally:
+        monkeypatch.undo()
+        get_config.cache_clear()

@@ -505,8 +505,19 @@ class S3ObjectStore:
 
     def check_reachable(self) -> None:
         """Raises `StorageUnavailable` unless the bucket answers with these keys."""
-        with _provider_call(self, "check"):
-            self._client.head_bucket(Bucket=self._bucket)
+        try:
+            with _provider_call(self, "check"):
+                self._client.head_bucket(Bucket=self._bucket)
+        except StoredFileMissing:
+            # A HEAD has no body, so a missing bucket comes back as a bare 404,
+            # which `_provider_call` reads as a missing file. For the bucket
+            # itself it is an outage (D-091): the watch alerts and readiness
+            # says "down", instead of the check failing with an error.
+            logger.error(
+                "object storage refused a request",
+                extra={"store": self.name, "operation": "check", "storage_error": "NoSuchBucket"},
+            )
+            raise StorageUnavailable("NoSuchBucket") from None
 
     def readable_without_credentials(self, key: str) -> bool:
         """Whether an anonymous request can read this object: it must never

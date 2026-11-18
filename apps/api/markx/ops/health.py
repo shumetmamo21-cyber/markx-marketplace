@@ -60,10 +60,16 @@ class Readiness:
     database: DatabaseState
     schema: SchemaState
     storage: StorageState
+    # MARKX_ALLOW_NEWER_SCHEMA: an acknowledged rollback (config.py).
+    newer_schema_allowed: bool = False
+
+    @property
+    def schema_acceptable(self) -> bool:
+        return self.schema == "current" or (self.schema == "ahead" and self.newer_schema_allowed)
 
     @property
     def ready(self) -> bool:
-        return self.database == "up" and self.schema == "current" and self.storage != "down"
+        return self.database == "up" and self.schema_acceptable and self.storage != "down"
 
     def public(self) -> dict[str, str]:
         """The words a public caller may see; nothing else."""
@@ -90,14 +96,22 @@ def check_database(engine: Engine | None = None) -> tuple[DatabaseState, SchemaS
     """Whether the database answers, and whether its schema is the one this
     code expects. `behind`: a migration has not been applied yet (run the
     one-time migration step). `ahead`: the database has a revision this
-    code does not know (a newer release migrated it: roll forward, or
-    restore; never run old code against it)."""
+    code does not know (a newer release migrated it): roll forward, or roll
+    back only to a release declared compatible, with MARKX_ALLOW_NEWER_SCHEMA
+    (docs/runbooks/rollback.md)."""
     try:
         with (engine or get_engine()).connect() as connection:
             connection.execute(text("select 1"))
             try:
-                applied = frozenset(
-                    connection.scalars(text("select version_num from alembic_version")).all()
+                # A database no migration has touched yet has no version
+                # table: every migration is pending ("behind").
+                exists = connection.scalar(text("select to_regclass('alembic_version')"))
+                applied = (
+                    frozenset(
+                        connection.scalars(text("select version_num from alembic_version")).all()
+                    )
+                    if exists is not None
+                    else frozenset()
                 )
             except Exception:
                 logger.warning("readiness: the schema version could not be read", exc_info=True)
@@ -159,6 +173,14 @@ def _probe_storage() -> StorageState:
                 extra={"store": store.name, "reason": exc.reason},
             )
             return "down"
+        except Exception as exc:
+            # A health probe never raises: anything unexpected is "down", and
+            # only the exception's type is logged (its text may name a bucket).
+            logger.warning(
+                "readiness: a file store check failed",
+                extra={"store": store.name, "reason": type(exc).__name__},
+            )
+            return "down"
     return "up"
 
 
@@ -167,4 +189,9 @@ storage_probe = _StorageProbe()
 
 def readiness() -> Readiness:
     database, schema = check_database()
-    return Readiness(database=database, schema=schema, storage=storage_probe.state())
+    return Readiness(
+        database=database,
+        schema=schema,
+        storage=storage_probe.state(),
+        newer_schema_allowed=get_config().allow_newer_schema,
+    )

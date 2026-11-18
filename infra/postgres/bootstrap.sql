@@ -3,7 +3,10 @@
 --   psql -v ON_ERROR_STOP=1 \
 --        -v dbname=markx \
 --        -v migrator_password=... -v app_password=... -v readonly_password=... \
+--        -v reset_migrator=1 -v reset_app=1 -v reset_readonly=1 \
 --        -f infra/postgres/bootstrap.sql
+--
+-- (bootstrap.sh does this for you; reset_* empty keeps existing passwords.)
 --
 -- It creates the three roles the blueprint requires (section F.3) and an empty
 -- database. Tables come from Alembic migrations, never from this file.
@@ -22,10 +25,16 @@ select format('create role markx_app login password %L', :'app_password')
 select format('create role markx_readonly login password %L', :'readonly_password')
  where not exists (select from pg_roles where rolname = 'markx_readonly') \gexec
 
--- Keep passwords in step with the variables on a re-run.
-select format('alter role markx_migrator password %L', :'migrator_password') \gexec
-select format('alter role markx_app password %L', :'app_password') \gexec
-select format('alter role markx_readonly password %L', :'readonly_password') \gexec
+-- Keep passwords in step with the variables on a re-run, but only for the
+-- variables actually given (bootstrap.sh sets reset_* to 1 for those; D-091).
+-- A re-run without them never sets a real server's roles back to the laptop
+-- defaults.
+select format('alter role markx_migrator password %L', :'migrator_password')
+ where :'reset_migrator' = '1' \gexec
+select format('alter role markx_app password %L', :'app_password')
+ where :'reset_app' = '1' \gexec
+select format('alter role markx_readonly password %L', :'readonly_password')
+ where :'reset_readonly' = '1' \gexec
 
 -- The built-in C.UTF-8 locale gives the same character rules on every host,
 -- independent of the operating system's C library. Trigram matching on

@@ -143,3 +143,55 @@ def _applied_revisions() -> list[str]:
 
     with get_engine().connect() as connection:
         return list(connection.scalars(text("select version_num from alembic_version")))
+
+
+def test_an_acknowledged_rollback_is_ready_against_a_newer_schema(
+    client: ApiClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MARKX_ALLOW_NEWER_SCHEMA=true is the operator saying, for one rollback,
+    that this older release is compatible with the newer migrations."""
+    from markx.core.config import get_config
+
+    monkeypatch.setattr(health, "expected_schema_heads", lambda: frozenset({"0001"}))
+    monkeypatch.setattr(health, "known_revisions", lambda: frozenset({"0001"}))
+    monkeypatch.setenv("MARKX_ALLOW_NEWER_SCHEMA", "true")
+    get_config.cache_clear()
+    try:
+        response = client.get("/healthz/ready")
+        assert response.status_code == 200
+        assert response.json()["schema"] == "ahead"
+    finally:
+        monkeypatch.undo()
+        get_config.cache_clear()
+
+
+def test_the_rollback_setting_never_hides_a_missing_migration(
+    client: ApiClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from markx.core.config import get_config
+
+    monkeypatch.setattr(health, "expected_schema_heads", lambda: frozenset({"9999"}))
+    monkeypatch.setattr(
+        health, "known_revisions", lambda: frozenset({"9999", *_applied_revisions()})
+    )
+    monkeypatch.setenv("MARKX_ALLOW_NEWER_SCHEMA", "true")
+    get_config.cache_clear()
+    try:
+        assert client.get("/healthz/ready").status_code == 503
+    finally:
+        monkeypatch.undo()
+        get_config.cache_clear()
+
+
+def test_a_database_no_migration_has_touched_is_behind() -> None:
+    """The very first deploy: the database exists, its schema does not yet.
+    The `postgres` maintenance database has no MarkX tables at all."""
+    from tests.conftest import _PG_HOST, _PG_PORT, _PG_SUPERPASS, _PG_SUPERUSER
+
+    empty = create_engine(
+        f"postgresql+psycopg://{_PG_SUPERUSER}:{_PG_SUPERPASS}@{_PG_HOST}:{_PG_PORT}/postgres"
+    )
+    try:
+        assert health.check_database(empty) == ("up", "behind")
+    finally:
+        empty.dispose()

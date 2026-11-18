@@ -20,6 +20,8 @@ regexes = [
   '''not-a-real-secret''',
   # The development encryption key: base64 of "dev-only-encryption-key-32bytes!".
   '''ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=''',
+  # The tests' well-formed Fernet key (D-091): base64 of "test-only-not-a-real-key-32bytes".
+  '''dGVzdC1vbmx5LW5vdC1hLXJlYWwta2V5LTMyYnl0ZXM=''',
 ]
 
 [[allowlists]]
