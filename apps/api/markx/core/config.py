@@ -144,6 +144,22 @@ class Config(BaseSettings):
     # in the tests and "none" on a real server: no bot exists yet.
     telegram_push_provider: Literal["none", "fake", "bot_api"] | None = None
     telegram_push_timeout_seconds: float = Field(default=8.0, gt=0, le=30)
+    # Connecting a person's Telegram to their MarkX account (D-093): the
+    # one-time link `POST /me/telegram/link`, the bot's webhook
+    # `POST /telegram/webhook` and the Mini App's `POST /me/telegram`. OFF by
+    # default: no bot exists yet, and switching this on is the founder's
+    # decision. Disconnecting always works, whatever this says.
+    telegram_linking_enabled: bool = False
+    # The bot's public username, without the @ (it ends in "bot"). Only used
+    # to build the t.me link; required when linking is on. Not a secret.
+    telegram_bot_username: str | None = None
+    # The secret Telegram repeats in the X-Telegram-Bot-Api-Secret-Token
+    # header of every webhook call (set with setWebhook's secret_token): 32 to
+    # 256 letters, digits, "_" and "-". From the host's secret store only;
+    # required when linking is on.
+    telegram_webhook_secret: SecretStr | None = None
+    # How long a connection link stays usable, in minutes.
+    telegram_link_ttl_minutes: int = Field(default=10, ge=2, le=30)
 
     totp_issuer: str = "MarkX"
 
@@ -292,6 +308,61 @@ class Config(BaseSettings):
                 "Telegram push provider: MARKX_TELEGRAM_BOT_TOKEN must be set for bot_api"
             )
         return self
+
+    @field_validator("telegram_bot_username")
+    @classmethod
+    def _bot_username_is_a_bot_username(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        value = value.strip().removeprefix("@")
+        if not _BOT_USERNAME.fullmatch(value):
+            raise ValueError(
+                "MARKX_TELEGRAM_BOT_USERNAME must be the bot's username without the @: "
+                "5 to 32 letters, digits and underscores, ending in 'bot'"
+            )
+        return value
+
+    @field_validator("telegram_webhook_secret")
+    @classmethod
+    def _webhook_secret_is_a_valid_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None or not value.get_secret_value().strip():
+            return None
+        # Telegram accepts 1 to 256 of these characters; MarkX asks for at
+        # least 32, so it cannot be guessed. The value is never printed.
+        if not _WEBHOOK_SECRET.fullmatch(value.get_secret_value()):
+            raise ValueError(
+                "MARKX_TELEGRAM_WEBHOOK_SECRET must be 32 to 256 letters, digits, '_' and '-'"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _telegram_linking_needs_its_settings(self) -> Config:
+        if not self.telegram_linking_enabled:
+            return self
+        problems: list[str] = []
+        if not self.telegram_bot_username:
+            problems.append("MARKX_TELEGRAM_BOT_USERNAME must be set")
+        secret = self.telegram_webhook_secret
+        if secret is None:
+            problems.append("MARKX_TELEGRAM_WEBHOOK_SECRET must be set")
+        elif self.is_real_environment and _looks_like_a_placeholder(secret.get_secret_value()):
+            problems.append(
+                "MARKX_TELEGRAM_WEBHOOK_SECRET must be a real random secret, not a "
+                "development or test value"
+            )
+        if problems:
+            raise ValueError("Telegram linking: " + "; ".join(problems))
+        return self
+
+    @property
+    def telegram_linking_ready(self) -> bool:
+        """Linking is switched on and has what it needs (the validator above
+        refuses to start otherwise; this is the one place code asks)."""
+        return bool(
+            self.telegram_linking_enabled
+            and self.telegram_bot_username
+            and self.telegram_webhook_secret is not None
+        )
 
     @field_validator("storage_endpoint_url")
     @classmethod
@@ -467,6 +538,11 @@ class Config(BaseSettings):
                 "every Telegram delivery is recorded as unavailable (D-092); seller order "
                 "alerts need a real channel before launch"
             )
+        if self.telegram_linking_enabled and self.push_provider == "none":
+            warnings.append(
+                "Telegram linking is on but no Telegram push provider is configured: "
+                "people can connect Telegram, yet nothing is sent to it (D-093)"
+            )
         return warnings
 
 
@@ -488,6 +564,16 @@ def _is_turnstile_test_key(secret: str, site_key: str | None) -> bool:
         len(key) > 6 and key[0] in "123" and key[1] == "x" and key[2:8] == "000000"
         for key in (secret, site_key or "")
     )
+
+
+# Telegram bot usernames: 5 to 32 characters, ending in "bot" (any case).
+_BOT_USERNAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{1,28}[Bb][Oo][Tt]")
+_WEBHOOK_SECRET = re.compile(r"[A-Za-z0-9_-]{32,256}")
+
+
+def _looks_like_a_placeholder(secret: str) -> bool:
+    lowered = secret.lower()
+    return any(marker in lowered for marker in (_DEV_ONLY_MARKER, "test-only", "change-me"))
 
 
 _SENDER_NAME = re.compile(r"[A-Za-z0-9]{1,11}")

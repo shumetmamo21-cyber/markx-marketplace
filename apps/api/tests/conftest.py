@@ -122,6 +122,31 @@ def db() -> Iterator[Session]:
         session.close()
 
 
+# Test-only values for Telegram linking (D-093). Placeholders, not a real bot.
+TEST_BOT_USERNAME = "markx_test_only_bot"
+TEST_WEBHOOK_SECRET = "test-only-webhook-secret-0123456789abcdefghij"
+
+
+@pytest.fixture
+def telegram_linking(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Telegram linking switched on, as a configured server would have it.
+    The test environment, like every environment, has it off by default."""
+    from pydantic import SecretStr
+
+    from markx.accounts import telegram_link
+    from markx.core.config import get_config
+
+    config = get_config().model_copy(
+        update={
+            "telegram_linking_enabled": True,
+            "telegram_bot_username": TEST_BOT_USERNAME,
+            "telegram_webhook_secret": SecretStr(TEST_WEBHOOK_SECRET),
+        }
+    )
+    monkeypatch.setattr(telegram_link, "get_config", lambda: config)
+    return config
+
+
 class ApiClient:
     """Behaves like the web app: sends the MarkX client header on every request
     and echoes the CSRF cookie back as a header on requests that change data."""

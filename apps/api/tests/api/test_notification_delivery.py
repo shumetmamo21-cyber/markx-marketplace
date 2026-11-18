@@ -62,6 +62,8 @@ class Crash(BaseException):
 def _person(db: Session, phone: str, *, telegram_id: int | None = None, language: str = "en"):
     user = accounts.get_or_create_user_by_phone(db, accounts.parse_phone(phone), language)
     user.telegram_id = telegram_id
+    # A linked Telegram always has its linking time (D-093, migration 0017).
+    user.telegram_linked_at = datetime.now(UTC) if telegram_id is not None else None
     user.language = language
     db.commit()
     return user

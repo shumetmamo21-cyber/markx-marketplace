@@ -22,6 +22,7 @@ from sqlalchemy import CursorResult, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session as DbSession
 
+from markx.accounts import telegram_link
 from markx.accounts.models import (
     Address,
     DataRequest,
@@ -35,6 +36,7 @@ from markx.accounts.models import (
     UserStatus,
 )
 from markx.audit import service as audit
+from markx.audit.service import Actor
 from markx.core import ratelimit
 from markx.core import settings_store as settings
 from markx.core.botcheck import get_bot_check
@@ -675,19 +677,12 @@ def telegram_sign_in(
     return user, token
 
 
-def link_telegram(db: DbSession, user: User, *, init_data: str) -> None:
-    """One Telegram identity per account, and one account per Telegram identity."""
+def link_telegram(db: DbSession, user: User, *, init_data: str, actor: Actor) -> None:
+    """The Mini App's link (D-093): one Telegram identity per account, and one
+    account per Telegram identity. Off unless Telegram linking is switched on."""
+    telegram_link.require_linking_available()
     telegram_id = verify_telegram_init_data(init_data).id
-    owner = db.scalar(select(User).where(User.telegram_id == telegram_id))
-    if owner is not None and owner.id != user.id:
-        raise Conflict(
-            "telegram_already_linked", "This Telegram account is linked to another number."
-        )
-    if user.telegram_id is not None and user.telegram_id != telegram_id:
-        raise Conflict(
-            "telegram_already_linked", "This account is linked to another Telegram account."
-        )
-    user.telegram_id = telegram_id
+    telegram_link.link_with_init_data(db, user, telegram_id, actor)
 
 
 # --------------------------------------------------------------------------- profile

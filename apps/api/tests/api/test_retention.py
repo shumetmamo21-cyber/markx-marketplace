@@ -12,6 +12,9 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from markx.accounts import service as accounts
+from markx.accounts.models import Session as UserSession
+from markx.accounts.models import SessionKind, TelegramLinkToken, TelegramUpdate
 from markx.audit.models import AuditLog
 from markx.core import ratelimit, settings_store
 from markx.core.models import RateLimitCounter
@@ -103,6 +106,37 @@ def test_the_worker_runs_it_once_a_day(db: Session) -> None:
     report = run_once(NOW, jobs=(job,))
     assert [(o.name, o.ok, o.result) for o in report.jobs] == [("retention.prune", True, 1)]
     assert _left(db)[0] == set()
+
+
+def test_old_telegram_update_ids_and_links_go_and_recent_ones_stay(db: Session) -> None:
+    """D-093: a week of webhook update ids, a month of connection links."""
+    db.add(TelegramUpdate(update_id=1, received_at=NOW - timedelta(days=8)))
+    db.add(TelegramUpdate(update_id=2, received_at=NOW - timedelta(days=6)))
+    user = accounts.get_or_create_user_by_phone(db, "+251911000001")
+    accounts.start_session(
+        db, user, kind=SessionKind.CUSTOMER, transport="cookie", ip=None, user_agent=None
+    )
+    db.flush()
+    session_id = db.scalars(select(UserSession.id)).one()
+    for days, status, digest in ((31, "revoked", b"o" * 32), (29, "revoked", b"n" * 32)):
+        made = NOW - timedelta(days=days)
+        db.add(
+            TelegramLinkToken(
+                user_id=user.id, session_id=session_id, token_hash=digest, status=status,
+                created_at=made, expires_at=made + timedelta(minutes=10), finished_at=made,
+            )
+        )  # fmt: skip
+    db.commit()
+
+    assert retention.prune(db, NOW) == 2
+    db.commit()
+    db.rollback()
+    assert set(db.scalars(select(TelegramUpdate.update_id))) == {2}
+    assert set(db.scalars(select(TelegramLinkToken.token_hash))) == {b"n" * 32}
+    entry = db.scalar(select(AuditLog).where(AuditLog.action == "retention.prune"))
+    assert entry is not None
+    assert entry.after is not None
+    assert (entry.after["telegram_updates"], entry.after["telegram_link_tokens"]) == (1, 1)
 
 
 def test_no_rate_limit_may_use_a_window_longer_than_the_job_allows_for() -> None:

@@ -1640,6 +1640,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/healthz/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Healthz Live
+         * @description Liveness (D-091): the process answers. Touches nothing outside it,
+         *     so an outage elsewhere never gets a healthy API restarted.
+         */
+        get: operations["healthz_live_api_v1_healthz_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/healthz/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Healthz Ready
+         * @description Readiness (D-091): the database answers, its schema is the one this
+         *     release expects, and both file stores answer. 503 until all three
+         *     hold. Words only; details go to the log.
+         */
+        get: operations["healthz_ready_api_v1_healthz_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/healthz/worker": {
         parameters: {
             query?: never;
@@ -2003,10 +2046,40 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read Telegram Connection
+         * @description The signed-in person's own Telegram connection (D-093).
+         */
+        get: operations["read_telegram_connection_api_v1_me_telegram_get"];
         put?: never;
         /** Link Telegram */
         post: operations["link_telegram_api_v1_me_telegram_post"];
+        /**
+         * Disconnect Telegram
+         * @description Disconnect Telegram and cancel any link not used yet (D-093). Always
+         *     allowed; signing in to MarkX does not depend on Telegram.
+         */
+        delete: operations["disconnect_telegram_api_v1_me_telegram_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/telegram/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Telegram Link
+         * @description A one-time link that connects the person's Telegram when opened in
+         *     Telegram (D-093). Replaces any earlier link not used yet.
+         */
+        post: operations["start_telegram_link_api_v1_me_telegram_link_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2852,6 +2925,29 @@ export interface paths {
         get: operations["weekly_reports_api_v1_seller__seller_id__weekly_reports_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/telegram/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Telegram Webhook
+         * @description Updates from MarkX's Telegram bot (D-093). Only `/start <token>` in a
+         *     private chat does anything. Authenticated by the secret Telegram sends in
+         *     X-Telegram-Bot-Api-Secret-Token; switched off unless Telegram linking is
+         *     configured and enabled.
+         */
+        post: operations["telegram_webhook_api_v1_telegram_webhook_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6040,6 +6136,40 @@ export interface components {
             term: string;
             /** Term Normalized */
             term_normalized: string;
+        };
+        /**
+         * TelegramConnectionOut
+         * @description The signed-in person's own Telegram connection (D-093). Never the
+         *     Telegram id or username; `link` only in the answer that created it.
+         */
+        TelegramConnectionOut: {
+            /**
+             * Available
+             * @description Connecting Telegram is switched on and set up.
+             */
+            available: boolean;
+            /** Connected At */
+            connected_at?: string | null;
+            /**
+             * Expires At
+             * @description When the pending link stops working.
+             */
+            expires_at?: string | null;
+            /**
+             * Link
+             * @description The one-time t.me link to open in Telegram. Returned once, never stored.
+             */
+            link?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "not_connected" | "pending" | "connected" | "expired" | "failed" | "disconnected";
+            /**
+             * Telegram Messages On
+             * @description A provider carries MarkX messages to Telegram. False: none are sent there.
+             */
+            telegram_messages_on: boolean;
         };
         /** TelegramSignInIn */
         TelegramSignInIn: {
@@ -9421,6 +9551,46 @@ export interface operations {
             };
         };
     };
+    healthz_live_api_v1_healthz_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    healthz_ready_api_v1_healthz_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     worker_health_api_v1_healthz_worker_get: {
         parameters: {
             query?: never;
@@ -10122,6 +10292,26 @@ export interface operations {
             };
         };
     };
+    read_telegram_connection_api_v1_me_telegram_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectionOut"];
+                };
+            };
+        };
+    };
     link_telegram_api_v1_me_telegram_post: {
         parameters: {
             query?: never;
@@ -10151,6 +10341,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_telegram_api_v1_me_telegram_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectionOut"];
+                };
+            };
+        };
+    };
+    start_telegram_link_api_v1_me_telegram_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectionOut"];
                 };
             };
         };
@@ -11995,6 +12225,40 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    telegram_webhook_api_v1_telegram_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Handled or ignored; may carry one reply for Telegram to send. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description The webhook secret is missing or wrong. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Telegram linking is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

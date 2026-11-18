@@ -27,11 +27,12 @@ logger = logging.getLogger("markx.http")
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 CLIENT_HEADER = "x-markx-client"
 # Routes called by outside services and authenticated by their own signature
-# or secret, listed by exact path (SEC-6, D-084). None exists yet: the Telegram
-# bot and payment webhooks are not built. A prefix would also exempt every
-# route added under it later, so add each webhook's full path here, together
-# with the test that its signature check refuses an unsigned call.
-CSRF_EXEMPT_PATHS: frozenset[str] = frozenset()
+# or secret, listed by exact path (SEC-6, D-084). A prefix would also exempt
+# every route added under it later, so add each webhook's full path here,
+# together with the test that its signature check refuses an unsigned call.
+# The Telegram bot's webhook checks its secret header (D-093;
+# tests/api/test_telegram_linking.py). Payment webhooks are not built.
+CSRF_EXEMPT_PATHS: frozenset[str] = frozenset({"/api/v1/telegram/webhook"})
 _DOCS_PATHS = ("/api/v1/docs",)
 
 

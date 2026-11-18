@@ -13,7 +13,16 @@ LIVE. They are settings, so changing them needs no code.
   longest window could have ended (`ratelimit.LONGEST_WINDOW`), so no count
   that is still being used is deleted.
 
-The daily job `retention.prune` deletes both and, when it deleted anything,
+* `telegram_updates`: the update ids the Telegram webhook has handled
+  (D-093), kept `TELEGRAM_UPDATES_KEPT` (7 days). Telegram stops resending
+  an update long before then; the rows hold nothing but the id and a time.
+* `telegram_link_tokens`: one-time Telegram connection links (D-093), kept
+  `TELEGRAM_LINKS_KEPT` (30 days) after they were made. A link lives 30
+  minutes at most, so these are all used, replaced or expired; the person's
+  settings only ever read the newest. Fixed periods, not settings: neither
+  table is a record anyone reads later, and neither holds a token.
+
+The daily job `retention.prune` deletes them all and, when it deleted anything,
 records how many rows of each in the audit log, which nothing can rewrite.
 """
 
@@ -25,10 +34,14 @@ from typing import Any, cast
 from sqlalchemy import CursorResult, delete
 from sqlalchemy.orm import Session
 
+from markx.accounts.models import TelegramLinkToken, TelegramUpdate
 from markx.audit.service import Actor, record_by
 from markx.core import ratelimit, settings_store
 from markx.core.models import RateLimitCounter
 from markx.search.models import SearchQuery
+
+TELEGRAM_UPDATES_KEPT = timedelta(days=7)
+TELEGRAM_LINKS_KEPT = timedelta(days=30)
 
 
 def _deleted(result: Any) -> int:
@@ -48,13 +61,26 @@ def prune(db: Session, now: datetime) -> int:
     counters = _deleted(
         db.execute(delete(RateLimitCounter).where(RateLimitCounter.window_start < counter_cutoff))
     )
-    if searches or counters:
+    updates = _deleted(
+        db.execute(
+            delete(TelegramUpdate).where(TelegramUpdate.received_at < now - TELEGRAM_UPDATES_KEPT)
+        )
+    )
+    links = _deleted(
+        db.execute(
+            delete(TelegramLinkToken).where(
+                TelegramLinkToken.created_at < now - TELEGRAM_LINKS_KEPT
+            )
+        )
+    )
+    if searches or counters or updates or links:
         record_by(
             db, Actor.system(), "retention.prune", "retention", now.date().isoformat(),
             after={
                 "search_queries": searches, "search_queries_before": search_cutoff.isoformat(),
                 "rate_limit_counters": counters,
                 "rate_limit_counters_before": counter_cutoff.isoformat(),
+                "telegram_updates": updates, "telegram_link_tokens": links,
             },
         )  # fmt: skip
-    return searches + counters
+    return searches + counters + updates + links

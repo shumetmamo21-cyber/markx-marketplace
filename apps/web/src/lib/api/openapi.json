@@ -8810,6 +8810,78 @@
         "title": "SynonymOut",
         "type": "object"
       },
+      "TelegramConnectionOut": {
+        "additionalProperties": false,
+        "description": "The signed-in person's own Telegram connection (D-093). Never the\nTelegram id or username; `link` only in the answer that created it.",
+        "properties": {
+          "available": {
+            "description": "Connecting Telegram is switched on and set up.",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the pending link stops working.",
+            "title": "Expires At"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The one-time t.me link to open in Telegram. Returned once, never stored.",
+            "title": "Link"
+          },
+          "state": {
+            "enum": [
+              "not_connected",
+              "pending",
+              "connected",
+              "expired",
+              "failed",
+              "disconnected"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "telegram_messages_on": {
+            "description": "A provider carries MarkX messages to Telegram. False: none are sent there.",
+            "title": "Telegram Messages On",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available",
+          "telegram_messages_on",
+          "state"
+        ],
+        "title": "TelegramConnectionOut",
+        "type": "object"
+      },
       "TelegramSignInIn": {
         "additionalProperties": false,
         "properties": {
@@ -14483,6 +14555,46 @@
         ]
       }
     },
+    "/api/v1/healthz/live": {
+      "get": {
+        "description": "Liveness (D-091): the process answers. Touches nothing outside it,\nso an outage elsewhere never gets a healthy API restarted.",
+        "operationId": "healthz_live_api_v1_healthz_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/healthz/ready": {
+      "get": {
+        "description": "Readiness (D-091): the database answers, its schema is the one this\nrelease expects, and both file stores answer. 503 until all three\nhold. Words only; details go to the log.",
+        "operationId": "healthz_ready_api_v1_healthz_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/v1/healthz/worker": {
       "get": {
         "description": "503 when no scheduled job has started for five minutes: the worker is\ndown or stuck (F.12; P2: \"an outage alerts the founder\"). Point the\noutside uptime monitor here as well as at `/healthz`.",
@@ -15614,6 +15726,46 @@
       }
     },
     "/api/v1/me/telegram": {
+      "delete": {
+        "description": "Disconnect Telegram and cancel any link not used yet (D-093). Always\nallowed; signing in to MarkX does not depend on Telegram.",
+        "operationId": "disconnect_telegram_api_v1_me_telegram_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Disconnect Telegram",
+        "tags": [
+          "me"
+        ]
+      },
+      "get": {
+        "description": "The signed-in person's own Telegram connection (D-093).",
+        "operationId": "read_telegram_connection_api_v1_me_telegram_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Telegram Connection",
+        "tags": [
+          "me"
+        ]
+      },
       "post": {
         "operationId": "link_telegram_api_v1_me_telegram_post",
         "requestBody": {
@@ -15649,6 +15801,28 @@
           }
         },
         "summary": "Link Telegram",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/telegram/link": {
+      "post": {
+        "description": "A one-time link that connects the person's Telegram when opened in\nTelegram (D-093). Replaces any earlier link not used yet.",
+        "operationId": "start_telegram_link_api_v1_me_telegram_link_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Telegram Link",
         "tags": [
           "me"
         ]
@@ -19037,6 +19211,32 @@
         "summary": "Weekly Reports",
         "tags": [
           "seller: performance"
+        ]
+      }
+    },
+    "/api/v1/telegram/webhook": {
+      "post": {
+        "description": "Updates from MarkX's Telegram bot (D-093). Only `/start <token>` in a\nprivate chat does anything. Authenticated by the secret Telegram sends in\nX-Telegram-Bot-Api-Secret-Token; switched off unless Telegram linking is\nconfigured and enabled.",
+        "operationId": "telegram_webhook_api_v1_telegram_webhook_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Handled or ignored; may carry one reply for Telegram to send."
+          },
+          "401": {
+            "description": "The webhook secret is missing or wrong."
+          },
+          "404": {
+            "description": "Telegram linking is switched off."
+          }
+        },
+        "summary": "Telegram Webhook",
+        "tags": [
+          "telegram"
         ]
       }
     },

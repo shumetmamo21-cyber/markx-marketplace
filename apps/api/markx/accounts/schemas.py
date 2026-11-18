@@ -38,6 +38,25 @@ class TelegramSignInIn(ApiModel):
     init_data: str = Field(min_length=1, max_length=8192)
 
 
+class TelegramConnectionOut(ApiModel):
+    """The signed-in person's own Telegram connection (D-093). Never the
+    Telegram id or username; `link` only in the answer that created it."""
+
+    available: bool = Field(description="Connecting Telegram is switched on and set up.")
+    telegram_messages_on: bool = Field(
+        description="A provider carries MarkX messages to Telegram. False: none are sent there."
+    )
+    state: Literal["not_connected", "pending", "connected", "expired", "failed", "disconnected"]
+    connected_at: datetime | None = None
+    expires_at: datetime | None = Field(
+        default=None, description="When the pending link stops working."
+    )
+    link: str | None = Field(
+        default=None,
+        description="The one-time t.me link to open in Telegram. Returned once, never stored.",
+    )
+
+
 class SellerMembershipOut(ApiModel):
     seller_id: uuid.UUID
     role: str

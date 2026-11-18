@@ -4,7 +4,8 @@ SEC-2: the fake bot check is never trusted on a real server.
 SEC-3: X-Forwarded-For is believed only from the configured proxies, and the
        rate limits count the address the proxy saw.
 SEC-5: security headers on API responses; HSTS only on real servers.
-SEC-6: the anti-forgery guard exempts exact paths only, and none today.
+SEC-6: the anti-forgery guard exempts exact paths only: today the Telegram
+       bot's webhook (D-093), which checks its own secret.
 """
 
 from __future__ import annotations
@@ -188,8 +189,9 @@ def _post(path: str, headers: dict[str, str] | None = None) -> Request:
         "/api/v1/webhooks/",
         "/api/v1/webhooks/anything",
         "/api/v1/webhooks/../me",
-        "/api/v1/telegram/webhook",
+        # The Telegram webhook itself is exempt (D-093); nothing near it is.
         "/api/v1/telegram/webhookx",
+        "/api/v1/telegram/webhook/",
         "/api/v1/telegram/webhook/../../me",
     ],
 )
@@ -199,7 +201,17 @@ def test_no_path_escapes_the_anti_forgery_guard_by_its_prefix(path: str) -> None
     assert refused.value.code == "csrf_header_missing"
 
 
+def test_the_only_exempt_path_is_the_telegram_webhook() -> None:
+    """Its secret check is tested in test_telegram_linking.py (D-093)."""
+    assert frozenset({"/api/v1/telegram/webhook"}) == core_http.CSRF_EXEMPT_PATHS
+    core_http.enforce_request_origin(_post("/api/v1/telegram/webhook"))
+
+
 def test_every_exempt_path_is_an_exact_existing_route() -> None:
-    routes = {getattr(route, "path", None) for route in app.routes}
+    # Every route the API serves, by its full path. `app.routes` alone lists
+    # the /api/v1 router as one nested entry, which once let this test pass
+    # without looking at any API route (found with D-093's first exemption).
+    routes = set(app.openapi()["paths"]) | {getattr(route, "path", None) for route in app.routes}
+    assert "/api/v1/me" in routes
     for path in core_http.CSRF_EXEMPT_PATHS:
         assert path in routes, f"{path} is exempt from the anti-forgery guard but is not a route"

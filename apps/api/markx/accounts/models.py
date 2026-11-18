@@ -59,10 +59,20 @@ class User(UUIDPrimaryKey, Timestamps, Base):
             "buyer_reliability is null or buyer_reliability between 0 and 100",
             name="buyer_reliability_range",
         ),
+        CheckConstraint(
+            "(telegram_id is null) = (telegram_linked_at is null)",
+            name="telegram_linked_at_with_telegram_id",
+        ),
     )
 
     phone: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    # The person's Telegram account, set only once they proved they control
+    # it (D-093): a signed Mini App start-up or the bot's one-time link.
+    # Unique, so one Telegram account belongs to one MarkX account.
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    telegram_linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the person last disconnected Telegram, so their settings can say so.
+    telegram_unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     name: Mapped[str | None] = mapped_column(Text)
     language: Mapped[str] = mapped_column(Text, nullable=False, server_default="am")
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
@@ -203,3 +213,77 @@ class DataRequest(UUIDPrimaryKey, CreatedAt, Base):
     note: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="open")
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TelegramLinkStatus(StrEnum):
+    PENDING = "pending"  # waiting for the bot to see it; expired once expires_at passes
+    CONSUMED = "consumed"  # used: the Telegram account was linked
+    FAILED = "failed"  # used, but the link was refused (failure_reason says why)
+    REVOKED = "revoked"  # replaced by a newer link, cancelled or disconnected
+
+
+class TelegramLinkFailure(StrEnum):
+    TELEGRAM_IN_USE = "telegram_in_use"  # linked to another MarkX account
+    ALREADY_CONNECTED = "already_connected"  # this account linked another meanwhile
+    ACCOUNT_INACTIVE = "account_inactive"  # blocked or deleted since
+    SESSION_ENDED = "session_ended"  # the sign-in that asked for it has ended
+
+
+class TelegramLinkToken(UUIDPrimaryKey, CreatedAt, Base):
+    """A one-time link that connects a person's Telegram (D-093).
+
+    Only a keyed hash of the token is stored: the token itself exists only
+    in the link the person opens. It belongs to the account and the sign-in
+    session that asked for it, lives `telegram_link_ttl_minutes`, and is
+    used at most once. At most one link per account is pending.
+    """
+
+    __tablename__ = "telegram_link_tokens"
+    __table_args__ = (
+        in_check("status", TelegramLinkStatus),
+        CheckConstraint(
+            "failure_reason is null or failure_reason in "
+            "('telegram_in_use', 'already_connected', 'account_inactive', 'session_ended')",
+            name="failure_reason_allowed",
+        ),
+        CheckConstraint("expires_at > created_at", name="expires_after_creation"),
+        CheckConstraint(
+            "(status = 'pending') = (finished_at is null)", name="finished_unless_pending"
+        ),
+        CheckConstraint(
+            "(status = 'failed') = (failure_reason is not null)", name="failure_has_a_reason"
+        ),
+        CheckConstraint("octet_length(token_hash) = 32", name="token_hash_length"),
+        Index(
+            "uq_telegram_link_tokens_one_pending_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index("ix_telegram_link_tokens_user_created", "user_id", "created_at"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class TelegramUpdate(Base):
+    """A Telegram webhook update already handled (D-093), so a repeated
+    delivery of the same update does nothing. Only Telegram's update id and
+    the time: never the message, the sender or the chat."""
+
+    __tablename__ = "telegram_updates"
+
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

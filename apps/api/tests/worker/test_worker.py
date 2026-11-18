@@ -478,6 +478,8 @@ def test_a_failing_handler_does_not_stop_the_scheduled_jobs_or_the_pass(db: Sess
 def _person(db: Session, phone: str, telegram_id: int | None) -> uuid.UUID:
     user = accounts.get_or_create_user_by_phone(db, accounts.parse_phone(phone))
     user.telegram_id = telegram_id
+    # A linked Telegram always has its linking time (D-093, migration 0017).
+    user.telegram_linked_at = datetime.now(UTC) if telegram_id is not None else None
     db.commit()
     return user.id
 

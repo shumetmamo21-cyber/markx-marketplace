@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -13,6 +14,12 @@ from tests.factories import telegram_init_data
 
 PHONE = "0911234567"
 TMA = {"X-MarkX-Client": "tma"}
+
+
+@pytest.fixture(autouse=True)
+def _linking_on(telegram_linking: object) -> None:
+    """These tests link through the Mini App, which needs Telegram linking
+    switched on (D-093). Linking while it is off: test_telegram_linking.py."""
 
 
 def _linked_account(telegram_id: int) -> ApiClient:
@@ -100,3 +107,16 @@ def test_one_telegram_identity_per_account_and_one_account_per_identity() -> Non
         first.post("/me/telegram", json={"init_data": telegram_init_data(777001)}).status_code
         == 200
     )
+
+
+def test_a_refused_mini_app_link_does_not_say_why() -> None:
+    """Whether a Telegram account belongs to someone else is nobody else's
+    business (D-093): both refusals carry the same words."""
+    first = _linked_account(777001)
+    second = ApiClient()
+    second.sign_in("0922334455")
+    taken = second.post("/me/telegram", json={"init_data": telegram_init_data(777001)})
+    switched = first.post("/me/telegram", json={"init_data": telegram_init_data(777002)})
+    assert taken.status_code == switched.status_code == 409
+    assert taken.json()["error"]["message"] == switched.json()["error"]["message"]
+    assert "number" not in taken.json()["error"]["message"]

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
-from markx.accounts import service
+from markx.accounts import service, telegram_link
 from markx.accounts.deps import (
     CSRF_COOKIE,
     SESSION_COOKIE,
@@ -29,9 +30,11 @@ from markx.accounts.schemas import (
     SessionOut,
     StaffOut,
     StaffSignInIn,
+    TelegramConnectionOut,
     TelegramSignInIn,
 )
 from markx.core.config import get_config
+from markx.core.errors import AppError
 from markx.core.http import Db, client_ip
 from markx.core.phone import mask_phone
 from markx.core.schemas import Ok
@@ -40,6 +43,20 @@ from markx.notifications import service as notifications
 from markx.sellers import selectors as seller_selectors
 
 router = APIRouter()
+
+
+async def _raw_body(request: Request) -> bytes:
+    """The webhook's body, read only once its secret has been checked, and
+    never more than the largest update accepted."""
+    telegram_link.authenticate_webhook(
+        request.headers.get(telegram_link.WEBHOOK_SECRET_HEADER), client_ip(request)
+    )
+    received = bytearray()
+    async for chunk in request.stream():
+        received.extend(chunk)
+        if len(received) > telegram_link.MAX_UPDATE_BYTES:
+            raise AppError("payload_too_large", "The update is too large.", status_code=413)
+    return bytes(received)
 
 
 def _set_session_cookies(response: Response, token: str, kind: SessionKind) -> None:
@@ -188,9 +205,70 @@ def update_me(body: ProfileIn, principal: CurrentPrincipal, db: Db) -> MeOut:
 
 
 @router.post("/me/telegram", response_model=Ok, tags=["me"])
-def link_telegram(body: TelegramSignInIn, principal: CurrentPrincipal, db: Db) -> Ok:
-    service.link_telegram(db, principal.user, init_data=body.init_data)
+def link_telegram(
+    body: TelegramSignInIn, request: Request, principal: CurrentPrincipal, db: Db
+) -> Ok:
+    service.link_telegram(
+        db, principal.user, init_data=body.init_data, actor=principal.actor(request)
+    )
     return Ok()
+
+
+def _connection_out(connection: telegram_link.Connection) -> TelegramConnectionOut:
+    return TelegramConnectionOut(
+        available=connection.available,
+        telegram_messages_on=connection.messages_on,
+        state=connection.state.value,
+        connected_at=connection.connected_at,
+        expires_at=connection.expires_at,
+        link=connection.link,
+    )
+
+
+@router.get("/me/telegram", response_model=TelegramConnectionOut, tags=["me"])
+def read_telegram_connection(principal: CurrentPrincipal, db: Db) -> TelegramConnectionOut:
+    """The signed-in person's own Telegram connection (D-093)."""
+    return _connection_out(telegram_link.connection_status(db, principal.user))
+
+
+@router.post(
+    "/me/telegram/link", response_model=TelegramConnectionOut, status_code=201, tags=["me"]
+)
+def start_telegram_link(
+    request: Request, principal: CurrentPrincipal, db: Db
+) -> TelegramConnectionOut:
+    """A one-time link that connects the person's Telegram when opened in
+    Telegram (D-093). Replaces any earlier link not used yet."""
+    connection = telegram_link.start_link(
+        db, principal.user, principal.session, principal.actor(request)
+    )
+    return _connection_out(connection)
+
+
+@router.delete("/me/telegram", response_model=TelegramConnectionOut, tags=["me"])
+def disconnect_telegram(
+    request: Request, principal: CurrentPrincipal, db: Db
+) -> TelegramConnectionOut:
+    """Disconnect Telegram and cancel any link not used yet (D-093). Always
+    allowed; signing in to MarkX does not depend on Telegram."""
+    return _connection_out(telegram_link.disconnect(db, principal.user, principal.actor(request)))
+
+
+@router.post(
+    "/telegram/webhook",
+    tags=["telegram"],
+    responses={
+        200: {"description": "Handled or ignored; may carry one reply for Telegram to send."},
+        401: {"description": "The webhook secret is missing or wrong."},
+        404: {"description": "Telegram linking is switched off."},
+    },
+)
+def telegram_webhook(request: Request, body: bytes = Depends(_raw_body), *, db: Db) -> JSONResponse:
+    """Updates from MarkX's Telegram bot (D-093). Only `/start <token>` in a
+    private chat does anything. Authenticated by the secret Telegram sends in
+    X-Telegram-Bot-Api-Secret-Token; switched off unless Telegram linking is
+    configured and enabled."""
+    return JSONResponse(content=telegram_link.handle_update(db, body))
 
 
 def _address_out(db: Db, address: Address) -> AddressOut:
