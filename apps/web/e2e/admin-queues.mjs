@@ -405,18 +405,16 @@ function expect(condition, message) {
   await staff.locator('main ul > li').nth(countBefore).waitFor();
   const newest = staff.locator('main ul > li', { hasText: 'Being prepared' }).last();
   await newest.waitFor();
-  // The worker renders it (on a laptop it runs only when started; here, a
-  // pass at a time, up to three, its report kept in case the picture never shows).
+  // The worker renders it (on a laptop it runs only when started; here, one
+  // pass, which handles every due message however long the queue, D-082; its
+  // report is kept in case the picture does not show).
+  const worker = spawnSync('uv', ['run', 'python', '-m', 'markx.worker', '--once'], { cwd: new URL('../../api/', import.meta.url), encoding: 'utf8' });
+  const workerReport = `exit ${worker.status}; ${`${worker.stdout}${worker.stderr}`.split('\n').filter((l) => l.includes('"level"')).map((l) => l.slice(0, 600)).join(' | ')}`;
+  await staff.reload();
   const shownPicture = staff.locator('main ul > li', { hasText: 'Shown to buyers' }).last();
-  const passes = [];
-  for (let pass = 1; pass <= 3; pass++) {
-    const worker = spawnSync('uv', ['run', 'python', '-m', 'markx.worker', '--once'], { cwd: new URL('../../api/', import.meta.url), encoding: 'utf8' });
-    passes.push(`pass ${pass}: exit ${worker.status}; ${`${worker.stdout}${worker.stderr}`.split('\n').filter((l) => l.includes('"level"')).map((l) => l.slice(0, 400)).join(' | ')}`);
-    await staff.reload();
-    if (await shownPicture.locator('img').count()) break;
-  }
-  if (!(await shownPicture.locator('img').count())) console.log('  worker passes:', passes);
-  expect(await shownPicture.locator('img').count(), 'the picture was not rendered');
+  if (worker.status !== 0 || !(await shownPicture.locator('img').count())) console.log('  worker pass:', workerReport);
+  expect(worker.status === 0, 'the worker pass failed');
+  expect(await shownPicture.locator('img').count(), 'one worker pass did not render the picture');
   const loaded = await shownPicture.locator('img').evaluate((img) => img.complete && img.naturalWidth > 0);
   expect(loaded, 'the rendered thumbnail did not load');
   await shownPicture.locator('input[name=reason]').fill('A test picture, not the real phone.');

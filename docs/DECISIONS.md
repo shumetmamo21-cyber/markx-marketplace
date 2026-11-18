@@ -1866,10 +1866,9 @@ otherwise and logs the failed jobs and the drain error. A message that
 failed and will be retried is the outbox working, not a failed pass. The
 long-running worker (`run_forever`) is unchanged. One test.
 
-This did not explain the one pass in the admin journey that handled none of
-the due messages (Known problems): there the jobs were recorded as
-succeeded, and no error appeared in the database log. It would make such a
-pass visible if it failed.
+This did not explain the one pass in the admin journey that seemed to handle
+none of the due messages: there was no failure to report. D-082 found the
+cause.
 
 ## D-080 The store page's track record, and search by rating and seller level
 
@@ -1928,6 +1927,45 @@ because the next push (a documentation commit) joined the same concurrency
 group, which cancels runs in progress. The group's name now ends in whether
 the run will really work (`true` or `false`), so an ordinary push can only
 cancel another empty run.
+
+## D-082 `--once` handles every due message; a pass sends what its jobs queued
+
+**Fixes** the "one worker pass handled nothing" question (session ten).
+**Accepted.**
+
+The pass did not handle nothing. The database shows it handled exactly 100
+messages, the oldest, from 18:01 to 19:31:12, in about a second
+(`finished_at` 20:02:42 to 20:02:43), and stopped: a pass drains at most one
+batch of 100 (`DEFAULT_BATCH`). About 30 minutes of journeys without a
+worker had queued 168; the 68 newest stayed, the journey's picture among
+them. The first look counted only the 68 left (attempts 0) and wrongly
+concluded the pass had done nothing.
+
+The running worker is right to work in batches: a pass with a full batch
+starts the next at once, and between batches the scheduled jobs (an
+unanswered order expires every minute) keep their times under a backlog.
+A single pass started by hand, a script or a scheduler is different: who
+starts `--once` expects the work done. So:
+
+* `python -m markx.worker --once` handles every message due when the drain
+  starts, however many batches that is (`run_once(outbox_limit=None)`,
+  `drain(limit=None)`). That ends: each row is handled once per drain and
+  left done, failed, or due again only later than the drain's time.
+  `seed_demo` does the same. The running worker keeps its batches.
+* A pass now decides what is due when its jobs have finished, not when it
+  began. A message a job queues is stamped with the database's time inside
+  the job, after the pass began, so it waited for the next pass: found when
+  replaying the glitch, where `ops.watch` opened a backlog alert whose message
+  stayed pending. It now goes out in the same pass. A `now` passed in (the
+  tests move time) is used for both, as before.
+
+Replayed on a copy of a demo database: 246 messages waiting 35 minutes and
+the same eight jobs due; one `--once` handled 247 (the 246 and the alert
+`ops.watch` opened), none left; before the fix it stopped at 100. Two tests,
+each failing on the old code: 220 waiting messages, of which one pass of the
+running worker handles 100 and `--once` the other 120; and a message a job
+queues goes out in the same pass. The admin journey is back to one worker
+pass for its picture, without the retries added while the cause was unknown.
 
 ---
 

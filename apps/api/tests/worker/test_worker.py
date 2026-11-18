@@ -545,6 +545,50 @@ def test_the_command_runs_one_pass_and_exits(db: Session) -> None:
     assert set(db.scalars(select(ScheduledJob.name))) == {j.name for j in scheduled.JOBS}
 
 
+def test_the_command_handles_everything_that_is_due_not_one_batch(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-082: a backlog bigger than one batch (here 220 messages that waited
+    half an hour) is handled by one `--once`. The running worker keeps its
+    batches of 100, and starts the next at once when a batch was full."""
+    waited = datetime.now(UTC) - timedelta(minutes=30)
+    rows = [
+        notifications.enqueue(db, "test.topic", {"n": n}, run_after=waited)
+        for n in range(2 * outbox.DEFAULT_BATCH + 20)
+    ]
+    db.flush()
+    ids = [row.id for row in rows]
+    db.commit()
+    handler = Recorder()
+    monkeypatch.setitem(outbox.HANDLERS, "test.topic", handler)
+
+    # One pass of the running worker: one batch, the rest left for the next.
+    assert run_once(jobs=NO_JOBS).outbox.done == outbox.DEFAULT_BATCH
+    # `--once`: the other 120, more than a batch, all of them.
+    assert main(["--once"]) == 0
+    assert Counter(handler.seen) == Counter(ids)
+    db.rollback()
+    assert set(db.scalars(select(Outbox.status).where(Outbox.topic == "test.topic"))) == {"done"}
+
+
+def test_a_message_a_job_queues_goes_out_in_the_same_pass(db: Session) -> None:
+    """D-082: a message a scheduled job queues (an alert, say) is stamped
+    with the database's time inside the job, after the pass began; it is
+    sent in that pass, not left for the next."""
+    db.commit()
+
+    def queues_a_message(session: Session, _: datetime) -> int:
+        notifications.enqueue(session, "test.topic", {"from": "job"})
+        return 1
+
+    handler = Recorder()
+    job = scheduled.Job("test.queues", timedelta(hours=1), queues_a_message)
+    report = run_once(jobs=(job,), handlers={"test.topic": handler})
+    assert [(o.name, o.ok) for o in report.jobs] == [("test.queues", True)]
+    assert report.outbox.done == 1
+    assert len(handler.seen) == 1
+
+
 def test_a_pass_that_cannot_do_its_work_exits_with_an_error(
     db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

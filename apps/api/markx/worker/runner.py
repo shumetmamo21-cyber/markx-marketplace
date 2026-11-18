@@ -3,6 +3,11 @@
 One pass (`run_once`) runs every scheduled job that is due and then drains
 the outbox. The process repeats that pass until it is told to stop. Any number
 of workers may run side by side; the database decides who does what.
+
+The running worker drains at most one batch (100 messages) per pass, so under
+a backlog the scheduled jobs still run every few seconds; when a batch was
+full it starts the next pass at once. `--once` drains everything that is due
+(D-082).
 """
 
 from __future__ import annotations
@@ -41,13 +46,17 @@ def run_once(
     *,
     jobs: Sequence[scheduled.Job] = scheduled.JOBS,
     handlers: Mapping[str, outbox.Handler] = outbox.HANDLERS,
-    outbox_limit: int = outbox.DEFAULT_BATCH,
+    outbox_limit: int | None = outbox.DEFAULT_BATCH,
 ) -> PassReport:
-    """One pass. `now` is passed in, so tests move time instead of sleeping."""
-    now = now or datetime.now(UTC)
-    outcomes = scheduled.run_due_jobs(now, jobs)
+    """One pass. `now` is passed in, so tests move time instead of sleeping.
+
+    Without it, the outbox is drained as of the moment the jobs finished: a
+    message a job queued in this pass (an alert, say) is stamped with the
+    database's time inside the job, after the pass began, and still goes out
+    in this pass (D-082). `outbox_limit=None` drains everything due."""
+    outcomes = scheduled.run_due_jobs(now or datetime.now(UTC), jobs)
     try:
-        drained = outbox.drain(now, limit=outbox_limit, handlers=handlers)
+        drained = outbox.drain(now or datetime.now(UTC), limit=outbox_limit, handlers=handlers)
     except Exception as exc:
         # Only the dispatcher's own bookkeeping can raise here (the database
         # went away). A failing handler is caught per row.
@@ -74,12 +83,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(prog="python -m markx.worker", description=__doc__)
-    parser.add_argument("--once", action="store_true", help="run one pass and exit")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="run the due jobs, handle every due outbox message, and exit",
+    )
     arguments = parser.parse_args(argv)
 
     configure_logging(get_config().log_level)
     if arguments.once:
-        report = run_once()
+        # Everything that is due, however many batches that is (D-082).
+        report = run_once(outbox_limit=None)
         logger.info(
             "worker pass finished",
             extra={

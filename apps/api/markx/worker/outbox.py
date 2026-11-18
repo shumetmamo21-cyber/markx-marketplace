@@ -165,13 +165,16 @@ def _handle_next(now: datetime, handlers: Mapping[str, Handler]) -> str | None:
 def drain(
     now: datetime | None = None,
     *,
-    limit: int = DEFAULT_BATCH,
+    limit: int | None = DEFAULT_BATCH,
     handlers: Mapping[str, Handler] = HANDLERS,
 ) -> DrainReport:
-    """Handle due rows, oldest first, until none is left or `limit` is reached."""
+    """Handle due rows, oldest first, until none is left or `limit` rows were
+    handled. `limit=None` handles every row due at `now` (D-082). That ends:
+    each row is handled once per call, and leaves it done, failed, or due
+    again only after `now` (a retry is always scheduled later than `now`)."""
     now = now or datetime.now(UTC)
     report = DrainReport()
-    for _ in range(limit):
+    while limit is None or report.handled < limit:
         outcome = _handle_next(now, handlers)
         if outcome is None:
             break

@@ -79,18 +79,17 @@ without a screen are Telegram sign-in and linking (they need the bot), the
 development SMS inbox, the health checks and the file links the API hands
 out. Final checks: 948 API tests; 33 web unit tests; the buyer, staff,
 admin, seller-dashboard and setup-and-account journeys passed in Chromium
-with no console errors; GitHub Actions run #63 passed. **One open
-question** for the next session: a single worker pass in one admin journey
-run handled none of the outbox messages that were due, with no error
-anywhere; it did not recur (`docs/DEVELOPMENT_STATUS.md`, Known problems).
+with no console errors; GitHub Actions run #63 passed. One open question
+was left: a single worker pass in one admin journey run seemed to handle
+none of the outbox messages that were due. Solved later (D-082, below).
 
 **Third round** (the founder: "do it now from the list you can do with
 accuracy; if not, skip and summarise"). Done: a store's page shows its
 track record over 90 days (how many orders it accepts, how fast, how many
 deliveries succeed) and search can filter by product rating and seller
 level (`3511e0e`, D-080); a single worker pass (`--once`) now exits with an
-error when a job failed or the outbox could not be drained, so the open
-question above can no longer pass unnoticed (`c6b7a29`, D-079); and the six
+error when a job failed or the outbox could not be drained (`c6b7a29`,
+D-079); and the six
 browser journeys run on GitHub's free runners against a fresh demo database
 when a commit message contains `[journeys]` (D-081). Their first run was
 cancelled by my own next push; fixed (`b4bff76`), run #4 passed all six
@@ -103,6 +102,15 @@ delivery zone yet: back-end work first); a native speaker's review of the
 Amharic (needs a person). Final checks: 951 API tests, 33 web unit tests,
 the web build (66 pages), every lint and type check clean; on GitHub, the
 six journeys (run #5) and CI run #81 passed on `876c1d9`.
+
+**Fourth round** (the founder: "one unexplained glitch: fix it"). It was
+not a glitch in the database: the worker pass handled exactly 100 messages
+(one batch), the oldest, and stopped; the 68 newer ones it left were the
+only ones the first look counted. `--once` now handles every due message,
+and a pass also sends what its own scheduled jobs queued (D-082). Two new
+tests fail on the old code and pass now; 953 API tests pass; the admin
+journey, given a backlog of 196 messages, passed with one worker pass that
+handled 225 and left none.
 
 **Still to build on the web:** Telegram sign-in and the Mini App once the
 founder creates the bot; delivery speed as a search filter and "total cost
@@ -424,7 +432,7 @@ log -5 FETCH_HEAD`.
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
 `docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
-(D-001 to D-081; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
+(D-001 to D-082; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 are open), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
 Next.js 16 differs from your training: read
 `apps/web/node_modules/next/dist/docs/` before using a feature.
@@ -436,7 +444,7 @@ PGPASSWORD=postgres_dev_only infra/postgres/bootstrap.sh markx`. Then:
 
 ```bash
 cd apps/api && uv sync
-uv run pytest                  # expect 951 passed, ten to fourteen minutes
+uv run pytest                  # expect 953 passed, ten to fourteen minutes
 uv run ruff check . && uv run ruff format --check . && uv run mypy markx
 uv run alembic upgrade head && uv run alembic check
 uv run python -m scripts.check_openapi_copy --exact openapi.json

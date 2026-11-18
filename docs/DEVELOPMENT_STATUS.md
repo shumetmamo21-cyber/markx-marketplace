@@ -9,7 +9,8 @@ search suggestions, the shop's location, closing and product suggestions,
 the staff's trust actions, delivery zones and catalogue setup (D-076 to
 D-078); in a third round, a store's track record on its page, search by
 rating and seller level, a worker pass that reports failure, and the
-browser journeys on GitHub (D-079 to D-081)). The ninth session built every admin screen (D-069 to
+browser journeys on GitHub (D-079 to D-081); then the cause of the "worker
+pass that handled nothing", fixed (D-082)). The ninth session built every admin screen (D-069 to
 D-071); a back-end-only continuation in parallel added the seller
 performance figures and the weekly seller message (D-073), merged in this
 session.
@@ -323,8 +324,11 @@ Code: `markx/offers/`. Routes: `/seller/{seller_id}/offers...`,
 ### The worker (blueprint F.8, D.16, P2)
 
 Code: `markx/worker/`. Command: `uv run python -m markx.worker` (`--once`
-runs one pass and exits with 1 when a job failed or the outbox could not be
-drained, D-079). Decisions D-034 and D-035.
+runs the due jobs, handles every due outbox message and exits, with 1 when a
+job failed or the outbox could not be drained; D-079, D-082). Decisions
+D-034 and D-035. The running worker handles at most 100 messages per pass,
+so the jobs keep their times under a backlog, and starts the next pass at
+once after a full batch; a pass sends what its own jobs queued (D-082).
 
 - **Scheduled jobs**, one row each in `scheduled_jobs` (migration `0006`):
   `orders.expire_unanswered` every minute, `sellers.activate_due_payout_accounts`
@@ -341,7 +345,7 @@ drained, D-079). Decisions D-034 and D-035.
   to the person's Telegram when they have linked it. **The only push adapter
   is a fake**; on a real server the factory refuses it, so nothing is ever
   pretended sent.
-- Tested (23 tests, `tests/worker/test_worker.py`): a committed message is
+- Tested (25 tests, `tests/worker/test_worker.py`): a committed message is
   delivered exactly once and one from a rolled-back transaction never (P2
   completion criterion 2); retries with growing delays; two workers never
   take the same row or run the same job; eight workers deliver 120 messages
@@ -854,15 +858,10 @@ Be careful with these. They were written and never exercised.
   working as designed); repeated journey runs reach it with the one demo
   buyer, so `admin-queues.mjs` lifts it through the staff settings route for
   its one review and restores it at once.
-- **Open question: one worker pass handled nothing.** In one run of
-  `admin-queues.mjs`, `python -m markx.worker --once` ran its eight due jobs
-  (all recorded as succeeded at 20:02:42) and exited without handling any of
-  the 68 outbox messages that were due, none of them even attempted; the
-  database logged no error. The next three passes, by hand and in the
-  rerun, handled everything at once, and it did not recur. The cause is not
-  known. The journey now keeps the worker's report and retries the pass up
-  to three times. If it recurs, read that report: a drain that stopped on an
-  exception logs "could not drain the outbox" (`markx/worker/runner.py`).
+- **Solved: the worker pass that "handled nothing"** (session ten's open
+  question). It handled exactly 100 messages, one batch, and stopped; the
+  68 newer ones it left were the only ones looked at. `--once` now handles
+  every due message, and a pass sends what its own jobs queued (D-082).
 - **`setup-and-account.mjs` leaves its traces switched off**: per run one
   closed demo shop, an archived product and an archived proposal, an
   inactive "Gadgets" category, an inactive test zone, a demo brand and a
@@ -929,6 +928,26 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Tenth session, fourth round** (D-082, the worker pass that "handled nothing"):
+
+```text
+# the cause, read from the demo database
+  the pass at 20:02:42 finished exactly 100 messages (run_after 18:01:14 to
+  19:31:12.102, finished_at 20:02:42.623 to 20:02:43.734); 68 newer were left
+# the two new tests, on the old code first
+$ uv run pytest tests/worker -k "not_one_batch or same_pass" -> 2 failed
+  (--once left 20 of 220 messages; a message a job queued: done 0, not 1)
+# on the fixed code
+$ uv run pytest tests/worker -> 25 passed
+$ uv run pytest -> 953 passed in 588.89s (0:09:48)
+  ruff check -> All checks passed!; mypy markx -> no issues found in 123 source files
+# replays on a copy of the demo database (markx_ci)
+$ 246 messages waiting 35 minutes, the eight jobs due; one --once -> exit 0,
+  outbox_done 247 (with the alert ops.watch opened), none left
+$ 196 waiting, then node e2e/admin-queues.mjs (one worker pass for its picture)
+  -> 15 steps passed, "console errors: none"; that pass handled 225, none left
+```
+
 **Tenth session, third round** (D-079 to D-081):
 
 ```text
@@ -971,8 +990,8 @@ $ cd apps/api && uv run pytest ->  948 passed in 736.30s (0:12:16)
   ruff check, ruff format --check, mypy (123 files), alembic check -> clean
 $ MARKX_DEMO_TOTP_SECRET=… node e2e/staff-journey.mjs ->  6 steps passed, "console errors: none"
 $ MARKX_DEMO_TOTP_SECRET=… node e2e/admin-queues.mjs  -> 15 steps passed, "console errors: none"
-  (its first run on this tree stopped at step 13: see Known problems, "one
-  worker pass handled nothing")
+  (its first run on this tree stopped at step 13: its worker pass handled
+  one batch of 100 messages and left the picture's; solved by D-082)
   GitHub Actions run #63 on b12602a: success
 # shop-screens.mjs was not rerun after the second round: the demo buyer is at
 # the review hold limit for all three demo shops (Known problems); it passed
@@ -1115,7 +1134,7 @@ application code contains no `type: ignore`; the suite treats warnings as
 errors. **Never run two test sessions at once**: they share `markx_test`
 (session five lost one run to that).
 
-Recounted by the tenth session from `pytest --collect-only` (951 tests, 48 files):
+Recounted by the tenth session from `pytest --collect-only` (953 tests, 48 files):
 
 | File | Tests |
 | --- | --- |
@@ -1166,8 +1185,8 @@ Recounted by the tenth session from `pytest --collect-only` (951 tests, 48 files
 | `tests/api/test_seller_staff_permissions.py` | 23 |
 | `tests/api/test_seller_team.py` | 13 |
 | `tests/api/test_tracking.py` | 2 |
-| `tests/worker/test_worker.py` | 23 |
-| **Total** | **951** |
+| `tests/worker/test_worker.py` | 25 |
+| **Total** | **953** |
 
 Counted by `uv run pytest --collect-only -q` on the final head.
 

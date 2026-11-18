@@ -178,7 +178,7 @@ In a second terminal:
 
 ```bash
 uv run python -m markx.worker          # runs until Ctrl-C
-uv run python -m markx.worker --once   # one pass, then exit
+uv run python -m markx.worker --once   # the due jobs and every due message, then exit
 ```
 
 It runs the scheduled jobs (expiring unanswered orders, completing delivered

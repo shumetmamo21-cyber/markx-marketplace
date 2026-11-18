@@ -298,7 +298,7 @@ def main() -> int:
               "landmark": "Behind the demo building, blue gate"},
     )  # fmt: skip
 
-    run_once(datetime.now(UTC))  # build the search documents
+    run_once(datetime.now(UTC), outbox_limit=None)  # the search documents, every message
     sys.stdout.write(
         "DEMO data created (local only; none of it is real).\n"
         f"  Staff sign-in: phone {STAFF_PHONE}, password {STAFF_PASSWORD}\n"
