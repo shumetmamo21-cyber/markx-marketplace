@@ -3204,8 +3204,9 @@ encryption and signature tests (every size across chunk boundaries, a bit
 changed anywhere, truncation at every boundary, extension, chunks swapped,
 dropped or repeated, a foreign header, wrong keys, key rings, legacy files,
 key files), 16 configuration tests, 11 retention tests, 16 monitoring tests,
-19 PostgreSQL-and-MinIO recovery tests (a full database-and-file recovery
-from data made through the API, incremental runs, a missing file, a failed,
+22 PostgreSQL-and-MinIO recovery tests (a full database-and-file recovery
+from data made through the API, incremental runs, a missing file, a source
+file that does not match its ETag, a key rotation, an unmigrated database, a failed,
 empty or foreign dump, an unreachable destination, an interrupted backup
 resumed, overlapping runs, a dead run, a public or missing bucket, a
 read-back mismatch, an aborted multipart upload, path and link escapes,

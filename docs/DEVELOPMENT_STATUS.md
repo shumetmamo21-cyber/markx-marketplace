@@ -1307,6 +1307,47 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Off-server backup and disaster recovery** (D-094), on 18 November 2026,
+commits `c7d0d82` to `3922579` (on `866a184`), PostgreSQL 17 and MinIO
+(`bitnamilegacy/minio:2025.7.23`) in Docker on the session's machine,
+PostgreSQL 17 client tools from the `postgres:17` image. **No real provider,
+bucket or key was used; nothing left this machine.**
+
+```text
+# API, the whole suite (with MinIO and the backup tests required)
+$ uv run pytest               ->  1748 passed in 718.74s (0:11:58)
+  (run on 95af1a0's code; the three fixes after it, a corrupt source file,
+   key rotation and an unmigrated database, were then run as:)
+$ uv run pytest tests/unit/test_backup_*.py tests/api/test_backup_monitoring.py \
+    tests/storage/test_backup_recovery.py tests/api/test_ops.py tests/db/test_migrations.py
+                              ->  114 passed in 82.18s
+  new tests: 33 encryption/keys/signatures, 16 configuration, 11 retention,
+  16 monitoring, 22 PostgreSQL+MinIO backup and recovery
+$ uv run ruff check .          ->  All checks passed!
+$ uv run ruff format --check . ->  233 files already formatted
+$ uv run mypy markx            ->  Success: no issues found in 144 source files
+$ uv run alembic check         ->  No new upgrade operations detected.
+$ uv run python -m scripts.check_openapi_copy --exact openapi.json -> matches exactly
+$ uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json -> matches exactly
+# the CI drill step, replayed locally on a fresh demo database
+$ python -m markx.backup drill --seed-sample-files ...
+                              ->  DRILL PASSED: 76 tables, 368 rows, 19 files (16 private,
+                                  3 public), 12 references resolved, 7 of 7 faults refused
+# the backup image (docker build --target backup apps/api, via mirror.gcr.io)
+                              ->  uid 999, pg_dump/pg_restore/psql 17.12; the drill run
+                                  inside it: DRILL PASSED
+# the production Compose backup service (postgres, minio, migrate, backup, with
+# the rehearsal's override and settings; a partial rehearsal by hand)
+                              ->  healthy; markx user, read-only root; a complete signed
+                                  set; local copy MXB2, owner 999, mode 600; as production
+                                  it refuses MinIO (exit 2, no secret printed); the drill
+                                  passes inside the stack; SIGTERM stop in 2 s, exit 0
+# NOT run locally: the full rehearsal (rehearse.sh). Docker Hub refused the
+# nginx image (429, rate limit) and the GitHub registry is blocked here; CI
+# runs it. Gitleaks: not installed here; CI runs it.
+```
+
+
 **Telegram account connection** (D-093), on 18 November 2026, commits
 `9d0a5ef` to `76b16b0` (on `366f8f9`), PostgreSQL 17 in Docker on the
 session's machine, no MinIO locally. **Telegram was never contacted: every
