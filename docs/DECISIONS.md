@@ -1871,6 +1871,34 @@ the due messages (Known problems): there the jobs were recorded as
 succeeded, and no error appeared in the database log. It would make such a
 pass visible if it failed.
 
+## D-080 The store page's track record, and search by rating and seller level
+
+**Follows** blueprint D.4 and I.5 (a store page shows "confirmation speed,
+delivery success and rating") and D.8 (filters include "seller level and
+rating"). **Accepted**; the 90-day window is the engineer's and the founder
+may change it.
+
+- **Track record.** `PublicStoreOut` gains `figures_days` (90),
+  `confirmation_share`, `median_minutes_to_confirm` and
+  `delivery_success_share`, from the same figures as the store's own
+  performance page (D-073), each null while there is nothing to count. The
+  store page shows them in words; under a minute reads "within a minute".
+  The rating was already there (D-072).
+- **Search.** `GET /search` gains `min_rating` (1 to 5): the product's
+  average from its published reviews, written as `rating_sum >= min_rating
+  * review_count`; a product nobody rated is left out while the filter is
+  on. The search page offers "4 stars and up" and "3 stars and up", and the
+  seller level filter the API already had (`min_level`).
+- **Not done:** delivery speed as a filter and "total cost to the door" as a
+  sort (D.8). Both need the buyer's delivery zone in search, which the
+  search documents do not hold.
+- **Not done on purpose:** a rating on the product card. Blueprint D.9 lists
+  the card's facts (photo, name, "from" price, sellers, best seller level,
+  freshness) and a rating is not one of them.
+
+Additive changes (D-061): one test each (`test_performance.py`,
+`test_reviews.py`).
+
 ---
 
 ## Decisions that need the founder

@@ -146,7 +146,8 @@ let browser;
   watch(staff, 'staff');
   const asStaff = await staffSignIn(staff);
   // What an interrupted earlier run left switched on is this journey's own
-  // (e2e_ zones, e2e-gadgets- categories): switch it off first.
+  // (e2e_ zones, e2e-gadgets- categories, its test products): switch it off
+  // or archive it first.
   for (const z of (await asStaff('GET', '/api/v1/admin/delivery/zones')).body) {
     if (z.code.startsWith('e2e_') && z.is_active) await asStaff('PATCH', `/api/v1/admin/delivery/zones/${z.id}`, { is_active: false });
   }
@@ -154,6 +155,11 @@ let browser;
   const everyCategory = (nodes) => nodes.flatMap((n) => [n, ...everyCategory(n.children)]);
   for (const c of everyCategory(tree)) {
     if (c.slug.startsWith('e2e-gadgets-') && c.is_active) await asStaff('PATCH', `/api/v1/admin/catalog/categories/${c.id}`, { is_active: false });
+  }
+  for (const status of ['approved', 'pending_review', 'draft']) {
+    for (const p of (await asStaff('GET', `/api/v1/admin/catalog/products?status=${status}&limit=200&lang=en`)).body ?? []) {
+      if (/^(test-gadget|shop-suggestion)-\d+$/.test(p.slug)) await asStaff('POST', `/api/v1/admin/catalog/products/${p.id}/archive`, { note: 'Demo product left by an interrupted run' });
+    }
   }
   await staff.goto(`${BASE}/en/admin/delivery`);
   const zoneCode = `e2e_${RUN}`;

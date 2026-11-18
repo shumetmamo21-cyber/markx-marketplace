@@ -52,7 +52,13 @@
     "requestFailed": "We could not send that. Check the phone number and try again.",
     "categoryAll": "Filter and sort",
     "categoryEmpty": "Nothing in this category yet.",
-    "suggestions": "Suggestions"
+    "suggestions": "Suggestions",
+    "rating": "Rating",
+    "anyRating": "Any rating",
+    "ratingAtLeast": "{stars} stars and up",
+    "sellerLevel": "Seller level",
+    "anyLevel": "Any level",
+    "levelAtLeast": "Level {level} and up"
   },
   "card": {
     "from": "from {price}",
@@ -286,7 +292,13 @@
     "check_tin_verified": "Tax number (TIN)",
     "check_shop_photo_verified": "Shop photo",
     "check_shop_visited": "Shop visited by MarkX",
-    "directions": "Directions on a map"
+    "directions": "Directions on a map",
+    "trackTitle": "Track record, last {days} days",
+    "confirmShare": "Accepts {share} of orders",
+    "confirmTime": "Usually accepts within {minutes} min",
+    "deliveryShare": "{share} of deliveries succeed",
+    "noTrack": "No orders to count yet.",
+    "confirmTimeFast": "Usually accepts within a minute"
   },
   "apiErrors": {
     "too_many_open_orders": "You already have the most open orders allowed. Wait until one is delivered or cancel one.",

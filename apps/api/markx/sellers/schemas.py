@@ -179,6 +179,13 @@ class PublicStoreOut(ApiModel):
     checks: dict[str, bool]
     member_since: datetime
     completed_orders: int
+    # The store's track record over the last `figures_days` days, from the
+    # same figures as its performance page (blueprint D.4, I.5; D-080):
+    # shares from 0 to 1, or null with nothing to count yet.
+    figures_days: int
+    confirmation_share: float | None
+    median_minutes_to_confirm: float | None
+    delivery_success_share: float | None
 
 
 # -- staff -----------------------------------------------------------------------

@@ -31,6 +31,7 @@ from markx.core.errors import NotFound
 from markx.core.ethiopic import detect_script, normalize_text, skeleton_key
 from markx.images.selectors import first_thumbnails
 from markx.search.models import SearchDocument, SearchQuery, SearchSynonym
+from markx.trust.models import RatingSummary
 
 Sort = Literal["relevance", "price", "freshness"]
 
@@ -189,6 +190,7 @@ def search(
     min_price: int | None = None,
     max_price: int | None = None,
     min_level: int | None = None,
+    min_rating: int | None = None,
     in_stock_only: bool = False,
     sort: Sort = "relevance",
     limit: int = 20,
@@ -231,6 +233,20 @@ def search(
         statement = statement.where(SearchDocument.min_price_santim <= max_price)
     if min_level is not None:
         statement = statement.where(SearchDocument.best_seller_level >= min_level)
+    if min_rating is not None:
+        # The product's average rating from its published reviews (D.8's
+        # rating filter; D-080): rating_sum / review_count >= min_rating,
+        # written without division. A product nobody has rated is left out.
+        statement = statement.where(
+            select(RatingSummary.subject_id)
+            .where(
+                RatingSummary.subject_type == "product",
+                RatingSummary.subject_id == SearchDocument.product_id,
+                RatingSummary.review_count > 0,
+                RatingSummary.rating_sum >= min_rating * RatingSummary.review_count,
+            )
+            .exists()
+        )
     if in_stock_only:
         statement = statement.where(SearchDocument.in_stock)
 

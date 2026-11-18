@@ -34,6 +34,8 @@ export default async function SearchPage({ params, searchParams }: PageProps<"/[
   const condition = one(raw.condition);
   const maxBirr = Number.parseInt(one(raw.max), 10);
   const inStock = one(raw.stock) === "1";
+  const rating = ["3", "4"].includes(one(raw.rating)) ? one(raw.rating) : "";
+  const level = ["1", "2", "3"].includes(one(raw.level)) ? one(raw.level) : "";
   const sortValue = one(raw.sort);
   const sort: Sort = (SORTS as readonly string[]).includes(sortValue) ? (sortValue as Sort) : "relevance";
   const page = Math.max(1, Number.parseInt(one(raw.page), 10) || 1);
@@ -48,6 +50,8 @@ export default async function SearchPage({ params, searchParams }: PageProps<"/[
           condition: condition || undefined,
           max_price: Number.isFinite(maxBirr) && maxBirr > 0 ? maxBirr * 100 : undefined,
           in_stock: inStock,
+          min_rating: rating ? Number(rating) : undefined,
+          min_level: level ? Number(level) : undefined,
         },
       },
     }),
@@ -60,7 +64,7 @@ export default async function SearchPage({ params, searchParams }: PageProps<"/[
 
   const pageLink = (target: number) => {
     const next = new URLSearchParams();
-    for (const [key, value] of Object.entries({ q, category, condition, max: one(raw.max), stock: inStock ? "1" : "", sort: sort === "relevance" ? "" : sort })) {
+    for (const [key, value] of Object.entries({ q, category, condition, max: one(raw.max), stock: inStock ? "1" : "", rating, level, sort: sort === "relevance" ? "" : sort })) {
       if (value) next.set(key, value);
     }
     if (target > 1) next.set("page", String(target));
@@ -72,9 +76,9 @@ export default async function SearchPage({ params, searchParams }: PageProps<"/[
     <div className="space-y-5">
       <h1 className="text-xl font-bold" aria-live="polite">{heading}</h1>
 
-      <details className="rounded-card border border-line bg-white" open={Boolean(category || condition || inStock || one(raw.max))}>
+      <details className="rounded-card border border-line bg-white" open={Boolean(category || condition || inStock || one(raw.max) || rating || level)}>
         <summary className="flex min-h-12 cursor-pointer items-center px-4 font-semibold">{t.search.filters}</summary>
-        <form method="get" action={`/${lang}/search`} className="grid gap-4 border-t border-line p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <form method="get" action={`/${lang}/search`} className="grid gap-4 border-t border-line p-4 sm:grid-cols-2 lg:grid-cols-4">
           <input type="hidden" name="q" value={q} />
           <label className="space-y-1">
             <span className="block text-sm font-semibold">{t.search.category}</span>
@@ -99,6 +103,20 @@ export default async function SearchPage({ params, searchParams }: PageProps<"/[
             <input name="max" type="number" min={1} inputMode="numeric" defaultValue={one(raw.max)} className="min-h-12 w-full rounded-card border border-line bg-white px-3" />
           </label>
           <label className="space-y-1">
+            <span className="block text-sm font-semibold">{t.search.rating}</span>
+            <select name="rating" defaultValue={rating} className="min-h-12 w-full rounded-card border border-line bg-white px-3">
+              <option value="">{t.search.anyRating}</option>
+              {["4", "3"].map((stars) => <option key={stars} value={stars}>{fill(t.search.ratingAtLeast, { stars })}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="block text-sm font-semibold">{t.search.sellerLevel}</span>
+            <select name="level" defaultValue={level} className="min-h-12 w-full rounded-card border border-line bg-white px-3">
+              <option value="">{t.search.anyLevel}</option>
+              {["1", "2", "3"].map((value) => <option key={value} value={value}>{fill(t.search.levelAtLeast, { level: value })}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1">
             <span className="block text-sm font-semibold">{t.search.sort}</span>
             <select name="sort" defaultValue={sort} className="min-h-12 w-full rounded-card border border-line bg-white px-3">
               <option value="relevance">{t.search.sortRelevance}</option>
@@ -112,7 +130,7 @@ export default async function SearchPage({ params, searchParams }: PageProps<"/[
               <span>{t.search.inStock}</span>
             </label>
           </div>
-          <div className="flex gap-3 sm:col-span-2 lg:col-span-5">
+          <div className="flex gap-3 sm:col-span-2 lg:col-span-4">
             <button type="submit" className="min-h-12 rounded-card bg-adey px-5 font-bold">{t.search.apply}</button>
             <Link href={`/${lang}/search${q ? `?q=${encodeURIComponent(q)}` : ""}`} className="inline-flex min-h-12 items-center px-3 font-semibold underline">
               {t.search.clear}

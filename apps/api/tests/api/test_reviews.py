@@ -392,3 +392,23 @@ def test_the_buyer_is_told_when_the_window_to_change_a_review_has_closed(
         f"/me/reviews/{written['id']}", json={"product_rating": 1, "seller_rating": 1}
     )
     assert error_code(refused) == "review_window_closed"
+
+
+def test_search_filters_by_the_products_rating(bazaar: Bazaar) -> None:
+    """D.8's rating filter (D-080): the product's average from its published
+    reviews; a product nobody rated is left out while the filter is on."""
+
+    def slugs(min_rating: int) -> list[str]:
+        found = ApiClient().get("/search", params={"q": "", "min_rating": min_rating})
+        assert found.status_code == 200, found.text
+        return [r["slug"] for r in found.json()["results"]]
+
+    _recount()
+    assert bazaar.product["slug"] not in slugs(1)
+    bought = Bought(bazaar, [(bazaar.a128, 1)])
+    (item,) = bought.items()
+    assert bought.review(item, product_rating=4).status_code == 201
+    _recount()
+    assert bazaar.product["slug"] in slugs(4)
+    assert bazaar.product["slug"] not in slugs(5)
+    assert ApiClient().get("/search", params={"min_rating": 6}).status_code == 422

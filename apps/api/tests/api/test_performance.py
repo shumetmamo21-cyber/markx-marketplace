@@ -142,3 +142,20 @@ def test_weeks_run_monday_to_sunday_in_addis_ababa() -> None:
     )
     start, end = performance.week_bounds(date(2026, 11, 16))
     assert (start, end - start) == (datetime(2026, 11, 15, 21, 0, tzinfo=UTC), timedelta(days=7))
+
+
+def test_the_store_page_shows_its_track_record(bazaar: Bazaar) -> None:
+    """Blueprint D.4 and I.5: a store page shows confirmation speed and
+    delivery success, from the performance figures (D-080)."""
+    page = ApiClient().get("/catalog/stores/beta").json()
+    assert (page["figures_days"], page["confirmation_share"], page["delivery_success_share"]) == (
+        90, None, None,
+    )  # fmt: skip
+    assert page["median_minutes_to_confirm"] is None  # no order yet: nothing to count
+
+    Bought(bazaar, [(bazaar.a128, 1)])
+    page = ApiClient().get("/catalog/stores/alpha").json()
+    assert page["confirmation_share"] == 1.0
+    assert page["delivery_success_share"] == 1.0
+    assert page["median_minutes_to_confirm"] is not None
+    assert page["median_minutes_to_confirm"] >= 0

@@ -52,7 +52,13 @@
     "requestFailed": "መላክ አልቻልንም። ስልክ ቁጥሩን አረጋግጠው እንደገና ይሞክሩ።",
     "categoryAll": "አጣራና ደርድር",
     "categoryEmpty": "በዚህ ምድብ ውስጥ ገና ምንም የለም።",
-    "suggestions": "ጥቆማዎች"
+    "suggestions": "ጥቆማዎች",
+    "rating": "ደረጃ",
+    "anyRating": "ማንኛውም ደረጃ",
+    "ratingAtLeast": "{stars} ኮከብ እና ከዚያ በላይ",
+    "sellerLevel": "የሻጭ ደረጃ",
+    "anyLevel": "ማንኛውም ደረጃ",
+    "levelAtLeast": "ደረጃ {level} እና ከዚያ በላይ"
   },
   "card": {
     "from": "ከ{price} ጀምሮ",
@@ -286,7 +292,13 @@
     "check_tin_verified": "የግብር ከፋይ ቁጥር",
     "check_shop_photo_verified": "የሱቅ ፎቶ",
     "check_shop_visited": "ሱቁ በማርክኤክስ ተጎብኝቷል",
-    "directions": "በካርታ ላይ አቅጣጫ"
+    "directions": "በካርታ ላይ አቅጣጫ",
+    "trackTitle": "ያለፉት {days} ቀናት አፈጻጸም",
+    "confirmShare": "ከትዕዛዞች {share} ይቀበላል",
+    "confirmTime": "ብዙ ጊዜ በ{minutes} ደቂቃ ውስጥ ይቀበላል",
+    "deliveryShare": "ከማድረሶች {share} ይሳካሉ",
+    "noTrack": "ገና የሚቆጠር ትዕዛዝ የለም።",
+    "confirmTimeFast": "ብዙ ጊዜ በአንድ ደቂቃ ውስጥ ይቀበላል"
   },
   "apiErrors": {
     "too_many_open_orders": "የተፈቀደውን ያህል ክፍት ትዕዛዞች አሉዎት። አንዱ እስኪደርስ ይጠብቁ ወይም አንዱን ይሰርዙ።",

@@ -4953,8 +4953,16 @@ export interface components {
             };
             /** Completed Orders */
             completed_orders: number;
+            /** Confirmation Share */
+            confirmation_share: number | null;
+            /** Delivery Success Share */
+            delivery_success_share: number | null;
             /** Description */
             description: string;
+            /** Figures Days */
+            figures_days: number;
+            /** Median Minutes To Confirm */
+            median_minutes_to_confirm: number | null;
             /**
              * Member Since
              * Format: date-time
@@ -10287,6 +10295,7 @@ export interface operations {
                 min_price?: number | null;
                 max_price?: number | null;
                 min_level?: number | null;
+                min_rating?: number | null;
                 in_stock?: boolean;
                 sort?: "relevance" | "price" | "freshness";
                 limit?: number;

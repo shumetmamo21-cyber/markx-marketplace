@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { ReportForm } from "@/components/ReportForm";
 import { RatingSummary, ReviewItem } from "@/components/Reviews";
 import { serverApi } from "@/lib/api/server";
-import { formatDateTime, formatPrice } from "@/lib/format";
+import { formatDateTime, formatPrice, formatShare } from "@/lib/format";
 import { fill, isLocale, type Messages } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
 
@@ -61,6 +61,18 @@ export default async function StorePage({ params, searchParams }: PageProps<"/[l
           {fill(t.store.memberSince, { date: formatDateTime(s.member_since, lang) })} · {fill(t.store.completed, { count: s.completed_orders })}
         </p>
         {s.description ? <p className="max-w-prose">{s.description}</p> : null}
+        <div className="rounded-card border border-line bg-white p-3 text-sm">
+          <p className="font-semibold">{fill(t.store.trackTitle, { days: s.figures_days })}</p>
+          {s.confirmation_share === null && s.delivery_success_share === null ? (
+            <p className="text-slate">{t.store.noTrack}</p>
+          ) : (
+            <ul className="flex flex-wrap gap-x-4">
+              {s.confirmation_share !== null ? <li>{fill(t.store.confirmShare, { share: formatShare(s.confirmation_share) })}</li> : null}
+              {s.median_minutes_to_confirm !== null ? <li>{s.median_minutes_to_confirm < 1 ? t.store.confirmTimeFast : fill(t.store.confirmTime, { minutes: Math.round(s.median_minutes_to_confirm) })}</li> : null}
+              {s.delivery_success_share !== null ? <li>{fill(t.store.deliveryShare, { share: formatShare(s.delivery_success_share) })}</li> : null}
+            </ul>
+          )}
+        </div>
         <ReportForm target={{ type: "store", slug: s.slug }} t={reportText} />
       </header>
 

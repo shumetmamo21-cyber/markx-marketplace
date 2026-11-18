@@ -5684,9 +5684,46 @@
             "title": "Completed Orders",
             "type": "integer"
           },
+          "confirmation_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Share"
+          },
+          "delivery_success_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Success Share"
+          },
           "description": {
             "title": "Description",
             "type": "string"
+          },
+          "figures_days": {
+            "title": "Figures Days",
+            "type": "integer"
+          },
+          "median_minutes_to_confirm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Minutes To Confirm"
           },
           "member_since": {
             "format": "date-time",
@@ -5770,7 +5807,11 @@
           "verification_level",
           "checks",
           "member_since",
-          "completed_orders"
+          "completed_orders",
+          "figures_days",
+          "confirmation_share",
+          "median_minutes_to_confirm",
+          "delivery_success_share"
         ],
         "title": "PublicStoreOut",
         "type": "object"
@@ -15907,6 +15948,24 @@
                 }
               ],
               "title": "Min Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_rating",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 5,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Rating"
             }
           },
           {

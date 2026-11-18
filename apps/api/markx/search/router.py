@@ -67,6 +67,7 @@ def search_products(
     min_price: Annotated[int | None, Query(ge=0)] = None,
     max_price: Annotated[int | None, Query(ge=0)] = None,
     min_level: Annotated[int | None, Query(ge=0, le=3)] = None,
+    min_rating: Annotated[int | None, Query(ge=1, le=5)] = None,
     in_stock: bool = False,
     sort: Literal["relevance", "price", "freshness"] = "relevance",
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
@@ -81,7 +82,7 @@ def search_products(
         selectors.search(
             db, q, language=lang, category=category, brand=brand, condition=condition,
             min_price=min_price, max_price=max_price, min_level=min_level,
-            in_stock_only=in_stock, sort=sort, limit=limit, offset=offset,
+            min_rating=min_rating, in_stock_only=in_stock, sort=sort, limit=limit, offset=offset,
             user_id=principal.user.id if principal else None,
         )
     )  # fmt: skip

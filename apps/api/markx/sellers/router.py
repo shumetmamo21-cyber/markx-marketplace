@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
@@ -34,6 +34,7 @@ from markx.core import ratelimit, settings_store
 from markx.core.errors import NotFound, PermissionDenied
 from markx.core.http import Db
 from markx.core.schemas import Ok
+from markx.performance import service as performance
 from markx.sellers import selectors, service
 from markx.sellers.models import DocumentType, Seller, Store
 from markx.sellers.schemas import (
@@ -302,7 +303,13 @@ def remove_member(member_id: uuid.UUID, context: AnyMember, request: Request, db
 # -- public store page -----------------------------------------------------------
 
 
+# How far back the store page's track record looks (D-080).
+PUBLIC_FIGURES_DAYS = 90
+
+
 def _public_store_out(db: Db, seller: Seller, store: Store) -> PublicStoreOut:
+    now = datetime.now(UTC)
+    record = performance.figures(db, seller.id, now - timedelta(days=PUBLIC_FIGURES_DAYS), now)
     return PublicStoreOut(
         slug=store.slug,
         name=store.name,
@@ -319,6 +326,10 @@ def _public_store_out(db: Db, seller: Seller, store: Store) -> PublicStoreOut:
         checks=service.verification_checks(db, seller),
         member_since=seller.verified_at or seller.created_at,
         completed_orders=selectors.completed_order_count(db, seller.id),
+        figures_days=PUBLIC_FIGURES_DAYS,
+        confirmation_share=record["confirmation_share"],
+        median_minutes_to_confirm=record["median_minutes_to_confirm"],
+        delivery_success_share=record["delivery_success_share"],
     )
 
 
