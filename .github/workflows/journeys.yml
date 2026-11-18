@@ -151,6 +151,26 @@ jobs:
           node e2e/sign-in-cooldown.mjs
           cooldown 0
 
+      # D-093: connecting Telegram. First as every server starts (switched
+      # off: nothing offered), then with the API recreated with TEST-ONLY
+      # values, the journey itself playing Telegram by calling the webhook
+      # with the secret. No bot exists and nothing reaches Telegram. The API
+      # is then recreated with linking off again.
+      - name: Telegram connection, switched off (the default)
+        working-directory: apps/web
+        run: node e2e/telegram-connection.mjs off "$RUNNER_TEMP/shots"
+      - name: Telegram connection, switched on with test-only values (Telegram played by the journey)
+        env:
+          MARKX_TELEGRAM_LINKING_ENABLED: "true"
+          MARKX_TELEGRAM_BOT_USERNAME: markx_test_only_bot
+          MARKX_TELEGRAM_WEBHOOK_SECRET: test-only-journey-webhook-secret-0123456789abcdef
+        run: |
+          $COMPOSE up -d --wait api
+          cd apps/web && node e2e/telegram-connection.mjs on "$RUNNER_TEMP/shots"
+      - name: Telegram linking off again
+        if: always()
+        run: $COMPOSE up -d --wait api
+
       # D-085: the same build, served again with a Turnstile site key. The
       # journey answers every request to challenges.cloudflare.com itself, so
       # nothing reaches Cloudflare; the value is a placeholder, not a key.

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { AddAddress, DataRequestForm, MarkNotificationsRead, ProfileForm, RemoveAddress, SignOutEverywhere } from "@/components/AccountForms";
 import { SignOutButton } from "@/components/SignOutButton";
+import { TelegramConnection } from "@/components/TelegramConnection";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
@@ -17,7 +18,8 @@ export const metadata: Metadata = { robots: { index: false } };
 const NEWEST = 10;
 
 // The buyer's account (blueprint I.5): name and language, saved addresses,
-// messages from MarkX, their data (H.5) and signing out everywhere.
+// messages from MarkX, their Telegram connection (D-093), their data (H.5)
+// and signing out everywhere.
 export default async function AccountPage({ params }: PageProps<"/[lang]/account">) {
   const { lang } = await params;
   if (!isLocale(lang)) notFound();
@@ -25,11 +27,12 @@ export default async function AccountPage({ params }: PageProps<"/[lang]/account
   if (!me) redirect(`/${lang}/sign-in?next=/${lang}/account`);
   const t = await getMessages(lang);
   const api = await serverApi();
-  const [addresses, zones, notifications, requests] = await Promise.all([
+  const [addresses, zones, notifications, requests, telegram] = await Promise.all([
     api.GET("/api/v1/me/addresses", {}),
     api.GET("/api/v1/delivery/zones", {}),
     api.GET("/api/v1/me/notifications", {}),
     api.GET("/api/v1/me/data-requests", {}),
+    api.GET("/api/v1/me/telegram", {}),
   ]);
   const a = t.account;
   const text = { account: t.account, apiErrors: t.apiErrors };
@@ -75,6 +78,8 @@ export default async function AccountPage({ params }: PageProps<"/[lang]/account
           </details>
         ) : null}
       </section>
+
+      {telegram.data ? <TelegramConnection initial={telegram.data} lang={lang} t={text} /> : null}
 
       <section aria-labelledby="profile" className="space-y-3 rounded-card border border-line bg-white p-4">
         <h2 id="profile" className="text-xl font-bold">{a.profileTitle}</h2>

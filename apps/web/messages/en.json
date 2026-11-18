@@ -455,7 +455,10 @@
     "term_empty": "Type a word.",
     "term_exists": "That word is already on the list.",
     "term_not_found": "That word was not found.",
-    "restricted_goods": "That product is on the list of goods not allowed on MarkX."
+    "restricted_goods": "That product is on the list of goods not allowed on MarkX.",
+    "telegram_linking_unavailable": "Connecting Telegram is not available yet.",
+    "telegram_already_connected": "Your account is already connected to Telegram. Disconnect it first to connect another.",
+    "telegram_already_linked": "This Telegram account cannot be connected to this MarkX account."
   },
   "seller": {
     "title": "Seller dashboard",
@@ -1263,7 +1266,52 @@
     "signOutEverywhere": "Sign out on every device",
     "signOutEverywhereHint": "Use this if you lost a phone or signed in on someone else's.",
     "myShop": "My shop",
-    "olderMessages": "Older messages ({count})"
+    "olderMessages": "Older messages ({count})",
+    "telegram": {
+      "title": "Telegram messages",
+      "lead": "Get your MarkX messages, such as new orders for your shop, in Telegram too. Telegram is only for messages: you still sign in to MarkX with your phone code.",
+      "status": {
+        "unavailable": "Not available yet",
+        "notConnected": "Not connected",
+        "requested": "Making your link…",
+        "waiting": "Waiting for Telegram",
+        "connected": "Connected",
+        "expired": "Link expired",
+        "failed": "Could not connect",
+        "disconnected": "Disconnected"
+      },
+      "explain": {
+        "unavailable": "Connecting Telegram is not switched on yet. Every MarkX message still appears on this page.",
+        "notConnected": "Connect your own Telegram account. MarkX gives you a one-time link; you open it in Telegram and press Start.",
+        "requested": "MarkX is making a one-time link for you.",
+        "waiting": "Finish in Telegram. This page updates by itself.",
+        "connected": "Your Telegram account is connected to this MarkX account.",
+        "expired": "The link was not used in time. Get a new one.",
+        "failed": "This Telegram account could not be connected. If it is connected to another MarkX account, disconnect it there first. Then try again.",
+        "disconnected": "Telegram is disconnected. MarkX no longer sends you messages there."
+      },
+      "step1": "Tap “Open Telegram”.",
+      "step2": "In Telegram, press Start.",
+      "step3": "Come back here. This page shows “Connected” once Telegram confirms.",
+      "expiresAt": "The link works once and expires at {time}.",
+      "linkHidden": "For your safety the link is shown only once. If you no longer have it, get a new one.",
+      "connectedSince": "Connected since {date}.",
+      "messagesOn": "MarkX also sends your messages to this Telegram account.",
+      "messagesOff": "MarkX does not send messages to Telegram yet. Every message still appears on this page.",
+      "connect": "Connect Telegram",
+      "openTelegram": "Open Telegram",
+      "newLink": "Get a new link",
+      "tryAgain": "Try again",
+      "cancel": "Cancel",
+      "disconnect": "Disconnect Telegram",
+      "confirmTitle": "Disconnect Telegram?",
+      "confirmText": "You will stop getting MarkX messages in Telegram. Signing in to MarkX does not change.",
+      "confirmYes": "Yes, disconnect",
+      "confirmNo": "Keep it connected",
+      "nowConnected": "Telegram is connected.",
+      "nowDisconnected": "Telegram is disconnected.",
+      "checkFailed": "Could not check the connection. Check your internet; this page keeps trying."
+    }
   },
   "notifications": {
     "unknown": "You have a new message from MarkX.",
