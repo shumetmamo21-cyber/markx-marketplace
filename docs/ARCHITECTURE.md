@@ -343,7 +343,7 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 
 | Service | Adapter | State |
 | --- | --- | --- |
-| SMS | `markx/notifications/sms.py` | Fake only; no provider chosen |
+| SMS | `markx/notifications/sms.py` | Fake, and the provider-independent HTTPS adapter (D-089); no provider chosen, no wire format for one yet |
 | Telegram push | `markx/notifications/push.py` | Fake only; no bot |
 | Bot check | `markx/core/botcheck.py` | **Cloudflare Turnstile** built and tested against stand-ins, **not yet against Cloudflare** (no keys yet; D-085). The development check on a laptop and in tests only; a real server refuses to start with it (D-084). Widget: `apps/web/src/components/TurnstileWidget.tsx` |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |

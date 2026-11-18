@@ -305,6 +305,39 @@ _SPECS: tuple[SettingSpec, ...] = (
         0,
         1_000_000,
     ),
+    SettingSpec(
+        "auth.otp_resend_cooldown_seconds",
+        60,
+        "int",
+        "Seconds a phone number must wait before another login code is sent to it (D-089).",
+        0,
+        3600,
+    ),
+    SettingSpec(
+        "sms.failure_alert_percent",
+        20,
+        "int",
+        "Share of the last hour's SMS that failed or went unconfirmed, in percent, at which "
+        "the founder is alerted (D-089).",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "sms.failure_alert_min_messages",
+        5,
+        "int",
+        "SMS attempts the last hour must hold before the failure share is judged (D-089).",
+        1,
+        10_000,
+    ),
+    SettingSpec(
+        "sms.unfinished_alert_minutes",
+        15,
+        "int",
+        "Minutes an SMS may wait without a final status before the founder is alerted (D-089).",
+        1,
+        1440,
+    ),
     # Trust
     SettingSpec(
         "disputes.decision_due_hours",

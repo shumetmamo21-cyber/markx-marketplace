@@ -355,6 +355,11 @@ def _production(**overrides: Any) -> dict[str, Any]:
         "bot_check_provider": "turnstile",
         "turnstile_secret_key": SECRET,
         "turnstile_site_key": SITE_KEY,
+        # A real server also needs a real SMS sender (D-089).
+        "sms_provider": "http",
+        "sms_api_url": "https://sms.provider.example/v1/messages",
+        "sms_api_key": "test-only-sms-api-key",
+        "sms_sender_id": "MarkX",
     }
     settings.update(overrides)
     return settings

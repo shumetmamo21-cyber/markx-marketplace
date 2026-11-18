@@ -213,6 +213,28 @@ curl -s -b cookies.txt http://127.0.0.1:8000/api/v1/me
 
 The `/dev/` endpoint exists only when `MARKX_ENV` is `local` or `test`.
 
+A number can be sent one code a minute (`auth.otp_resend_cooldown_seconds`,
+60 by default, D-089): asking again sooner answers `429
+otp_resend_too_soon` with `retry_after_seconds`, and the sign-in page says
+how many seconds are left. To try several codes quickly on a laptop, a super
+administrator can set it to 0 in the admin settings, or from `apps/api`:
+
+```bash
+uv run python -c "from markx.core import settings_store
+from markx.core.db import session_scope
+with session_scope() as db:
+    settings_store.set_setting(db, 'auth.otp_resend_cooldown_seconds', 0)"
+```
+
+Every message, fake or real, leaves a delivery record in `sms_messages`
+(purpose, a keyed hash of the number, the challenge, provider, provider id,
+status, error code, segments, times; never the text or the code):
+
+```bash
+psql -d markx -c "select created_at, purpose, provider, status, error_code, segments
+                  from sms_messages order by created_at desc limit 5"
+```
+
 ### Become a seller by hand
 
 Sellers apply by invitation, and invitations come from staff, so the first
@@ -295,8 +317,8 @@ to start until Turnstile is configured.
 | | What it means | Where it works today |
 | --- | --- | --- |
 | **1. Turnstile verification** | The API asked Cloudflare about the visitor's token and Cloudflare said "a person, on our site, for sign-in" | On a laptop with the local test widget (below). Not yet against a production widget |
-| **2. SMS delivery** | The six-digit code reaches the person's phone | **Nowhere yet.** No real SMS adapter exists. On a laptop the code is written to the development inbox, not sent. On staging or production the code request fails with "We could not send the code" (`sms_send_failed`) right after a successful Turnstile check |
-| **3. Complete production sign-in** | On the real domain over HTTPS: Turnstile, then the SMS, then the person types the code and is signed in | **Not possible yet:** it needs the SMS adapter, a production Turnstile widget and a deployed server |
+| **2. SMS delivery** | The six-digit code reaches the person's phone | **Nowhere yet.** The provider-independent adapter exists (D-089) but no provider has been chosen, so nothing can be sent. On a laptop the code is written to the development inbox, not sent. Staging and production refuse to start without a real SMS configuration |
+| **3. Complete production sign-in** | On the real domain over HTTPS: Turnstile, then the SMS, then the person types the code and is signed in | **Not possible yet:** it needs a chosen SMS provider and its wire format, a production Turnstile widget and a deployed server |
 
 A successful Turnstile test therefore proves item 1 only.
 
@@ -415,6 +437,39 @@ must be solved by a person in a real browser on `localhost`.
 - None of this is permission to put a secret in Git, a file, a document, a
   screenshot or a chat.
 
+### SMS (D-089)
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MARKX_SMS_PROVIDER` | `fake` | `fake` (laptop and tests only; staging and production refuse it) or `http` |
+| `MARKX_SMS_API_URL` | none | The provider's fixed sending endpoint. Must be `https://`, with no user name, password, query or fragment. Never taken from a request |
+| `MARKX_SMS_API_KEY` | none | From the server's secret store only. Held as a secret: absent from logs, reprs and error messages |
+| `MARKX_SMS_SENDER_ID` | none | The sender name the provider approved: at most 11 letters and digits, or a number of at most 15 digits |
+| `MARKX_SMS_TIMEOUT_SECONDS` | `8` | How long to wait for the provider (more than 0, at most 30) |
+
+With `http`, the URL, key and sender must all be set or the API does not
+start. The same goes for staging and production with `fake`.
+
+**What `http` does today.** It POSTs MarkX's own placeholder JSON (`to`,
+`from`, `text`, `reference`, with the key as a bearer token) and expects a
+JSON answer with `message_id`. **This is not any provider's API**: no
+provider has been chosen. Do not point it at a provider; choosing one means
+writing that provider's wire format first (see D-089).
+
+Settings in the admin screens (or `settings_store`):
+`auth.otp_resend_cooldown_seconds` (60), `sms.failure_alert_percent` (20),
+`sms.failure_alert_min_messages` (5) and `sms.unfinished_alert_minutes`
+(15). The worker's watch raises `sms.failures` when that share of the last
+hour's attempts failed or went unconfirmed, and `sms.unfinished` for messages
+of the last day with no final status after that many minutes; `sms.budget`
+is unchanged.
+
+**Testing it.** `uv run pytest tests/api/test_sms_adapter.py
+tests/api/test_sms_cooldown.py` drives the adapter with a stand-in and with
+a real HTTPS server on 127.0.0.1 (a throwaway certificate made by the test);
+no provider is contacted. `node e2e/sign-in-cooldown.mjs` checks the
+cooldown message in a browser; the API must run with the cooldown above 0.
+
 ## Making a schema change
 
 1. Edit the models.
@@ -493,8 +548,14 @@ sign-ins inside 30 seconds make the second wait for the next code). The
 journeys run `uv run python -m markx.worker --once` from `apps/api` where a
 step needs the worker (pictures, rating totals). Each prints one line per
 step and ends with "console errors: none". They sign demo phones in by code,
-and the API allows five codes per phone per clock hour; a refused code
-(`rate_limited`) means waiting for the next hour. Give a folder as the last
+and the API allows five codes per phone per clock hour and one a minute
+(D-089); a refused code (`rate_limited`) means waiting for the next hour,
+and `otp_resend_too_soon` a minute. Before replaying several journeys in a
+row, set `auth.otp_per_phone_per_hour` to 30, `auth.otp_per_ip_per_hour` to
+200 and `auth.otp_resend_cooldown_seconds` to 0, as the journeys workflow
+does (the commands are in `.github/workflows/journeys.yml`, step "Room for
+every journey's sign-ins"). `node e2e/sign-in-cooldown.mjs` needs the
+cooldown above 0 again. Give a folder as the last
 argument to keep screenshots (`seller-dashboard.mjs` also keeps one of every
 page when a step fails).
 

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from markx.catalog.models import ImageStatus, ProductImage
 from markx.core import ratelimit, settings_store
-from markx.notifications.models import Outbox
+from markx.notifications.models import Outbox, SmsMessage, SmsStatus
 from markx.offers.models import Inventory, InventoryReservation, ReservationStatus
 from markx.orders.models import Order, OrderItem, OrderStatusEvent, SellerOrder, SellerOrderStatus
 from markx.payments.models import FeeCharge, LedgerEntry
@@ -344,6 +344,95 @@ def sms_budget(db: Session, now: datetime) -> list[Finding]:
     ]
 
 
+# Without delivery reports (no webhook yet, D-089) a provider's "accepted" is
+# the last word MarkX gets, so it counts as final. When delivery reports
+# exist, add ACCEPTED here: a message then waits for its report.
+AWAITING_FINAL = (SmsStatus.PENDING.value, SmsStatus.UNKNOWN.value)
+SMS_NOT_CONFIRMED = (
+    SmsStatus.FAILED.value,
+    SmsStatus.UNKNOWN.value,
+    SmsStatus.UNDELIVERED.value,
+)
+# An unfinished message is reported for a day; after that nothing more can be
+# learnt about it without the provider, and the alert closes on its own.
+SMS_UNFINISHED_LOOKBACK = timedelta(days=1)
+
+
+def sms_failures(db: Session, now: datetime) -> list[Finding]:
+    """The share of the last hour's SMS that failed or went unconfirmed
+    (D-089): the provider is down, the key is wrong, or sending is blocked."""
+    attempted, not_confirmed = db.execute(
+        select(
+            func.count(),
+            func.count().filter(SmsMessage.status.in_(SMS_NOT_CONFIRMED)),
+        ).where(
+            SmsMessage.created_at >= now - timedelta(hours=1),
+            SmsMessage.created_at <= now,
+            SmsMessage.status != SmsStatus.PENDING.value,
+        )
+    ).one()
+    minimum = settings_store.get_int(db, "sms.failure_alert_min_messages")
+    percent = settings_store.get_int(db, "sms.failure_alert_percent")
+    if attempted < minimum or not_confirmed * 100 < percent * attempted:
+        return []
+    by_error = dict(
+        db.execute(
+            select(SmsMessage.error_code, func.count())
+            .where(
+                SmsMessage.created_at >= now - timedelta(hours=1),
+                SmsMessage.created_at <= now,
+                SmsMessage.status.in_(SMS_NOT_CONFIRMED),
+            )
+            .group_by(SmsMessage.error_code)
+            .order_by(SmsMessage.error_code)
+        ).all()
+    )
+    share = round(not_confirmed * 100 / attempted)
+    return [
+        Finding(
+            key="sms.failures",
+            severity="critical",
+            summary=f"{not_confirmed} of the last hour's {attempted} SMS ({share}%) failed or "
+            "were not confirmed: people may not be receiving their sign-in codes.",
+            details={
+                "attempted": attempted,
+                "not_confirmed": not_confirmed,
+                "percent": share,
+                "by_error": {str(code): count for code, count in by_error.items()},
+            },
+        )
+    ]
+
+
+def sms_unfinished(db: Session, now: datetime) -> list[Finding]:
+    """SMS with no final status after the configured minutes (D-089): the
+    API stopped while sending, or the provider never answered clearly."""
+    minutes = settings_store.get_int(db, "sms.unfinished_alert_minutes")
+    rows = db.execute(
+        select(SmsMessage.status, func.count())
+        .where(
+            SmsMessage.status.in_(AWAITING_FINAL),
+            SmsMessage.created_at < now - timedelta(minutes=minutes),
+            SmsMessage.created_at >= now - SMS_UNFINISHED_LOOKBACK,
+        )
+        .group_by(SmsMessage.status)
+        .order_by(SmsMessage.status)
+    ).all()
+    if not rows:
+        return []
+    by_status = dict(rows)
+    total = sum(by_status.values())
+    return [
+        Finding(
+            key="sms.unfinished",
+            severity="warning",
+            summary=f"{total} SMS from the last day have had no final status for more than "
+            f"{minutes} minutes ({', '.join(f'{s}: {c}' for s, c in by_status.items())}).",
+            details={"by_status": by_status, "minutes": minutes},
+        )
+    ]
+
+
 def stuck_images(db: Session, now: datetime) -> list[Finding]:
     count = db.scalar(
         select(func.count())
@@ -418,6 +507,8 @@ WATCH: tuple[Check, ...] = (
     paid_orders_waiting,
     overdue_problems,
     sms_budget,
+    sms_failures,
+    sms_unfinished,
     stuck_images,
     held_reviews,
     waiting_reports,

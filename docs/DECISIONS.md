@@ -241,6 +241,12 @@ without an `https://` origin.
 
 Blocked on the founder: a local SMS provider (blueprint question O.23).
 
+**Update (D-089, 18 November 2026):** the SMS side is now built as far as it
+can be without a provider: the interface, a provider-independent HTTPS
+adapter, delivery records, a resend cooldown and monitoring. Staging and
+production now refuse to *start* with the fake SMS sender. Still blocked on
+O.23 (F-11).
+
 ## D-017 An application is a draft until it is submitted
 
 **Fills a gap** in blueprint D.3 and G.2. **Accepted.**
@@ -2340,6 +2346,133 @@ rate copied onto each line at placement (D-042), the fee charged at
 completion and posted to a balanced ledger (D-045), the accountant's exports
 (D-068) and the daily fee-to-ledger reconciliation (D-064).
 
+## D-089 The SMS foundation, provider-independent
+
+**Follows** blueprint D.2, F.0 (principle 4, adapters), F.9, F.12 and H.3,
+and closes the part of D-016 that does not need a provider. **Built and
+tested against stand-ins and a local HTTPS server only. No provider has
+been chosen, contacted or configured (blueprint O.23), and no real SMS has
+been sent.** The founder's brief of 18 November 2026 is the specification;
+the earlier SMS audit it refers to was not in the repository, so its points
+were taken from the brief and each was checked against the code first
+(as D-084 did).
+
+**What was there before.** `SmsSender.send(phone, text) -> None`, the fake
+only; `get_sms_sender()` raised on staging and production at the moment of
+sending, but the configuration let those servers *start* with the fake. A
+code could be requested again at once (only the hourly limits stopped it).
+Nothing recorded whether a message went out.
+
+**The interface** (`markx/notifications/sms.py`). `send(phone, text, *,
+reference) -> SmsResult` (the provider's message id, the number of segments,
+the status) or `SmsSendError` with a provider-independent code and a status:
+`failed` when nothing was sent, `unknown` when the provider may have taken
+it. `reference` is the delivery record's id, so a provider that accepts a
+client reference can be matched later. The fake keeps writing to the
+development inbox, now returns `fake-<reference>` as its id, and every
+existing journey and test that reads the inbox works unchanged.
+
+**Configuration** (`markx/core/config.py`). `MARKX_SMS_PROVIDER` is `fake`
+or `http`; `MARKX_SMS_API_URL` (a fixed `https://` endpoint with no user
+name, password, query or fragment), `MARKX_SMS_API_KEY` (a `SecretStr`),
+`MARKX_SMS_SENDER_ID` (at most 11 letters and digits, or a number of at
+most 15 digits: the SMS standard's limits, not a provider's) and
+`MARKX_SMS_TIMEOUT_SECONDS` (8, more than 0 and at most 30). With `http` all
+three must be set or the API does not start. **Staging and production now
+refuse to start with `fake`**, as they do with the fake bot check (D-084);
+`get_sms_sender()` still refuses it there as a second barrier.
+
+**The HTTPS adapter** (`HttpSmsSender`, standard library only). HTTPS only,
+to the configured endpoint only; redirects are refused, not followed (one
+would carry the key elsewhere), and the response socket is closed when one
+is refused; the timeout is the configured one; at most 16 KB of the answer
+is read; **one attempt per message, never an automatic retry** (a retried
+login code is a second paid message and a second code in flight). The
+number is normalised again at the boundary (`to_e164`, with
+`national_format` for a provider that wants `09…`); anything but an
+Ethiopian mobile number is refused before sending. Error mapping: 400, 404,
+405, 409, 413, 415, 422 `invalid_request`; 401, 403 `auth_failed`; 429
+`rate_limited`; 5xx `provider_unavailable`; other statuses
+`unexpected_status` (all `failed`); a refused connection, DNS or TLS failure
+`connection_failed` (`failed`); a timeout `timeout`, and a 2xx answer that is
+not JSON, has no usable `message_id`, or is larger than 16 KB
+`malformed_response` / `response_too_large` (all `unknown`: the provider
+may have sent it). Logs and errors carry the code, the status, the HTTP
+status and the record's id only: never the text, the code inside it, the
+key, the number or the provider's body (which may echo the text).
+
+**What is deliberately not invented.** What a provider's request and answer
+look like is not known until one is chosen, so it is isolated in one small
+`SmsWireFormat` (build the request; read the message id).
+`NeutralJsonWire`, the only one, is **MarkX's own placeholder** (`to`,
+`from`, `text`, `reference` as JSON, the key as a bearer token, `message_id`
+back), not any provider's API. Choosing a provider means writing its wire
+format from its documentation and tests for it; nothing else here changes.
+
+**Segments.** `count_segments`: GSM-7 (with the extension table counting
+two) 160 in one, 153 per part; anything else UCS-2, 70 and 67, counted in
+UTF-16 units (an emoji is two). Amharic is always UCS-2. Both login-code
+texts are one segment (tested). More than six segments is refused before
+sending.
+
+**Delivery records** (migration `0015`, a new table `sms_messages`; nothing
+existing changed). Purpose (`login_code` or `notification`), `phone_ref` (an
+HMAC-SHA256 of the number under the server secret, never the number), the
+challenge or notification id (plain references, not foreign keys, so a
+record never stands in the way of removing either), provider, provider
+message id, status (`pending`, `accepted`, `failed`, `unknown`, and
+`delivered`/`undelivered` reserved for delivery reports), error code,
+segments, `created_at`, `updated_at`, `completed_at`, `delivered_at`. **No
+column for the text or the code**, and the database refuses a malformed
+record (purpose and reference must agree; a failure needs its error code;
+`phone_ref` must be 32 bytes). The record is committed with the challenge
+before the message is sent, then updated with the outcome. No row is ever
+deleted: retention is the founder's decision (F-12).
+
+**The resend cooldown.** `auth.otp_resend_cooldown_seconds`, 60 by default
+(0 to 3600, a risk limit operations may change). Too early answers `429
+otp_resend_too_soon` with `retry_after_seconds` (and `Retry-After`), and the
+sign-in page says, in English or Amharic, how many seconds are left. It is
+checked after the bot check and the lock, and before the hourly limits, so
+an early request does not use up the hour; a transaction-level advisory lock
+per number makes simultaneous requests wait for each other, so only one
+sends (tested with four at once). It counts every earlier code except one
+the provider certainly did not take (`failed`), so a person can retry at
+once after a clear failure, and a timeout (which may have been sent) waits.
+Unchanged: the bot check, the hourly limits per number and per address, the
+daily budget, the five-minute expiry, the five attempts and the 15-minute
+lock.
+
+**Monitoring** (the worker's watch, `markx/ops/checks.py`). `sms.failures`
+(critical): of the last hour's finished attempts, the share that failed or
+went unconfirmed reached `sms.failure_alert_percent` (20) with at least
+`sms.failure_alert_min_messages` (5); it names counts per error code, never a
+number. `sms.unfinished` (warning): messages of the last day still
+`pending` or `unknown` after `sms.unfinished_alert_minutes` (15). Without
+delivery reports `accepted` is the last word MarkX gets, so it counts as
+final; with a webhook it would not (`AWAITING_FINAL`). `sms.budget` is
+unchanged. No balance check: there is no provider to ask.
+
+**Tests.** `tests/api/test_sms_adapter.py` (segments, number formats, the
+stand-in for every status and failure, a real HTTPS server on 127.0.0.1 with
+a throwaway certificate for success, 400, 401, 403, 429, 500, 503, a
+timeout, a refused connection, an oversized and a malformed answer, a
+redirect and an untrusted certificate; redaction of the key, the code and
+the number in logs and errors; the start-up checks).
+`tests/api/test_sms_cooldown.py` (the cooldown, records without text or
+code, failures recorded, the database's constraints, both monitoring
+checks). `apps/web/e2e/sign-in-cooldown.mjs` in the journeys, end to end.
+Test helper: `ApiClient.sign_in` lets the cooldown pass first (a test that
+signs one number in twice is a person coming back later), and three
+existing tests that ask for a second code do the same; the journeys
+workflow sets the cooldown to 0 for its throwaway database, as it already
+raised the hourly limits.
+
+**Not done, by instruction.** No provider chosen or contacted, no account,
+no delivery-report webhook, no purge of old challenges or records, no
+change to Turnstile, nothing deployed. SMS for notifications has its
+purpose and record but no sender yet (the outbox has no SMS channel).
+
 ---
 
 ## Decisions that need the founder
@@ -2347,7 +2480,9 @@ completion and posted to a balanced ledger (D-045), the accountant's exports
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
 request on 18 November 2026: the engineer's guess, which the founder must
 confirm or change before MarkX goes live. F-09 and F-10 (raised in D-086)
-were decided on 18 November 2026: see D-087 and D-088.** Treat this list as part of the launch
+were decided on 18 November 2026: see D-087 and D-088. F-11 to F-13
+(D-089, SMS) are open and have no provisional answer: the code does the
+most cautious thing until the founder decides.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -2519,6 +2654,46 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   otherwise grow without limit once real traffic arrives.
 - **Blocks:** nothing before launch.
 - **Founder's approval required: yes**, because it deletes rows.
+
+### F-11 Which SMS provider (blueprint O.23)
+
+- **Today:** none. The adapter is ready (D-089); no real server can start
+  without one, so **no production sign-in by SMS is possible**.
+- **What the founder decides:** the provider, from its price per message,
+  sender-name approval for "MarkX" (and how long it takes), delivery
+  reports, a test account, where it processes numbers (blueprint section M:
+  nothing leaves Ethiopia with a local provider), and its API documentation.
+- **Then the engineer:** writes its `SmsWireFormat` and tests from that
+  documentation, configures the four `MARKX_SMS_*` values on the server, and
+  tests one real message to the founder's own phone with the founder's
+  permission.
+- **Founder's approval required: yes** (cost, contract, personal data).
+
+### F-12 What a delivery record keeps about the number, and for how long
+
+- **Today (D-089):** a keyed hash of the number only, and records are never
+  deleted. That is the most protective choice and loses nothing yet: support
+  can find a number's records by hashing the number they are given.
+- **Options:** (a) keep the hash only (today); (b) also keep the masked
+  number (`+2519••••4567`) for support screens; (c) keep the whole number,
+  like `otp_challenges` does. Separately, a retention period (for example 90
+  days, then a daily job deletes older records), as F-08 did for search logs.
+- **Blocks:** nothing before launch; retention should be set before real
+  traffic.
+- **Founder's approval required: yes** (personal data; deleting rows).
+
+### F-13 SMS counting and cooldown details
+
+- **Today (D-089):** the daily budget counts messages, not segments (a login
+  code is one segment, so they agree today); the cooldown is 60 seconds and
+  is not started by a message the provider certainly refused; the alert
+  thresholds are 20% of at least 5 messages in an hour, and 15 minutes
+  without a final status.
+- **Options:** count segments in the budget once longer SMS notifications
+  exist (each segment is billed); a longer cooldown, or a growing one after
+  each resend. All are settings or a small change.
+- **Founder's approval required: no** for the thresholds; **yes** for the
+  budget's unit, which is a spending rule.
 
 ---
 

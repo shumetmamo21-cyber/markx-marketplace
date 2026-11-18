@@ -42,6 +42,10 @@ DESCRIPTIONS_AM: dict[str, str] = {
     "auth.otp_per_phone_per_hour": "አንድ ስልክ ቁጥር በሰዓት ሊጠይቃቸው የሚችላቸው የመግቢያ ኮዶች።",
     "auth.otp_per_ip_per_hour": "አንድ የአውታረ መረብ አድራሻ በሰዓት ሊጠይቃቸው የሚችላቸው የመግቢያ ኮዶች።",
     "auth.sms_daily_budget": "ማርክኤክስ በቀን ሊልካቸው የሚችላቸው የኤስኤምኤስ መልዕክቶች፤ ሲያልቁ መላክ ይቆማል (ብሉፕሪንት D.2)።",
+    "auth.otp_resend_cooldown_seconds": "ለአንድ ስልክ ቁጥር ሌላ የመግቢያ ኮድ ከመላኩ በፊት የሚጠበቁ ሰከንዶች (D-089)።",
+    "sms.failure_alert_percent": "ባለፈው ሰዓት ካልተሳኩ ወይም ካልተረጋገጡ የኤስኤምኤስ መልዕክቶች ድርሻ፣ በመቶኛ፤ ሲደርስ መሥራቹ ማስጠንቀቂያ ይደርሰዋል (D-089)።",
+    "sms.failure_alert_min_messages": "የውድቀቱ ድርሻ ከመመዘኑ በፊት ባለፈው ሰዓት መኖር ያለባቸው የኤስኤምኤስ ሙከራዎች (D-089)።",
+    "sms.unfinished_alert_minutes": "አንድ ኤስኤምኤስ የመጨረሻ ሁኔታ ሳያገኝ ሊቆይ የሚችልባቸው ደቂቃዎች፤ ከዚያ መሥራቹ ማስጠንቀቂያ ይደርሰዋል (D-089)።",
     "disputes.decision_due_hours": "ሰራተኞች በችግር ጉዳይ ላይ የሚወስኑባቸው ሰዓታት (ብሉፕሪንት D.17)።",
     "payments.protected_enabled": "በፈቃድ ባለው አቅራቢ በኩል የሚደረግ የተጠበቀ ክፍያ። ልቀት 2፤ በር C ያስፈልገዋል።",
 }

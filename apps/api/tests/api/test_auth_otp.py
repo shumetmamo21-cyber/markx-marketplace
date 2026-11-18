@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DbSession
 from markx.accounts.models import OtpChallenge, Session, User
 from markx.core import settings_store
 from markx.notifications.sms import read_dev_sms_inbox
-from tests.conftest import ApiClient, error_code, latest_code
+from tests.conftest import ApiClient, error_code, latest_code, let_resend_cooldown_pass
 
 PHONE = "0911234567"
 E164 = "+251911234567"
@@ -152,6 +152,7 @@ def test_five_wrong_codes_lock_the_number_for_fifteen_minutes(
     # After the lock passes, sign-in works again.
     db.execute(text("update otp_locks set locked_until = now() - interval '1 second'"))
     db.commit()
+    let_resend_cooldown_pass(PHONE)  # fifteen minutes passed
     assert _request(client).status_code == 200
     assert _verify(client, latest_code(PHONE)).status_code == 200
 
@@ -195,7 +196,9 @@ def test_a_code_for_one_number_does_not_work_for_another(client: ApiClient) -> N
 def test_requests_beyond_the_per_number_limit_are_refused(client: ApiClient, db: DbSession) -> None:
     limit = settings_store.get_int(db, "auth.otp_per_phone_per_hour")
     for _ in range(limit):
+        let_resend_cooldown_pass(PHONE)  # each request after the cooldown (D-089)
         assert _request(client).status_code == 200
+    let_resend_cooldown_pass(PHONE)
     over = _request(client)
     assert over.status_code == 429
     assert error_code(over) == "rate_limited"
@@ -303,6 +306,7 @@ def test_a_blocked_account_cannot_sign_in(client: ApiClient, db: DbSession) -> N
     db.execute(update(User).values(status="blocked"))
     db.commit()
     assert client.get("/me").status_code == 401
+    let_resend_cooldown_pass(PHONE)
     _request(client)
     response = _verify(client, latest_code(PHONE))
     assert response.status_code == 403

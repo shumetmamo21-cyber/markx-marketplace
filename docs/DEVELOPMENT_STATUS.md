@@ -1,7 +1,15 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **founder's F-09 and F-10
-decisions**: a direct payment is now recorded only once the goods are handed
+**Last updated:** 18 November 2026, by the **SMS foundation session**
+(D-089): the provider-independent SMS interface (`send(phone, text, *,
+reference) -> SmsResult`), a standard-library HTTPS adapter with a
+placeholder wire format, delivery records in `sms_messages` (migration
+`0015`; never the text or the code), a 60-second per-number resend cooldown
+with the wait shown in both languages, failure-rate and unfinished-message
+alerts, and staging and production refusing to start with the fake SMS
+sender. **No provider is chosen or contacted and no real SMS has been sent**;
+three new founder items, F-11 to F-13. Before it, the **founder's F-09 and
+F-10 decisions**: a direct payment is now recorded only once the goods are handed
 over (D-087, migration `0014`; no refund process, by instruction), and fees
 stay at zero with the list of what must exist before any fee (D-088).
 Before it, the **order and payment integrity session** (the audit's P0-3,
@@ -126,6 +134,7 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| SMS foundation (D-089) | see `git log`; the commit after `3c7921c` | The SMS interface, the HTTPS adapter skeleton (no provider), `sms_messages` (migration `0015`), the resend cooldown, `sms.failures` and `sms.unfinished` alerts, the SMS start-up checks, `e2e/sign-in-cooldown.mjs`. 1251 API tests, 71 web unit tests |
 | F-09 option 2, F-10 recorded (D-087, D-088) | the commit after `9af18c7` | `PAYABLE` is now delivered, completed and disputed; migration `0014` (`trg_seller_orders_payment_at_handover`) refuses an advance payment record without touching existing ones; the web app shows "Record the payment" only from the handover on; F-09 and F-10 closed as D-087 and D-088 |
 | Order and payment integrity (D-086) | `9af18c7` | Paid parts never end undelivered without staff (migration `0013`, `paid_orders_waiting` alert, buyer's Cancel hidden); `order_item_id` withheld from stores; weekly report: cancellations split by who ended them, one savepoint per store; `cancel_by_buyer`, `confirm_received`, `record_direct_payment` read the clock after the lock; commission and ledger gaps recorded (F-10) |
 | Dispute timestamp fix | `1c55602` | `resolve_dispute` reads the clock after taking the seller order's lock (one line); `test_a_decision_reads_the_clock_only_once_it_holds_the_order`, deterministic, both decisions. No `DECISIONS.md` entry: a fix within D-050's rule, not a new decision |
@@ -142,7 +151,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | --- | --- | --- |
 | P1 | Project foundation | **Mostly done.** API skeleton, database pipeline, core helpers, **the web shell, the CI pipeline (`.github/workflows/ci.yml`) and the typed link between API and web** are done. **Containers for a laptop** (`apps/api/Dockerfile`, `infra/compose/compose.yaml`; API, worker, PostgreSQL; D-058) are done and built in CI; the web app is not in Compose yet. An automated page-weight check and the three technical reports are **not done**; the page weight was measured once (D-055) |
 | P2 | Database and backend foundation | **Mostly done.** Schema, three database roles, error format, request IDs, structured logs, **the worker process with the scheduler and the outbox dispatcher** are done and tested. **Encrypted backups, a scripted restore and a restore drill run in CI** (D-063); **the watch and reconciliation jobs, alerts with Telegram delivery when configured, and a worker health check** (D-064). **Not done:** error tracking (needs an account), the nightly schedule and the off-server copy (deployment), P2 criteria 3 to 5 (they need staging) |
-| P3 | Authentication and roles | **Mostly done on the API side.** Phone-code sign-in, sessions, staff sign-in, Telegram signature check and the permission tables are done and tested. The real SMS and bot-check adapters, the account page and admin pages are **not done** |
+| P3 | Authentication and roles | **Mostly done on the API side.** Phone-code sign-in, sessions, staff sign-in, Telegram signature check and the permission tables are done and tested. Turnstile is built (D-085, untested against Cloudflare); the SMS side is built up to the provider (D-089) but **no SMS provider is chosen**, so no real code can be sent |
 | P4 | Customer storefront | **Mostly done for Release 1's buyer journey** (D-055): home, search with filters, product page with the offers table, shop page, sign-in, cart, checkout, orders, tracking. Pictures on the product card and page, reviews and report links (session ten, D-072, D-074). **Not done:** the category page as its own screen (search by category stands in), account settings and saved addresses screens, Telegram Mini App shell, server actions so changes work without script, automated browser tests in CI |
 | P5 | Product catalogue | **Mostly done on the API side.** Categories, typed attributes, brands, products, variants, translations, staff create/approve/merge/archive, aliases, the restricted-goods list and seller product proposals are done and tested. **The image pipeline** (D-062): upload, metadata removal, WebP in two sizes within the D.26 budgets, rendered by the worker, moderation; criterion 3 is met by automated tests on a laptop. Pictures on the product card and page are shown (D-074). **Not done:** seed data, a real bucket and CDN adapter; merging a product that has offers is still refused (see D-026) |
 | P6 | Seller onboarding and dashboard | **Done on the API side.** Application, private document upload, staff review queue, verification levels with the checks behind the badge, owner and manager members, store page, payout account, dashboard counts. The web screens (session ten, D-075): application, documents, team, store settings, legal details, payout account, overview. **Not done:** share cards and QR code, ownership transfer, closing a shop on the web, a real file-storage adapter |
@@ -218,6 +227,17 @@ All of it is in `apps/api`. Test command and result are at the end.
   minute expiry, five attempts, then a 15-minute lock. Limits per number and
   per network address, a bot-check hook before any SMS, and a daily SMS budget
   that cuts off sending. The account is created at first sign-in.
+- **SMS (D-089).** One interface for every sender; the fake (development
+  inbox) on laptops and in tests; a provider-independent HTTPS adapter
+  (fixed endpoint, 8-second timeout, no redirects, no retries, bounded
+  answers, provider-independent error codes, Ethiopian numbers only, GSM-7
+  and UCS-2 segment counting) with a placeholder wire format, because no
+  provider is chosen. A delivery record per message in `sms_messages`
+  (keyed hash of the number, never the text or code). A 60-second resend
+  cooldown per number (`otp_resend_too_soon`, `retry_after_seconds`).
+  Alerts: `sms.failures` (share failed in the last hour), `sms.unfinished`
+  (no final status), alongside `sms.budget`. Staging and production refuse
+  to start without a real SMS configuration.
 - **Sessions.** Random token, only its hash stored, cookie that scripts cannot
   read, idle and absolute expiry, a new session at every sign-in, sign-out
   everywhere, a notice when another device signs in. A header-based session
@@ -853,7 +873,10 @@ Be careful with these. They were written and never exercised.
 - Store logo upload, share cards, QR code.
 - The seller Telegram bot and the real push adapter: the worker delivers
   pushes to a fake.
-- A real private-storage adapter (F-01) and a real SMS adapter. The
+- A real private-storage adapter (F-01), and a real SMS provider: the
+  adapter exists but speaks only MarkX's placeholder format until a
+  provider is chosen (F-11) and its wire format written (D-089). No
+  delivery-report webhook. The
   bot-check adapter (Turnstile) **exists but has never talked to
   Cloudflare**: it waits for the founder's keys (D-085). Until they are
   configured a real server refuses to start (D-084).
@@ -948,9 +971,9 @@ Be careful with these. They were written and never exercised.
   reachable from the building session. The founder's local test widget now
   exists: the laptop test in `docs/SETUP.md` ("Testing Turnstile on a
   laptop") proves Turnstile verification once a person runs it. **Even then
-  production sign-in does not work**: there is no SMS adapter (a real server
-  answers `sms_send_failed` after the check), no production widget and no
-  server.
+  production sign-in does not work**: no SMS provider is chosen (the adapter
+  exists, D-089, and a real server refuses to start without one), no
+  production widget and no server.
 
 - **The page weight is over the blueprint's 150 KB target** (D-084): 157 KB
   (home) to 195 KB (product page) before images; script 142 to 147 KB. The
@@ -1065,6 +1088,42 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**SMS foundation** (D-089), on the commit after `3c7921c`, local PostgreSQL 17
+in Docker. No SMS provider was contacted; no real SMS was sent.
+
+```text
+$ uv run pytest -> 1251 passed in 660.19s (0:11:00)   (1126 before; 125 new)
+  tests/api/test_sms_adapter.py + test_sms_cooldown.py -> 125 passed, three
+  random-order repeats -> 125 passed each
+# the new behaviour against the old code (3c7921c), as HTTP and configuration
+# probes that import nothing new:
+  staging with the fake SMS sender  -> DID NOT RAISE ValidationError (old starts)
+  a second code at once             -> assert 200 == 429 (old sends it)
+  a delivery record for a code      -> relation "sms_messages" does not exist
+  same three on the new code        -> 3 passed
+  (the full new test files cannot be collected on the old code: the adapter,
+  its result and its errors did not exist)
+# found by the new tests while building: a refused redirect left the response
+# socket open (ResourceWarning, an error in this suite); fixed in the adapter
+# four existing tests changed, none weakened: three ask for a second code for
+# one number and now let the cooldown pass first (a person coming back);
+# test_turnstile's production settings now include a real SMS configuration
+  ruff check -> All checks passed!; ruff format --check -> 193 files already formatted
+  mypy markx -> no issues found in 124 source files
+  alembic upgrade head (0014 -> 0015) ok; alembic check -> no new upgrade operations
+  check_openapi_copy, both copies -> match exactly (no API schema change)
+  pip-audit -> No known vulnerabilities found; npm audit gate -> passed
+  gitleaks 8.28.0 (dir mode, every new or changed file) -> no leaks
+$ web: lint clean; typecheck clean; npm test -> 71 passed (64 before; 7 new,
+  sign-in-problem.test.ts); npm run build ok
+$ browser journeys, against the API and the production build on this machine,
+  demo data seeded, the workflow's settings applied:
+  page-weight -> every page within its budget; seller-dashboard, buyer-journey,
+  staff-journey, admin-queues, shop-screens, setup-and-account -> passed,
+  console errors: none; sign-in-cooldown (cooldown back at 60) -> "refused
+  with 60 s left, in English and Amharic"; turnstile-widget (stand-in) -> passed
+```
 
 **F-09 option 2** (D-087), on the commit after `9af18c7`:
 
@@ -1529,8 +1588,9 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0012` | `20261117_1158_seller_weekly_reports.py` | `seller_weekly_reports`: one row per store and week, starting on a Monday (D-073) |
 | `0013` | `20261118_0700_paid_orders_never_end_undelivered.py` | `ck_seller_orders_paid_order_not_ended_undelivered`: a part with a recorded payment never ends declined, expired, cancelled or returned (D-086). Checks existing rows; deletes nothing |
 | `0014` | `20261118_0800_payment_recorded_at_handover.py` | `trg_seller_orders_payment_at_handover`: a direct payment is recorded only while the part is delivered, completed or disputed; checks only the moment of recording, so existing records are kept and still move on (D-087) |
+| `0015` | `20261118_1014_sms_delivery_records.py` | `sms_messages`: one delivery record per SMS, with its CHECKs (purpose and reference agree, a failure has its error code, a 32-byte keyed hash of the number, no text or code column) and three indexes (D-089). A new table only; nothing existing changed |
 
-The schema has 69 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`). P9 and P10 needed no new table and no migration at
+The schema has 70 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
@@ -1587,8 +1647,11 @@ end. Work in this order within each. Finish and push each step first.
    Turnstile on a laptop" in `docs/SETUP.md` with the "MarkX" test widget,
    typing the secret into the terminal; record the result. Never ask for the
    secret in chat or put it in any file. **Then, only when the founder
-   authorises it: the real SMS adapter** (blueprint section O, question 23),
-   without which no real server can send a code.
+   authorises it: the SMS provider** (F-11, blueprint O.23). The
+   provider-independent part is built (D-089); what remains is that
+   provider's `SmsWireFormat` from its documentation, its tests, the four
+   `MARKX_SMS_*` values on the server, and one real message to the founder's
+   phone with permission. Never send an SMS without that permission.
 0a. **F-09 and F-10 are decided** (D-087, D-088). Do not build a refund
    process or enable any fee until the founder asks. **Before any commission
    is enabled:** the seven items in D-088, the cap first. **With Protected

@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,7 +18,7 @@ from typing import Any, cast
 from urllib.parse import parse_qsl
 
 import pyotp
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session as DbSession
 
@@ -62,7 +63,8 @@ from markx.core.security import (
 )
 from markx.delivery.models import DeliveryArea
 from markx.notifications import service as notifications
-from markx.notifications.sms import get_sms_sender
+from markx.notifications import sms
+from markx.notifications.models import SmsMessage, SmsPurpose, SmsStatus
 
 logger = logging.getLogger("markx.accounts")
 
@@ -125,6 +127,45 @@ def _otp_text(code: str, language: str) -> str:
     return f"የMarkX ኮድ፦ {code}። በ5 ደቂቃ ውስጥ ያበቃል። ለማንም አያጋሩ።"
 
 
+# The statuses after which a number waits out the cooldown: everything except
+# a message the provider certainly did not take, so a failed send can be
+# retried by the person at once (the hourly limits still apply).
+_COOLDOWN_STATUSES = tuple(s.value for s in SmsStatus if s is not SmsStatus.FAILED)
+
+
+def _refuse_too_early_resend(db: DbSession, phone: str) -> datetime:
+    """The per-number resend cooldown (D-089). The transaction lock makes two
+    requests for one number at the same moment wait for each other, so only
+    one of them can send. Returns the time read once the lock is held, which
+    the new challenge and its delivery record then carry."""
+    db.execute(
+        text("select pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"otp-cooldown:{phone}"},
+    )
+    now = _now()
+    cooldown = settings.get_int(db, "auth.otp_resend_cooldown_seconds")
+    if cooldown <= 0:
+        return now
+    last = db.scalar(
+        select(func.max(SmsMessage.created_at)).where(
+            SmsMessage.phone_ref == sms.phone_reference(phone),
+            SmsMessage.purpose == SmsPurpose.LOGIN_CODE.value,
+            SmsMessage.status.in_(_COOLDOWN_STATUSES),
+            SmsMessage.created_at > now - timedelta(seconds=cooldown),
+        )
+    )
+    if last is None:
+        return now
+    wait = math.ceil((last + timedelta(seconds=cooldown) - now).total_seconds())
+    if wait > 0:
+        raise RateLimited(
+            "otp_resend_too_soon",
+            "A code was just sent to this number. Wait a moment before asking for another.",
+            details={"retry_after_seconds": wait},
+        )
+    return now
+
+
 def request_login_code(
     db: DbSession, *, raw_phone: str, ip: str | None, bot_token: str | None, language: str = "am"
 ) -> str:
@@ -142,6 +183,8 @@ def request_login_code(
             "Too many wrong codes. Try again in a few minutes.",
             details={"retry_after_seconds": remaining},
         )
+
+    now = _refuse_too_early_resend(db, phone)
 
     hour = timedelta(hours=1)
     ratelimit.hit(f"otp:phone:{phone}", settings.get_int(db, "auth.otp_per_phone_per_hour"), hour)
@@ -166,6 +209,7 @@ def request_login_code(
         .values(consumed_at=now)
     )
     code = new_numeric_code(6)
+    text_to_send = _otp_text(code, language)
     challenge_id = uuid7()
     db.add(
         OtpChallenge(
@@ -176,13 +220,29 @@ def request_login_code(
             ip=ip,
         )
     )
+    sender = sms.get_sms_sender()
+    # The delivery record holds no text and no code (D-089); it is committed
+    # with the challenge, so the cooldown sees it before the SMS goes out.
+    record = sms.record_message(
+        db,
+        purpose=SmsPurpose.LOGIN_CODE,
+        phone=phone,
+        text=text_to_send,
+        provider=sender.provider,
+        now=now,
+        otp_challenge_id=challenge_id,
+    )
     # The code goes straight to the SMS adapter and is never written to the
-    # outbox or a log: only its keyed hash is stored (blueprint D.2).
+    # outbox or a log: only its keyed hash is stored (blueprint D.2). One
+    # attempt only: a login code is never resent automatically.
     db.commit()
     try:
-        get_sms_sender().send(phone, _otp_text(code, language))
-    except Exception as exc:
-        logger.exception("sending a login code failed", extra={"phone": mask_phone(phone)})
+        sms.send_recorded(db, record, sender, phone=phone, text=text_to_send)
+    except sms.SmsSendError as exc:
+        logger.error(
+            "sending a login code failed",
+            extra={"phone": mask_phone(phone), "sms_error": exc.code.value},
+        )
         raise AppError(
             "sms_send_failed", "We could not send the code. Please try again.", status_code=503
         ) from exc

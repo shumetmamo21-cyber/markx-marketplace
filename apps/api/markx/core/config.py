@@ -61,7 +61,23 @@ class Config(BaseSettings):
     # adapter exists; it is refused on real servers (see markx/core/storage.py).
     file_storage_provider: Literal["local"] = "local"
 
-    sms_provider: Literal["fake"] = "fake"
+    # SMS (D-089). "fake" writes to the development inbox and is for a laptop
+    # and the tests only; staging and production refuse it. "http" is the
+    # provider-independent HTTPS adapter (markx/notifications/sms.py): it
+    # needs every MARKX_SMS_* value below, or the API does not start. No
+    # provider has been chosen yet (blueprint O.23).
+    sms_provider: Literal["fake", "http"] = "fake"
+    # The provider's fixed sending endpoint: an https:// URL set by the
+    # operator, never taken from a request. Checked at start-up.
+    sms_api_url: str | None = None
+    # From the host's secret store only. SecretStr keeps it out of logs,
+    # reprs and validation errors.
+    sms_api_key: SecretStr | None = None
+    # The sender name or number the provider has approved for MarkX.
+    sms_sender_id: str | None = None
+    # How long to wait for the provider before giving up (fail closed). A
+    # login code is never retried automatically.
+    sms_timeout_seconds: float = Field(default=8.0, gt=0, le=30)
     # The bot check before any SMS (blueprint D.2, H.3; D-085). "fake" is for a
     # laptop and the tests only and is refused on staging and production;
     # "turnstile" is Cloudflare Turnstile, verified on the server.
@@ -165,6 +181,47 @@ class Config(BaseSettings):
             raise ValueError("Turnstile bot check: " + "; ".join(problems))
         return self
 
+    @field_validator("sms_api_url")
+    @classmethod
+    def _sms_url_is_a_fixed_https_endpoint(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        problem = _sms_url_problem(value.strip())
+        if problem is not None:
+            raise ValueError(f"MARKX_SMS_API_URL {problem}")
+        return value.strip()
+
+    @field_validator("sms_sender_id")
+    @classmethod
+    def _sms_sender_id_is_valid(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        # The SMS standard allows an alphanumeric sender of at most 11
+        # characters, or a number of at most 15 digits.
+        if not (_SENDER_NAME.fullmatch(value) or _SENDER_NUMBER.fullmatch(value)):
+            raise ValueError(
+                "MARKX_SMS_SENDER_ID must be at most 11 letters and digits (such as MarkX) "
+                "or a number of at most 15 digits"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _sms_needs_its_settings(self) -> Config:
+        if self.sms_provider != "http":
+            return self
+        problems: list[str] = []
+        if not self.sms_api_url:
+            problems.append("MARKX_SMS_API_URL must be set")
+        key = self.sms_api_key.get_secret_value() if self.sms_api_key else ""
+        if not key.strip():
+            problems.append("MARKX_SMS_API_KEY must be set")
+        if not self.sms_sender_id:
+            problems.append("MARKX_SMS_SENDER_ID must be set")
+        if problems:
+            raise ValueError("SMS provider: " + "; ".join(problems))
+        return self
+
     @property
     def trusted_proxy_list(self) -> list[str]:
         return _split(self.trusted_proxies)
@@ -196,6 +253,9 @@ class Config(BaseSettings):
         # SEC-2 (D-084): the fake bot check accepts any token, even none.
         if self.bot_check_provider == "fake":
             problems.append("MARKX_BOT_CHECK_PROVIDER must be a real bot check, not the fake")
+        # D-089: the fake SMS sender writes codes to a file instead of a phone.
+        if self.sms_provider == "fake":
+            problems.append("MARKX_SMS_PROVIDER must be a real SMS provider, not the fake")
         if problems:
             raise ValueError("unsafe configuration for a real environment: " + "; ".join(problems))
         return self
@@ -208,6 +268,32 @@ def _is_turnstile_test_key(secret: str, site_key: str | None) -> bool:
         len(key) > 6 and key[0] in "123" and key[1] == "x" and key[2:8] == "000000"
         for key in (secret, site_key or "")
     )
+
+
+_SENDER_NAME = re.compile(r"[A-Za-z0-9]{1,11}")
+_SENDER_NUMBER = re.compile(r"\+?[0-9]{1,15}")
+
+
+def _sms_url_problem(url: str) -> str | None:
+    """Why a URL is not a fixed HTTPS endpoint, in words; None when it is one."""
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return "is not a valid URL"
+    if parts.scheme != "https":
+        return "must start with https://"
+    if not parts.hostname:
+        return "must name a host"
+    if parts.username or parts.password:
+        return "must not carry a user name or password; the key goes in MARKX_SMS_API_KEY"
+    if parts.query or parts.fragment:
+        return "must not carry a query or fragment; a key never goes in a URL"
+    if port is not None and not 0 < port < 65536:
+        return "has an invalid port"
+    if any(character.isspace() for character in url):
+        return "contains a space"
+    return None
 
 
 _HOSTNAME_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")

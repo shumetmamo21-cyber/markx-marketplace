@@ -167,13 +167,34 @@ class ApiClient:
     # -- helpers -----------------------------------------------------------
 
     def sign_in(self, phone: str, language: str = "en") -> dict[str, Any]:
-        """The real sign-in: ask for a code, read it from the fake SMS inbox, verify it."""
+        """The real sign-in: ask for a code, read it from the fake SMS inbox, verify it.
+        A test that signs one number in twice is a person coming back later,
+        so the resend cooldown (D-089) is let pass first; its own tests in
+        test_sms_cooldown.py call the route directly."""
+        let_resend_cooldown_pass(phone)
         response = self.post("/auth/otp/request", json={"phone": phone, "language": language})
         assert response.status_code == 200, response.text
         code = latest_code(phone)
         response = self.post("/auth/otp/verify", json={"phone": phone, "code": code})
         assert response.status_code == 200, response.text
         return dict(response.json())
+
+
+def let_resend_cooldown_pass(phone: str) -> None:
+    """Move a number's earlier SMS delivery records back by a day, as if the
+    person came back later. Nothing else about them changes."""
+    from markx.core.phone import normalize_phone
+    from markx.notifications.sms import phone_reference
+
+    with get_session_factory()() as session:
+        session.execute(
+            text(
+                "update sms_messages set created_at = created_at - interval '1 day' "
+                "where phone_ref = :ref"
+            ),
+            {"ref": phone_reference(normalize_phone(phone))},
+        )
+        session.commit()
 
 
 def latest_code(phone: str) -> str:

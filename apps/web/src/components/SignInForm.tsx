@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { browserApi, errorCode } from "@/lib/api/browser";
+import { browserApi } from "@/lib/api/browser";
 import { fill, type Locale, type Messages } from "@/lib/i18n";
 import { safeNext } from "@/lib/safe-next";
+import { signInProblem } from "@/lib/sign-in-problem";
 
 import { TurnstileWidget } from "./TurnstileWidget";
 
@@ -25,10 +26,7 @@ export function SignInForm({ lang, t, next, dev, siteKey }: { lang: Locale; t: M
   const [botToken, setBotToken] = useState<string | null>(null);
   const [botReset, setBotReset] = useState(0);
 
-  const fail = (error: unknown) => {
-    const code = errorCode(error);
-    setProblem(code === "rate_limited" ? t.rateLimited : code === "bot_check_failed" ? t.botCheckFailed : t.failed);
-  };
+  const fail = (error: unknown) => setProblem(signInProblem(t, error));
 
   if (step.kind === "phone") {
     return (

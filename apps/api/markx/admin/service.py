@@ -86,6 +86,7 @@ RISK_LIMITS = frozenset(
         "auth.otp_per_phone_per_hour",
         "auth.otp_per_ip_per_hour",
         "auth.sms_daily_budget",
+        "auth.otp_resend_cooldown_seconds",
         "search.requests_per_ip_per_minute",
         "search.suggestions_per_ip_per_minute",
     }
