@@ -15,7 +15,7 @@ domain.
 | API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search, pictures, monitoring, the admin back end, reviews, reports, exports. Not built: Release 2 payments |
 | PostgreSQL | Schema for all of Release 1 (68 tables), three roles |
 | Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account, the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
-| Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher. No real push channel yet |
+| Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher, which carries notifications to Telegram and SMS with a delivery record per channel (D-092). **No real channel is connected**: no bot, no SMS provider, notification SMS off |
 | File storage | Built (D-090): one interface; local folders, MinIO, Amazon S3 and Cloudflare R2 by configuration. Tested against MinIO only; **no bucket or account exists** (F-01) |
 | Containers, CI | Built: a Compose file for a laptop with PostgreSQL and MinIO (D-058, D-090) and CI on every push |
 | Production stack (D-091) | **Prepared, never deployed**: production images for the API and the web app, a production Compose file (`infra/production/`) with the nginx reverse proxy, PostgreSQL, the worker, nightly encrypted dumps and a one-time migration step, `deploy.sh`, and a local rehearsal that CI runs. **No server, domain, certificate or bucket exists**; see `docs/DEPLOYMENT.md` |
@@ -34,7 +34,8 @@ apps/
       accounts/             users, login codes, sessions, staff, addresses,
                             permissions (the blueprint's C.3 and C.4 tables)
       audit/                the append-only audit log
-      notifications/        outbox, in-app notifications, SMS adapter
+      notifications/        outbox, in-app notifications, SMS and Telegram adapters,
+                            delivery to outside channels, their texts (D-092)
       delivery/             zones, areas, flat fees
       catalog/              categories, attributes, brands, products, variants
       sellers/              invitations, applications, documents, staff review,
@@ -365,7 +366,7 @@ Tests drive the worker by calling `run_once(now)` with a clock they control.
 D-034 and D-035 record the guarantees and the one limit. Topics today:
 `notify.push`, `search.rebuild`, `images.render`, `ops.alert` and
 `reviews.recount`. Jobs: order
-expiry, completion after the problem window (each order in its own
+expiry, the once-only reminder before a seller's answer is due (D-092), completion after the problem window (each order in its own
 savepoint, D-060), overdue holds, stale offers, payout accounts, the hourly
 `search.rebuild_all`, the hourly `sellers.weekly_report`, the daily
 `reviews.recount_all` and `ops.reconcile` and, last, `ops.watch`.
@@ -407,6 +408,48 @@ address (D-059).
 - The chain the schema follows (blueprint G): product, variant, offer, order
   item, seller order, order, payment, ledger.
 
+## Notifications (D-092)
+
+A notification is a template name and parameters, written as an `in_app`
+row of `notifications` **in the same transaction as the change that caused
+it** (`notifications.service.notify`), with a `notify.push` outbox row. The
+in-app list (`/me/notifications`) never depends on a provider.
+
+The worker's `notify.push` handler (`notifications/delivery.py`) then tries
+each outside channel once per notification and records the outcome in
+`notification_deliveries` (one row per notification and channel, unique):
+
+- **Telegram** for every notification, to a person who linked Telegram,
+  through `push.get_push_sender()`: the fake on a laptop, `bot_api` when
+  configured, and **None on a real server today**, recorded `unavailable`
+  (never an exception: the audit's defect).
+- **SMS** only for order alerts (`notifications/texts.py`), only while
+  `notifications.sms_enabled` is on (**off by default**, N-1), by default only
+  when Telegram cannot reach the person, through the existing SMS adapter
+  with purpose `notification`, its own daily budget (`sms:notification:daily`,
+  never the sign-in codes' `sms:daily`), a per-person hourly limit and a
+  per-number cooldown.
+
+Statuses: `sending`, `retrying`, `accepted`, `failed`, `unknown`, `skipped`,
+`unavailable`, each final one with a reason. The row is committed as
+`sending` before the provider is called and with its outcome right after, in
+short transactions of their own. An interrupted attempt is therefore visible:
+Telegram sends again (at-least-once), SMS becomes `unknown` and is never
+resent (at-most-once). A certain, passing failure raises `DeliveryRetry` and
+the outbox row is retried; after six attempts the delivery is `failed`.
+Exactly-once delivery is not possible with these providers and is not
+claimed (D-092).
+
+Who hears about an order: `orders.service._order_handlers` (active members
+whose role may handle orders); at delivery time `recipient_may_receive`
+checks again that the person is still such a member of a store that is not
+closed and that the order is that store's. Outside texts carry the order
+code only, never a name, phone number, address or handover code.
+
+Monitoring (`ops/checks.py`): `notifications.sms_budget`,
+`notifications.delivery_failures`, `notifications.channel_unavailable` and
+`notifications.stale`, next to the existing `sms.*` and `outbox.*` checks.
+
 ## Outside services
 
 Each sits behind an adapter with a fake used in tests (blueprint F.0).
@@ -414,7 +457,7 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | Service | Adapter | State |
 | --- | --- | --- |
 | SMS | `markx/notifications/sms.py` | Fake, and the provider-independent HTTPS adapter (D-089); no provider chosen, no wire format for one yet |
-| Telegram push | `markx/notifications/push.py` | Fake only; no bot |
+| Telegram push | `markx/notifications/push.py` | Fake, and a Bot API adapter tested against stand-ins only (D-092). **No bot exists**; a real server uses none and records every Telegram delivery `unavailable` |
 | Bot check | `markx/core/botcheck.py` | **Cloudflare Turnstile** built and tested against stand-ins, **not yet against Cloudflare** (no keys yet; D-085). The development check on a laptop and in tests only; a real server refuses to start with it (D-084). Widget: `apps/web/src/components/TurnstileWidget.tsx` |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
 | Private file storage | `markx/core/storage.py` | Local disk, MinIO, Amazon S3, Cloudflare R2 (D-090). **Tested against MinIO only**; no S3 or R2 bucket exists (F-01). A real server refuses to start without `s3` or `r2` |

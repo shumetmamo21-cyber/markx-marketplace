@@ -2761,14 +2761,191 @@ updates and spending alarm. F-01, F-14 and F-15 stay open.
 
 ---
 
+## D-092 Notifications that survive a missing provider: delivery records, Telegram and SMS adapters, the deadline reminder
+
+**Follows** blueprint D.11, D.16, F.8, F.9 and F.12, and the independent
+read-only audit of 18 November 2026, which named seller notifications the
+most important remaining functional blocker. **Built and tested against
+fakes and stand-ins only. No Telegram bot exists, no SMS provider is chosen,
+nothing was sent to Telegram or to any SMS provider, and notification SMS is
+OFF by default.** Seller notifications remain a **launch blocker** until at
+least one real channel is connected and tested (N-1).
+
+**The defect fixed first.** `push.get_push_sender()` raised `RuntimeError`
+on staging and production. Every notification for a person with a linked
+Telegram therefore failed its `notify.push` outbox row eight times over
+about four hours and ended `failed`, a CRITICAL log line and an
+`outbox.failed` alert per message, while nothing recorded *why* the person
+was never told. Now it returns `None` when no provider is configured, and
+the delivery is recorded `unavailable` with the reason
+`telegram_provider_not_configured`; the outbox row is `done` at once.
+Configuration: `MARKX_TELEGRAM_PUSH_PROVIDER` is `none`, `fake` or
+`bot_api`; unset means `fake` on a laptop and in tests and `none` on a real
+server; a real server refuses `fake`; `bot_api` needs
+`MARKX_TELEGRAM_BOT_TOKEN`; a real server with `none` starts and says so in a
+start-up warning.
+
+**The delivery record.** `notification_deliveries` (migration `0016`): one
+row per notification and outside channel (unique), with status `sending`,
+`retrying`, `accepted`, `failed`, `unknown`, `skipped` or `unavailable`, a
+reason (required by the database for every outcome but `accepted` and
+`sending`), the provider, its message id, the SMS attempt's record id,
+attempts and times. **Never the text, a phone number or a Telegram id.** The
+`notifications` row with channel `telegram` that D-034 wrote on success is
+still written (with the outcome), for compatibility.
+
+**The adapters.** Telegram: `PushSender` keeps its interface
+(`send(*, telegram_id, template, params, language, idempotency_key)`), now
+returning a `PushResult` or raising `PushSendError` with a
+provider-independent code and a status (`failed` or `unknown`).
+`BotApiPushSender` calls the Bot API's `sendMessage` over HTTPS with the
+standard library (no redirects, a timeout, a bounded answer, one attempt),
+reusing the SMS adapter's transport; the token is part of the address, so the
+address is never logged. 400, 403 (the person blocked the bot), 401/404,
+429, 5xx, a timeout, a refused connection and an unreadable 2xx answer are
+mapped and tested **against stand-ins only**. SMS: the existing D-089
+interface, `SmsPurpose.NOTIFICATION`, `record_message` and `send_recorded`;
+no competing SMS code.
+
+**Texts** (`notifications/texts.py`). Short English and Amharic texts for 18
+order alerts, each at most two SMS segments. The only placeholder allowed is
+`{code}`, filled only with a real order code (`is_order_code`); anything else
+is refused (`UnsafeText`). No name, phone number, address, handover code,
+price or product ever leaves the server; a parametrised test renders every
+text with a buyer's name, phone, landmark and handover code in the
+parameters and checks none appears. Other templates go to Telegram as a
+generic "You have a new message from MarkX" line and never by SMS.
+
+**Who receives what.** Seller order alerts go to `_order_handlers`: active
+members whose role has HANDLE_ORDERS (owner, manager, orders), unchanged. At
+delivery time `recipient_may_receive` checks again that the person is still
+an active member with that capability, of a store that is not closed, and
+that the order is that store's; otherwise `skipped`,
+`recipient_not_authorized`. Inactive accounts are skipped too.
+
+**SMS rules.** Only order alerts. `notifications.sms_enabled` (off; a super
+administrator's setting, audited) must be on. With
+`notifications.sms_only_without_telegram` (on) SMS goes only to a person
+Telegram cannot reach: not linked, or no push provider. Its own daily budget
+`notifications.sms_daily_budget` (200) in the bucket `sms:notification:daily`
+— the sign-in codes keep `auth.sms_daily_budget` and `sms:daily`, so neither
+can spend the other's (tested both ways). A per-person limit
+(`notifications.sms_per_person_per_hour`, 6) and a per-number cooldown
+(`notifications.sms_cooldown_seconds`, 120) under an advisory lock per
+number. A message refused by any of them is `skipped` with its reason; the
+in-app message stays.
+
+**Delivery semantics: not exactly-once, said plainly.** A message that
+leaves the server cannot join a database transaction, so a local row alone
+cannot make delivery exactly-once. That needs the provider to refuse a
+repeated request by a key. **Telegram's Bot API has no idempotency key or
+client message id for `sendMessage`** (engineering knowledge of the Bot
+API; the documentation host was not reachable from this session's network,
+so it was not re-read on 18 November 2026 — check it again when the bot is
+built). **No SMS provider is chosen (F-11)**, so whether one supports a
+client reference that deduplicates is unknown; the adapter already sends the
+record id as `reference`, so a provider that honours one could be used
+without changing this design. Until then:
+
+- Each attempt is committed as `sending` *before* the provider is called and
+  its outcome right after, in short transactions of their own; the worker's
+  own transaction holds only the outbox row. An attempt interrupted between
+  the two is visible to the next one.
+- **Telegram is at-least-once** (as D-034): an interrupted attempt is sent
+  again, and the delivery keeps the reason `interrupted` even once accepted.
+  A crash after Telegram took the message and before MarkX stored that shows
+  the message twice; a test proves exactly that and that both carry the same
+  idempotency key.
+- **SMS is at-most-once**: an interrupted attempt becomes `unknown`
+  (`interrupted`) and is never sent again, nor is a timeout or an unreadable
+  2xx answer. A second SMS is a second paid message, the in-app message is
+  always there, and the monitoring reports every unknown delivery. The cost:
+  a crash just before the provider was called looks the same and loses that
+  SMS (tested, and reported).
+- A failure that certainly sent nothing and may pass (Telegram 429, 5xx, a
+  refused connection, a timeout; SMS `rate_limited`, `provider_unavailable`,
+  `connection_failed`) raises `DeliveryRetry`, so the outbox row is retried
+  after its growing delay. A failure that will not pass (a wrong key, a
+  blocked bot, a bad number) is `failed` at once. After six attempts
+  (`MAX_DELIVERY_ATTEMPTS`, fewer than the outbox's eight) the delivery is
+  `failed` or `unknown` and the row ends `done`: the record says what
+  happened, not a given-up outbox row. A worker that keeps dying mid-send is
+  now bounded too: its attempts are counted in the committed record.
+- Each SMS attempt has its own `sms_messages` record (D-089).
+
+**Order events.** The audit's names map onto existing templates, which are
+not renamed (the web app and stored notifications use them):
+
+| Audit's event | Template(s) |
+| --- | --- |
+| `order.placed_for_seller` | `order.placed_for_seller` |
+| `order.approaching_response_deadline` | **new**, to the store's order handlers |
+| `order.confirmed` | `order.seller_confirmed` |
+| `order.declined` | `order.seller_declined` (+ `order.next_best_offer`) |
+| `order.expired` | `order.seller_did_not_answer` (buyer), `order.expired_unanswered` (store) |
+| `order.dispatched` | `order.out_for_delivery`; `order.ready_for_collection` for collection |
+| `order.delivered` | `order.delivered` |
+| `order.completed` | `order.completed`, `order.completed_for_seller` |
+| `order.problem_reported` | `order.problem_reported`, `order.problem_reported_for_seller` |
+| `dispute.decided` | **new** `dispute.decided` / `dispute.decided_for_seller` when staff decide "no action"; a refund keeps `order.refunded` / `order.refunded_for_seller` |
+
+**The reminder.** `orders.remind_approaching_deadline`, a job every minute
+after the expiry: a seller order still `placed` whose deadline is within
+`orders.response_reminder_minutes` (10) and not passed, and that was placed
+more than that before its deadline. Locked as the expiry locks it and
+re-checked under the lock; `seller_order_reminders` (primary key: order and
+kind) makes "once" a database rule, in the same transaction as the
+notifications. Confirmed, declined, cancelled and expired orders are never
+reminded (tested).
+
+**Monitoring** (`ops/checks.py`, in the five-minute watch):
+`notifications.delivery_failures` (critical: at least
+`notifications.failure_alert_min`, 3, failed or unknown deliveries in the
+last hour, counted by channel and reason), `notifications.sms_budget`
+(warning at 80%, critical when spent; says sign-in codes are unaffected),
+`notifications.channel_unavailable` (warning: deliveries with no provider in
+the last day) and `notifications.stale` (warning: `sending` or `retrying`
+for longer than `notifications.stale_alert_minutes`, 30). No phone number or
+Telegram id in any of them. The existing `outbox.*` and `sms.*` checks are
+unchanged.
+
+**Web.** Words in both languages for the three new templates; the
+notifications test lists them.
+
+**Tests** (`tests/api/test_notification_delivery.py`, 72 cases, plus
+additions to existing tests): the production configuration without a
+provider; `unavailable`, `skipped` and `accepted` records; SMS off by
+default and on through the switch; Telegram-first; who is told and the
+check again at delivery; every text in both languages free of personal
+data and within two segments; the Bot API adapter's mapping against
+stand-ins; both budgets independently; cooldown and hourly limit; the
+reminder once, never for answered, cancelled, expired or too-late orders,
+and from the worker; failures opening an alert; stale deliveries; Telegram
+retries to an explicit `failed`; simulated crashes before and after the
+provider accepted, for Telegram and for SMS; an SMS timeout never retried;
+an SMS outage retried with a record per attempt; no channel delivered twice
+by later passes; no text or number in the records or logs.
+
+**Changed existing tests** (strengthened or kept current, none weakened):
+the worker's list of jobs gains the reminder; the preflight test read the
+head revision as the literal `0015` and now reads the real head; the
+production start-up warning test now expects the push warning too, and its
+fully configured server sets `bot_api` and still has no warning; the dispute
+test also expects `dispute.decided` and `dispute.decided_for_seller`.
+
+**Not done, by instruction.** No bot created, no Telegram or SMS account, no
+provider chosen, nothing sent, nothing deployed, no paid service. Retention
+of delivery records is not set (as F-12). Delivery reports (webhooks) do not
+exist, so `accepted` is the last word.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
 request on 18 November 2026: the engineer's guess, which the founder must
 confirm or change before MarkX goes live. F-09 and F-10 (raised in D-086)
 were decided on 18 November 2026: see D-087 and D-088. F-11 to F-13
-(D-089, SMS), F-14 and F-15 (D-090, file storage) and F-16 to F-18 (D-091,
-deployment) are open and have no provisional answer: the code does the most cautious thing until the founder
+(D-089, SMS), F-14 and F-15 (D-090, file storage), F-16 to F-18 (D-091,
+deployment) and N-1 (D-092, notification channels) are open and have no provisional answer: the code does the most cautious thing until the founder
 decides.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
@@ -2987,6 +3164,34 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   each resend. All are settings or a small change.
 - **Founder's approval required: no** for the thresholds; **yes** for the
   budget's unit, which is a spending rule.
+
+### N-1 Which channel carries order alerts: Telegram, SMS or both
+
+- **Today (D-092):** both are built and tested against fakes, **neither is
+  connected**. No bot exists (`MARKX_TELEGRAM_PUSH_PROVIDER` is `none` on a
+  real server); no SMS provider is chosen (F-11) and
+  `notifications.sms_enabled` is OFF. Every alert is in the in-app list
+  only. **This is a launch blocker:** a seller who does not keep the
+  dashboard open misses new orders, and an unanswered order expires in 30
+  business minutes.
+- **What the founder decides:** (a) Telegram only (free per message; needs
+  the bot, and each seller links Telegram once); (b) SMS only (reaches every
+  phone; each alert costs one or two messages; needs F-11 and a budget);
+  (c) both, SMS as the fallback for people Telegram cannot reach (what the
+  code does when both are on, `notifications.sms_only_without_telegram`), or
+  SMS to everyone. Also: the daily notification SMS budget (200 by default)
+  and whether buyers get SMS too or only sellers (today: every order alert
+  in `texts.ORDER_TEXTS`, buyers included).
+- **Then the engineer:** for Telegram, the bot's webhook and linking button
+  on the web, `MARKX_TELEGRAM_PUSH_PROVIDER=bot_api`, re-reading the Bot API
+  documentation; for SMS, F-11's wire format; then one real alert to the
+  founder's own phone with permission, and the activation steps in
+  `docs/DEPLOYMENT.md`.
+- **Also open:** the duplicate-or-loss trade-off (D-092: Telegram may repeat
+  after a crash, SMS may be lost after a crash, never repeated), retention of
+  delivery records (with F-12), and a native speaker's review of the Amharic
+  texts (blueprint I.3).
+- **Founder's approval required: yes** (cost, accounts, personal data).
 
 ### F-14 How the stored files are protected against loss (blueprint F.6)
 

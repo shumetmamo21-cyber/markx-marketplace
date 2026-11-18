@@ -1,6 +1,23 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **production deployment
+**Last updated:** 18 November 2026, by the **notification system session**
+(D-092, N-1): the audit's defect fixed first — `get_push_sender()` raised on
+staging and production, so every notification for a person with Telegram
+linked was retried eight times and given up; now a missing provider is
+recorded `unavailable` and the worker carries on. Delivery records per
+notification and outside channel (`notification_deliveries`, migration
+`0016`), a provider-independent Telegram interface with the fake and a Bot
+API adapter tested against stand-ins only, order-alert SMS through the
+existing SMS adapter (purpose `notification`, short English and Amharic
+texts carrying the order code only, its own budget, a per-person limit and
+a cooldown, **OFF by default**), a once-only reminder before a seller's
+answer is due (`seller_order_reminders`), `dispute.decided`, a second check
+at delivery that the recipient may still handle the store's orders, crash
+safety committed around each provider call (Telegram at-least-once, SMS
+at-most-once; exactly-once is not claimed) and four new watch alerts.
+**No bot, no SMS provider and no account exists; nothing was sent outside
+the server. Seller notifications are a launch blocker until a real channel
+is connected and tested** (N-1). Before it, the **production deployment
 foundation session** (D-091): production images for the API and the web
 app; a separate production Compose file (`infra/production/`) with an
 nginx reverse proxy (HTTPS-only, TLS 1.2/1.3, HSTS, body and edge rate
@@ -170,6 +187,7 @@ creates), deployment. Nothing is deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| Notification system (D-092, N-1) | the commits after `bd091bd`; see `git log` | The push-provider defect fixed; `notification_deliveries` and `seller_order_reminders` (migration `0016`); `notifications/delivery.py`, `texts.py`, the Bot API adapter; notification SMS (off), its budget, limit and cooldown; the deadline reminder job; `dispute.decided`; four `notifications.*` watch checks; `MARKX_TELEGRAM_PUSH_PROVIDER`; `tests/api/test_notification_delivery.py`. Nothing connected |
 | Production deployment foundation (D-091) | the commits after `a9941d2`; see `git log` | API and web production images, `infra/production/` (Compose, nginx, env templates, `deploy.sh`, the rehearsal), `markx/ops/health.py` and `preflight.py`, the worker heartbeat, the migration lock, stricter real-server configuration, the web start-up check and address forwarding, `bootstrap.sh` keeping real passwords, `check_reachable` on a missing bucket, `docs/DEPLOYMENT.md`, `docs/runbooks/`, CI's web image and rehearsal jobs. No migration |
 | Object storage (D-090) | the commit after `d4a29af`; see `git log` | `ObjectStore` with `local`, `minio`, `s3` and `r2` (boto3), the start-up checks, `file_storage` watch check, `scripts/copy_files_to_object_storage.py`, MinIO in Compose, CI and the journeys, `tests/storage/` (136 tests). No migration |
 | SMS foundation (D-089) | see `git log`; the commit after `3c7921c` | The SMS interface, the HTTPS adapter skeleton (no provider), `sms_messages` (migration `0015`), the resend cooldown, `sms.failures` and `sms.unfinished` alerts, the SMS start-up checks, `e2e/sign-in-cooldown.mjs`. 1251 API tests, 71 web unit tests |
@@ -438,10 +456,12 @@ once after a full batch; a pass sends what its own jobs queued (D-082).
   `FOR UPDATE SKIP LOCKED`; a handler that raises is retried after 30 s, 1,
   2, 4 ... minutes up to an hour and given up after 8 attempts; a worker that
   dies mid-row leaves it pending and untouched; one bad row never blocks the
-  rest. The only topic is `notify.push`: an in-app notification is passed on
-  to the person's Telegram when they have linked it. **The only push adapter
-  is a fake**; on a real server the factory refuses it, so nothing is ever
-  pretended sent.
+  rest. `notify.push` carries an in-app notification to Telegram (when
+  linked) and, for order alerts while the switch is on, to SMS, with an
+  explicit delivery record per channel (D-092). **No real channel is
+  connected**: on a real server the push factory returns no sender and the
+  delivery is recorded `unavailable` without an error (before D-092 it
+  raised, and each message was retried and given up).
 - Tested (25 tests, `tests/worker/test_worker.py`): a committed message is
   delivered exactly once and one from a rolled-back transaction never (P2
   completion criterion 2); retries with growing delays; two workers never
@@ -931,8 +951,11 @@ Be careful with these. They were written and never exercised.
 - Ownership transfer between seller members (needs the founder's decision,
   F-02).
 - Store logo upload, share cards, QR code.
-- The seller Telegram bot and the real push adapter: the worker delivers
-  pushes to a fake.
+- The seller Telegram bot. The Bot API push adapter exists (D-092) but has
+  never talked to Telegram; a real server uses no push provider and records
+  every Telegram delivery `unavailable`. No SMS provider, so notification
+  SMS (also off by default) cannot go out either. Delivery reports
+  (webhooks) for either channel.
 - A real private bucket for documents and a public one for pictures (F-01):
   the S3 and R2 adapters exist (D-090) and a real server refuses to start
   without one, but no account or bucket has been created. A real SMS
@@ -1001,6 +1024,18 @@ Be careful with these. They were written and never exercised.
   (D-074 here).
 
 ## Known problems
+
+- **Seller notifications are a launch blocker (D-092, N-1).** Everything is
+  built and tested against fakes, but no outside channel is connected: no
+  Telegram bot, no SMS provider, notification SMS switched off. A seller
+  learns of an order only in the dashboard, and an unanswered order expires
+  in 30 business minutes. MarkX must not launch until at least one channel
+  is connected and a real alert has reached a seller's phone.
+- **Duplicates and losses are possible by design** (D-092): a worker that
+  dies just after Telegram accepted a message sends it again; one that dies
+  around an SMS send records it `unknown` and never resends it (it may be
+  lost). Both are reported by the watch. No provider-side idempotency exists
+  to do better (Telegram has none; no SMS provider is chosen).
 
 - **MarkX cannot start on a real server today, by design** (D-084 to
   D-091): no SMS provider (F-11), no buckets (F-01), no picture domain
@@ -1895,9 +1930,10 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0012` | `20261117_1158_seller_weekly_reports.py` | `seller_weekly_reports`: one row per store and week, starting on a Monday (D-073) |
 | `0013` | `20261118_0700_paid_orders_never_end_undelivered.py` | `ck_seller_orders_paid_order_not_ended_undelivered`: a part with a recorded payment never ends declined, expired, cancelled or returned (D-086). Checks existing rows; deletes nothing |
 | `0014` | `20261118_0800_payment_recorded_at_handover.py` | `trg_seller_orders_payment_at_handover`: a direct payment is recorded only while the part is delivered, completed or disputed; checks only the moment of recording, so existing records are kept and still move on (D-087) |
+| `0016` | `20261118_1645_notification_deliveries_and_order_reminders.py` | `notification_deliveries`: one row per notification and outside channel (unique), its status and reason, never text or a number; `seller_order_reminders`: a reminder sent once per seller order and kind (D-092). Two new tables only |
 | `0015` | `20261118_1014_sms_delivery_records.py` | `sms_messages`: one delivery record per SMS, with its CHECKs (purpose and reference agree, a failure has its error code, a 32-byte keyed hash of the number, no text or code column) and three indexes (D-089). A new table only; nothing existing changed |
 
-The schema has 70 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`). P9 and P10 needed no new table and no migration at
+The schema has 72 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
@@ -1924,6 +1960,25 @@ These are written reminders; nothing in the code fires them.
 Two sessions may work in parallel: one owns `apps/web`, the other the back
 end. Work in this order within each. Finish and push each step first.
 
+**Notifications (D-092): the launch blocker.**
+
+1. The founder decides N-1 (Telegram, SMS or both) and creates the bot or
+   chooses the SMS provider. Nothing in the code may be switched on before.
+2. **The recommended next engineering task, needing no account: the
+   Telegram bot's linking flow on the web** — the "Connect Telegram" button
+   on the account and seller pages calling the existing `POST /me/telegram`,
+   behind a configuration switch that stays off until the bot exists, plus
+   the bot's incoming-update webhook skeleton (verified by Telegram's secret
+   token header) tested against stand-ins. Without linking, a Telegram
+   provider alone reaches nobody.
+3. Then with the founder: `MARKX_TELEGRAM_PUSH_PROVIDER=bot_api` and the
+   token, re-reading the Bot API documentation (its host was not reachable
+   from the D-092 session), and/or F-11's SMS wire format, then the
+   activation steps in `docs/DEPLOYMENT.md` and one real alert to the
+   founder's own phone with permission.
+4. Founder items attached: retention of delivery records (with F-12) and a
+   native speaker's review of the outside texts (`notifications/texts.py`).
+
 **Deployment (D-091), before anything else touches `infra/production/`:**
 
 1. Confirm that CI's "Production stack rehearsal" job passed on the latest
@@ -1931,7 +1986,7 @@ end. Work in this order within each. Finish and push each step first.
    `sudo -E infra/production/rehearsal/rehearse.sh` locally after any change
    to `infra/production/`, either Dockerfile, `markx/ops/health.py`,
    `markx/core/config.py` or `apps/web/deploy/`.
-2. **The recommended next engineering task: off-server database backups
+2. **Next after the notification linking flow: off-server database backups
    (F-16), code only, behind the existing adapter.** Extend the backup
    service so each successful dump is also copied to a THIRD, private,
    versioned bucket (`MARKX_BACKUP_BUCKET`, through the existing

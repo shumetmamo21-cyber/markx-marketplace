@@ -130,10 +130,11 @@ never a value, if a rule below is broken (**Tested**:
 | `MARKX_FILE_STORAGE_PROVIDER` and `MARKX_STORAGE_*` | the access keys | `s3` or `r2`, two different buckets, `https://` endpoint (D-090). **Founder** (F-01): no bucket |
 | `MARKX_PUBLIC_MEDIA_BASE_URL` | no | `https://` on a host other than the site's (F.6). **Founder** (F-15) |
 | `MARKX_TELEGRAM_BOT_TOKEN`, `MARKX_ALERT_TELEGRAM_CHAT_ID` | the token | optional; without both, alerts reach only the log and the API and worker say so at start-up (new). **Founder** |
+| `MARKX_TELEGRAM_PUSH_PROVIDER`, `MARKX_TELEGRAM_PUSH_TIMEOUT_SECONDS` | no (the token above is) | unset or `none` today: no bot exists, every Telegram delivery is recorded `unavailable` and a start-up warning says so; `fake` is refused; `bot_api` needs `MARKX_TELEGRAM_BOT_TOKEN` (D-092). **Founder** (N-1) |
 | `MARKX_ALLOW_NEWER_SCHEMA` | no | only during an acknowledged rollback (`docs/runbooks/rollback.md`; new) |
 | `MARKX_WORKER_HEARTBEAT_FILE` | no | set by the Compose file for the worker (new) |
 | `MARKX_DB_POOL_SIZE`, `MARKX_DB_MAX_OVERFLOW`, `MARKX_STORAGE_*_TIMEOUT_SECONDS`, `MARKX_STORAGE_MAX_OBJECT_BYTES`, `MARKX_STORAGE_SERVER_SIDE_ENCRYPTION`, `MARKX_SMS_TIMEOUT_SECONDS`, `MARKX_TURNSTILE_TIMEOUT_SECONDS`, `MARKX_*_SESSION_*_MINUTES`, `MARKX_TOTP_ISSUER`, `MARKX_WORKER_POLL_SECONDS` | no | defaults are the intended values |
-| `MARKX_STORAGE_DIR` | no | set by the Compose file to a `tmpfs`; on a real server only the fake push outbox writes there (no real push adapter exists) |
+| `MARKX_STORAGE_DIR` | no | set by the Compose file to a `tmpfs`; nothing writes there on a real server any more: the fake push sender is refused there (D-092) |
 
 ### Web (`web.env` and `compose.env`)
 
@@ -214,6 +215,28 @@ simultaneous runs). The API, the web app and the worker never migrate. See
 - Turnstile's production widget; an SMS provider (F-11); the buckets (F-01)
   and the picture CDN and its domain (F-15); the Telegram alert group.
 - The Cloudflare edge.
+
+**Seller notifications: a launch blocker (D-092, N-1).** The notification
+system is built and tested against fakes and stand-ins: in-app messages,
+Telegram and SMS delivery with a record per channel, the deadline reminder
+and the failure alerts. **No outside channel is connected**: no Telegram bot,
+no SMS provider, and notification SMS is switched off
+(`notifications.sms_enabled`). A seller today learns of a new order only by
+opening the dashboard, and an order nobody sees expires in 30 business
+minutes. MarkX must not launch until at least one channel is connected and a
+real order alert has been received on a seller's phone. To activate:
+
+1. The founder decides N-1 (Telegram, SMS or both) and creates the bot
+   and/or chooses the SMS provider (F-11) and approves the cost.
+2. Telegram: set `MARKX_TELEGRAM_BOT_TOKEN` and
+   `MARKX_TELEGRAM_PUSH_PROVIDER=bot_api`. A seller must link Telegram once:
+   the API route is built (`POST /me/telegram`, signature-checked), the web
+   button is not (it needs the bot's login widget). SMS: configure the
+   provider (D-089), then a super administrator turns on
+   `notifications.sms_enabled` and sets `notifications.sms_daily_budget`.
+3. Place a test order to a store the founder owns and confirm the alert
+   arrives; check the delivery record says `accepted` and the watch shows no
+   `notifications.*` alert.
 
 **Not built:**
 
