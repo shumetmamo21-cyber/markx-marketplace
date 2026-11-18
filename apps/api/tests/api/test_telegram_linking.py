@@ -528,6 +528,39 @@ def test_asking_for_links_at_once_leaves_exactly_one_waiting(db: Session) -> Non
     )
 
 
+@pytest.mark.usefixtures("telegram_linking")
+def test_a_new_link_asked_for_while_telegram_confirms_the_old_one_never_deadlocks(
+    db: Session,
+) -> None:
+    """Both take the user's lock first, then the links (D-093)."""
+    client = _person()
+    copy = ApiClient()
+    copy.http.cookies = client.http.cookies
+    for round_ in range(4):  # two links a round, within the hourly limit
+        _, token = _start(client)
+
+        def act(i: int, token: str = token) -> int:
+            if i == 0:
+                return int(_webhook(_message(f"/start {token}")).status_code)
+            return int(copy.post("/me/telegram/link").status_code)
+
+        confirm, ask = _race(2, act)
+        assert confirm == 200, round_
+        # Either the new link came first (the old one is then revoked) or the
+        # confirmation did (the account is then connected): never a 500.
+        assert ask in (201, 409), round_
+        assert client.delete("/me/telegram").status_code == 200
+    db.rollback()
+    assert (
+        db.scalar(
+            select(func.count())
+            .select_from(TelegramLinkToken)
+            .where(TelegramLinkToken.status == "pending")
+        )
+        == 0
+    )
+
+
 # -- disconnecting ---------------------------------------------------------------------------
 
 

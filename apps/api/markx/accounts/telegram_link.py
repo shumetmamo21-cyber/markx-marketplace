@@ -364,16 +364,26 @@ def link_with_init_data(db: DbSession, user: User, telegram_id: int, actor: Acto
 
 
 def _complete(db: DbSession, token: str, telegram_id: int, now: datetime) -> Outcome:
+    digest = token_hash(token)
+    owner_id = db.scalar(
+        select(TelegramLinkToken.user_id).where(TelegramLinkToken.token_hash == digest)
+    )
+    if owner_id is None:
+        return Outcome.INVALID
+    # Locks in one order everywhere: the user, then their links. Asking for a
+    # new link (or disconnecting) at the moment Telegram confirms the old one
+    # then waits instead of deadlocking.
+    user = _lock_user(db, owner_id)
     row = db.scalar(
         select(TelegramLinkToken)
-        .where(TelegramLinkToken.token_hash == token_hash(token))
+        .where(TelegramLinkToken.token_hash == digest)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if row is None or row.status != TelegramLinkStatus.PENDING:
         return Outcome.INVALID
     if row.expires_at <= now:
         return Outcome.EXPIRED
-    user = _lock_user(db, row.user_id)
     actor = Actor(type="user", user_id=user.id)
     session = db.get(Session, row.session_id)
     failure: TelegramLinkFailure | None
