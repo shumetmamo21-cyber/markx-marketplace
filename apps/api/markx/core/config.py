@@ -10,8 +10,9 @@ import ipaddress
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
@@ -60,7 +61,21 @@ class Config(BaseSettings):
     file_storage_provider: Literal["local"] = "local"
 
     sms_provider: Literal["fake"] = "fake"
-    bot_check_provider: Literal["fake"] = "fake"
+    # The bot check before any SMS (blueprint D.2, H.3; D-085). "fake" is for a
+    # laptop and the tests only and is refused on staging and production;
+    # "turnstile" is Cloudflare Turnstile, verified on the server.
+    bot_check_provider: Literal["fake", "turnstile"] = "fake"
+    # The Turnstile secret key: from the host's secret store only, never a
+    # file in the repository. SecretStr keeps it out of logs, reprs and
+    # validation errors.
+    turnstile_secret_key: SecretStr | None = None
+    # The public site key, which the sign-in page also needs. Not a secret.
+    turnstile_site_key: str | None = None
+    # The hostnames Turnstile must report the token was solved on. Empty
+    # means the host of MARKX_PUBLIC_ORIGIN.
+    turnstile_allowed_hostnames: str = ""
+    # How long to wait for Cloudflare before refusing (fail closed).
+    turnstile_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     telegram_bot_token: str | None = None
     # The founder's private Telegram group for alerts (blueprint F.12; D-064).
     # With the bot token set, alerts go there; otherwise to the log.
@@ -92,6 +107,35 @@ class Config(BaseSettings):
             if network.prefixlen == 0:
                 raise ValueError(f"MARKX_TRUSTED_PROXIES: {item!r} would trust every caller")
         return value
+
+    @property
+    def turnstile_hostnames(self) -> list[str]:
+        configured = [h.lower() for h in _split(self.turnstile_allowed_hostnames)]
+        if configured:
+            return configured
+        host = urlsplit(self.public_origin).hostname
+        return [host.lower()] if host else []
+
+    @model_validator(mode="after")
+    def _turnstile_needs_its_keys(self) -> Config:
+        if self.bot_check_provider != "turnstile":
+            return self
+        problems: list[str] = []
+        secret = self.turnstile_secret_key.get_secret_value() if self.turnstile_secret_key else ""
+        if not secret.strip():
+            problems.append("MARKX_TURNSTILE_SECRET_KEY must be set")
+        if not (self.turnstile_site_key or "").strip():
+            problems.append("MARKX_TURNSTILE_SITE_KEY must be set")
+        if not self.turnstile_hostnames:
+            problems.append(
+                "MARKX_TURNSTILE_ALLOWED_HOSTNAMES or MARKX_PUBLIC_ORIGIN must name a host"
+            )
+        if self.is_real_environment and _is_turnstile_test_key(secret, self.turnstile_site_key):
+            # Cloudflare's published test keys pass or fail every visitor.
+            problems.append("the Turnstile keys must be real keys, not Cloudflare's test keys")
+        if problems:
+            raise ValueError("Turnstile bot check: " + "; ".join(problems))
+        return self
 
     @property
     def trusted_proxy_list(self) -> list[str]:
@@ -127,6 +171,15 @@ class Config(BaseSettings):
         if problems:
             raise ValueError("unsafe configuration for a real environment: " + "; ".join(problems))
         return self
+
+
+def _is_turnstile_test_key(secret: str, site_key: str | None) -> bool:
+    """Cloudflare's documented dummy keys look like "1x0000…AA": a digit, "x",
+    then a run of zeros. Real keys start "0x" instead."""
+    return any(
+        len(key) > 6 and key[0] in "123" and key[1] == "x" and key[2:8] == "000000"
+        for key in (secret, site_key or "")
+    )
 
 
 def _split(value: str) -> list[str]:

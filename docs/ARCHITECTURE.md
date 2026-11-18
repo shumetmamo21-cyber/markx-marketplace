@@ -345,7 +345,7 @@ Each sits behind an adapter with a fake used in tests (blueprint F.0).
 | --- | --- | --- |
 | SMS | `markx/notifications/sms.py` | Fake only; no provider chosen |
 | Telegram push | `markx/notifications/push.py` | Fake only; no bot |
-| Bot check | `markx/core/botcheck.py` | Fake only, on a laptop and in tests; a real server refuses to start with it and refuses every sign-in code (D-084) |
+| Bot check | `markx/core/botcheck.py` | **Cloudflare Turnstile** built and tested against stand-ins, **not yet against Cloudflare** (no keys yet; D-085). The development check on a laptop and in tests only; a real server refuses to start with it (D-084). Widget: `apps/web/src/components/TurnstileWidget.tsx` |
 | Telegram sign-in | `markx/accounts/service.py` | Signature check built; no bot |
 | Private file storage | `markx/core/storage.py` | Local disk only; refused on real servers |
 | Public picture storage | `markx/core/storage.py` | Local disk only; refused on real servers |

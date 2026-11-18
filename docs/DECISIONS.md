@@ -2098,6 +2098,73 @@ Closing the gap (link prefetching, the RSC payload) is open work.
 
 Nothing in this entry deploys anything, creates an account or costs money.
 
+## D-085 The bot check is Cloudflare Turnstile, verified on the server
+
+**Follows** blueprint D.2 and H.3 (a bot check before any SMS; Turnstile is
+the blueprint's candidate) and closes the gap D-084 left open (SEC-2).
+**Accepted by the founder** (18 November 2026). **Built and tested against
+stand-ins only: not yet against Cloudflare**, because the keys do not exist
+yet. Not production-ready until the check in `docs/SETUP.md` has passed with
+the real keys.
+
+**Server** (`markx/core/botcheck.py`, `TurnstileBotCheck`). For every
+sign-in code it POSTs the token, the secret key and the caller's address
+(form-encoded) to Siteverify,
+`https://challenges.cloudflare.com/turnstile/v0/siteverify`, and accepts
+only an answer with HTTP 200, a JSON object whose `success` is literally
+`true`, a `hostname` among the allowed ones (default: the host of
+`MARKX_PUBLIC_ORIGIN`) and `action` equal to `sign_in`. Everything else is
+refused, and nothing is sent: a missing, blank, over-long (more than 2048
+characters) or non-ASCII token without asking Cloudflare; Cloudflare's
+"no" (`invalid-input-response` for a forged token, `timeout-or-duplicate`
+for an expired or already-used one, any other code, or none); an error
+status; a body that is not JSON, not an object or larger than 64 KB; a
+timeout (5 seconds by default) or any network failure (fail closed). A
+token is redeemed by Cloudflare once, so a reused token is refused by
+Cloudflare's own answer; MarkX keeps no list of its own. The log records
+the reason and Cloudflare's error codes, never the token, the secret or the
+address. Only the standard library is used (`urllib`, as the Telegram
+alerts do); no new dependency.
+
+**Configuration** (`markx/core/config.py`). `MARKX_BOT_CHECK_PROVIDER` is
+`fake` or `turnstile`. With `turnstile`, `MARKX_TURNSTILE_SECRET_KEY` (held
+as a `SecretStr`, so it is absent from reprs, dumps and error messages) and
+`MARKX_TURNSTILE_SITE_KEY` must both be set, or the API does not start.
+Staging and production refuse `fake` (D-084) and refuse Cloudflare's
+published test keys (`1x0000…`, `2x0000…`, `3x0000…`), which pass or fail
+everyone. A laptop may use them.
+
+**Web** (`TurnstileWidget.tsx`, `SignInForm.tsx`, the sign-in page). When
+the web app runs with `MARKX_TURNSTILE_SITE_KEY` (the public key, read per
+request), the phone step loads Cloudflare's script explicitly, renders the
+widget with the action `sign_in`, refuses to send until it is solved
+(saying so in words), sends the token as `bot_token` (the field the API
+already had: no API change), and asks for a fresh token after every
+attempt. Without the key (a laptop) nothing changes. The page's security
+policy now allows `https://challenges.cloudflare.com` for scripts and
+frames, and nothing else from Cloudflare. Two new messages in both
+languages; the Amharic wants a native speaker's review like the rest.
+Coordination: no other session had touched `apps/web` since the tenth
+session's last commit; the changes are additions to three files.
+
+**Tests.** `tests/api/test_turnstile.py`: Siteverify replaced by a function
+and by a real HTTP server on 127.0.0.1, covering the cases above, a reused
+token, a slow Cloudflare (timeout), a refused connection, error statuses,
+and the secret, the token and the address never being logged. The sign-in
+route end to end with Turnstile on. `apps/web/e2e/turnstile-widget.mjs`, in
+the browser journeys: every request to `challenges.cloudflare.com` is
+answered by a stand-in, and the page's security policy, the refusal before
+solving, the token reaching the API, a fresh token per attempt and a
+refused token are all checked. Cloudflare is never contacted by any test.
+
+**Not verified here.** Cloudflare's documentation site could not be reached
+from the session that built this (its network does not allow it), so the
+contract above (the URL, the form fields, `success`, `hostname`, `action`,
+`error-codes`, the 2048-character limit, the test keys' prefix, the widget's
+`render`/`reset`/`remove` and callbacks, the two CSP directives) is
+Cloudflare's long-standing published one, not re-read today. The check with
+the real keys in `docs/SETUP.md` confirms it.
+
 ---
 
 ## Decisions that need the founder

@@ -21,11 +21,16 @@ const isDev = process.env.NODE_ENV !== "production";
 // API sends it by itself on staging and production, which refuse to start
 // without an https:// origin.
 const mediaOrigin = process.env.MARKX_MEDIA_ORIGIN ?? "";
+// Cloudflare Turnstile on the sign-in page (D-085): its script and its frame.
+// Nothing else from Cloudflare is allowed; the page sends the token to our
+// own API, which asks Cloudflare itself.
+const turnstileOrigin = "https://challenges.cloudflare.com";
 const hstsMaxAge = process.env.MARKX_HSTS_MAX_AGE ?? "";
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${turnstileOrigin}${isDev ? " 'unsafe-eval'" : ""}`,
+  `frame-src ${turnstileOrigin}`,
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob:${mediaOrigin ? ` ${mediaOrigin}` : ""}`,
   "font-src 'self'",

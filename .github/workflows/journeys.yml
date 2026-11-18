@@ -126,6 +126,21 @@ jobs:
         working-directory: apps/web
         run: node e2e/setup-and-account.mjs "$RUNNER_TEMP/shots"
 
+      # D-085: the same build, served again with a Turnstile site key. The
+      # journey answers every request to challenges.cloudflare.com itself, so
+      # nothing reaches Cloudflare; the value is a placeholder, not a key.
+      - name: Turnstile widget on the sign-in page (Cloudflare replaced by a stand-in)
+        working-directory: apps/web
+        env:
+          MARKX_TURNSTILE_SITE_KEY: test-only-site-key
+        run: |
+          pkill -f "next start" || true
+          pkill -f next-server || true
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:3000/en || break; sleep 1; done
+          nohup npm run start > "$RUNNER_TEMP/web-turnstile.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/en > /dev/null && break; sleep 1; done
+          node e2e/turnstile-widget.mjs
+
       - name: Server logs
         if: always()
         run: $COMPOSE logs --no-color api > "$RUNNER_TEMP/api.log" 2>&1 || true
@@ -139,6 +154,7 @@ jobs:
             ${{ runner.temp }}/shots
             ${{ runner.temp }}/api.log
             ${{ runner.temp }}/web.log
+            ${{ runner.temp }}/web-turnstile.log
           retention-days: 7
 
       - name: Stop Compose

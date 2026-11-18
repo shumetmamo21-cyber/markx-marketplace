@@ -137,6 +137,8 @@
     "changePhone": "Use another number",
     "failed": "That did not work. Check the number or the code and try again.",
     "rateLimited": "Too many attempts. Please wait a little and try again.",
+    "botCheck": "Please complete the check above, then send the code.",
+    "botCheckFailed": "We could not confirm you are a person. Complete the check again and retry.",
     "devHint": "Development build: codes are written to the local SMS inbox, not sent.",
     "signedInAs": "Signed in as {phone}",
     "signOut": "Sign out",

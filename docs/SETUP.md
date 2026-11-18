@@ -284,6 +284,48 @@ Security settings added by D-084:
 The container runs uvicorn with `--no-proxy-headers`; run it the same way
 behind a proxy so only `MARKX_TRUSTED_PROXIES` decides.
 
+### The bot check: Cloudflare Turnstile (D-085)
+
+On a laptop and in the tests nothing is needed: the API's development check
+answers and the sign-in page shows no widget. Staging and production refuse
+to start until Turnstile is configured.
+
+**What the founder creates** (Cloudflare dashboard, Turnstile, "Add widget";
+free): one widget named for MarkX, with
+
+- **Hostnames:** the site's real domain(s), e.g. `markx.et` and
+  `www.markx.et` (and a staging hostname if there is one). Add `localhost`
+  only to a separate test widget, never to the production one.
+- **Widget mode:** "Managed" (Cloudflare decides when to ask the visitor to
+  click). Pre-clearance: off.
+
+It gives two values:
+
+| Value | Secret? | Where it goes |
+| --- | --- | --- |
+| **Site key** | No (it is in every page) | `MARKX_TURNSTILE_SITE_KEY` for the **API** and for the **web app** |
+| **Secret key** | **Yes** | `MARKX_TURNSTILE_SECRET_KEY` for the **API only**, in the server's secret store. Never in Git, `.env.example`, the web app, a screenshot or chat |
+
+Then set, for the API: `MARKX_BOT_CHECK_PROVIDER=turnstile`, the two keys,
+and, if the site answers on more than one hostname,
+`MARKX_TURNSTILE_ALLOWED_HOSTNAMES=markx.et,www.markx.et` (otherwise the
+host of `MARKX_PUBLIC_ORIGIN` is the only one accepted). For the web app:
+`MARKX_TURNSTILE_SITE_KEY` when it starts (it is read per request; no
+rebuild needed).
+
+The API refuses a token that is missing, malformed, invalid, expired or
+already used, one solved on another hostname or for another action than
+`sign_in`, and any answer it cannot read; if Cloudflare cannot be reached
+within `MARKX_TURNSTILE_TIMEOUT_SECONDS` (default 5) it refuses too. No
+sign-in code is sent then. Cloudflare's published test keys are accepted on
+a laptop and refused on staging and production.
+
+**Before calling it working:** with the real keys configured, sign in once
+on the real domain, then confirm in the API log that no `bot check refused`
+line appeared, and that a second request with the same token (replayed by
+hand) is refused with `timeout-or-duplicate`. Until then it is untested
+against Cloudflare itself.
+
 ## Making a schema change
 
 1. Edit the models.
@@ -369,6 +411,10 @@ page when a step fails).
 
 Playwright is a development dependency of the web app (`npm ci` installs
 it); `npx playwright install chromium` fetches its browser once.
+
+`node e2e/turnstile-widget.mjs` checks the sign-in widget with Cloudflare
+replaced by a stand-in; start the web app with
+`MARKX_TURNSTILE_SITE_KEY=test-only-site-key` first (D-085).
 
 `node e2e/page-weight.mjs` checks the page weight of five pages against the
 ceilings of D-084 and exits 1 when one is over (production build only).

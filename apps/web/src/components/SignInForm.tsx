@@ -7,18 +7,28 @@ import { browserApi, errorCode } from "@/lib/api/browser";
 import { fill, type Locale, type Messages } from "@/lib/i18n";
 import { safeNext } from "@/lib/safe-next";
 
+import { TurnstileWidget } from "./TurnstileWidget";
+
 type Step = { kind: "phone" } | { kind: "code"; masked: string; minutes: number };
 
 // Phone first, then the six-digit code (blueprint F.4). The API sets the
 // session cookie on the verify response; a full page load then carries it.
-export function SignInForm({ lang, t, next, dev }: { lang: Locale; t: Messages["auth"]; next: string; dev: boolean }) {
+// With a Turnstile site key (D-085) the phone step shows Cloudflare's check
+// and sends its one-time token; without one (a laptop) it is not shown and the
+// API's development check answers instead.
+export function SignInForm({ lang, t, next, dev, siteKey }: { lang: Locale; t: Messages["auth"]; next: string; dev: boolean; siteKey?: string }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>({ kind: "phone" });
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [botToken, setBotToken] = useState<string | null>(null);
+  const [botReset, setBotReset] = useState(0);
 
-  const fail = (error: unknown) => setProblem(errorCode(error) === "rate_limited" ? t.rateLimited : t.failed);
+  const fail = (error: unknown) => {
+    const code = errorCode(error);
+    setProblem(code === "rate_limited" ? t.rateLimited : code === "bot_check_failed" ? t.botCheckFailed : t.failed);
+  };
 
   if (step.kind === "phone") {
     return (
@@ -26,9 +36,14 @@ export function SignInForm({ lang, t, next, dev }: { lang: Locale; t: Messages["
         className="space-y-4"
         onSubmit={async (event) => {
           event.preventDefault();
+          if (siteKey && !botToken) return setProblem(t.botCheck);
           setBusy(true);
           setProblem(null);
-          const { data, error } = await browserApi.POST("/api/v1/auth/otp/request", { body: { phone, language: lang } });
+          const { data, error } = await browserApi.POST("/api/v1/auth/otp/request", {
+            body: { phone, language: lang, ...(botToken ? { bot_token: botToken } : {}) },
+          });
+          // A token is good once: ask for a fresh one whatever the answer.
+          if (siteKey) setBotReset((n) => n + 1);
           setBusy(false);
           if (error || !data) return fail(error);
           setStep({ kind: "code", masked: data.phone_masked, minutes: Math.round(data.expires_in_seconds / 60) });
@@ -49,6 +64,7 @@ export function SignInForm({ lang, t, next, dev }: { lang: Locale; t: Messages["
           />
           <span id="phone-hint" className="block text-sm text-slate">{t.phoneHint}</span>
         </label>
+        {siteKey ? <TurnstileWidget siteKey={siteKey} resetKey={botReset} onToken={setBotToken} /> : null}
         {problem ? <p role="alert" className="text-clay">{problem}</p> : null}
         <button type="submit" disabled={busy} className="min-h-12 w-full rounded-card bg-adey font-bold disabled:opacity-60">
           {busy ? t.sending : t.sendCode}

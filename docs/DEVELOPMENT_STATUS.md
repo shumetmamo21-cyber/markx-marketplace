@@ -1,6 +1,10 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **security and CI session** (the
+**Last updated:** 18 November 2026, by the **Turnstile session** (D-085):
+the real bot check, Cloudflare Turnstile, built on the API and the sign-in
+page and tested against stand-ins. **Not yet tested against Cloudflare**:
+the founder's keys are not configured yet, and no real server can start
+without them. Before it, the **security and CI session** (the
 independent audit's P0-1 and P0-2; D-084): five security fixes (SEC-1, -2,
 -3, -5, -6), a secret scan and dependency audits in CI, the browser journeys
 on every code push against Compose, and an automated page-weight check. See
@@ -101,6 +105,7 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
+| Turnstile (D-085) | the Turnstile commit and the status commit after `d3bdb93` | Cloudflare Turnstile verified on the server (`TurnstileBotCheck`), its configuration with the secret kept out of logs, the widget on the sign-in form, the CSP opened for Turnstile only, `e2e/turnstile-widget.mjs` in the browser journeys. Stand-ins only; no key exists yet |
 | Security and CI (D-084) | `1698082`, `3a829d0` and the status commit | The audit's P0-1: sign-in open redirect (SEC-1), the fake bot check refused on real servers (SEC-2), trusted proxies only for forwarded addresses (SEC-3), security headers (SEC-5), exact-path anti-forgery exemptions (SEC-6); P0-2: Gitleaks, pip-audit, an npm audit gate with a reviewed allow-list, journeys on every code push against Compose, Playwright as a dev dependency, the page-weight check. 997 API tests, 64 web unit tests |
 | 10 (web owner) | `b2e11ce`, `1920e55`, the merge `d015261`, `ae10c83`, `326ae26`, `af02d59`, `ffa2720`; second round `822f564`, `751e2b0`, `47e9fec` and the documentation commit; third round `c6b7a29`, `3511e0e`, `8dc0264`, `94d5bd3`, `b4bff76`, `876c1d9` and the documentation commits; see `docs/HANDOFF.md`, Part A.0000 | Reviews and report links for buyers, the shop's replies, `can_edit`/`can_reply` (D-072); thumbnails on the product card (`thumb_url`), the product page gallery, shops' photos, problem evidence (D-074); the rest of the seller dashboard and the application (D-075); then a store with open orders cannot close (D-076), every remaining screen the API supports (D-077) and the settings in Amharic (D-078); `e2e/shop-screens.mjs`, `e2e/seller-dashboard.mjs`, `e2e/setup-and-account.mjs`; then a store's track record on its page and search by rating and seller level (D-080), a worker pass that reports failure (D-079) and the browser journeys on GitHub (D-081). 951 API tests, 33 web unit tests |
 
@@ -823,9 +828,10 @@ Be careful with these. They were written and never exercised.
 - Store logo upload, share cards, QR code.
 - The seller Telegram bot and the real push adapter: the worker delivers
   pushes to a fake.
-- A real private-storage adapter (F-01), a real SMS adapter, a bot-check
-  adapter. **Without the bot-check adapter a real server now refuses to
-  start** (D-084, SEC-2).
+- A real private-storage adapter (F-01) and a real SMS adapter. The
+  bot-check adapter (Turnstile) **exists but has never talked to
+  Cloudflare**: it waits for the founder's keys (D-085). Until they are
+  configured a real server refuses to start (D-084).
 - The reverse proxy, error tracking, the nightly backup schedule and the
   off-server copy, an outside uptime monitor, a real public-storage bucket
   and CDN. (Containers, backups, the drill and alerting exist; demo seed
@@ -878,6 +884,12 @@ Be careful with these. They were written and never exercised.
   (D-074 here).
 
 ## Known problems
+
+- **Turnstile is untested against Cloudflare itself** (D-085). Every test
+  stands in for Cloudflare; the documentation site was not reachable from
+  the building session, so the contract was not re-read. The check with
+  real keys in `docs/SETUP.md` ("Before calling it working") must pass
+  before anyone calls sign-in production-ready.
 
 - **The page weight is over the blueprint's 150 KB target** (D-084): 157 KB
   (home) to 195 KB (product page) before images; script 142 to 147 KB. The
@@ -992,6 +1004,35 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Turnstile session** (D-085), on the commit after `d3bdb93`. Cloudflare
+was never contacted:
+
+```text
+$ uv run pytest tests/api/test_turnstile.py tests/api/test_security_hardening.py tests/api/test_auth_otp.py -> 140 passed
+$ uv run pytest -> 1071 passed in 459.24s (0:07:39)   (997 before; 74 new)
+  ruff check -> All checks passed!; ruff format --check -> 189 files already formatted
+  mypy markx -> no issues found in 124 source files; alembic check -> no new upgrade operations
+  check_openapi_copy --exact openapi.json, and the web copy -> both match exactly (no API change)
+  pip-audit -> No known vulnerabilities found
+$ npm run lint -> clean; npm run typecheck -> clean; npm test -> 64 passed; gen:api -> unchanged
+$ npm run build -> ok; CSP on /en/sign-in: script-src 'self' 'unsafe-inline'
+  https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com
+$ node .github/scripts/npm-audit-gate.mjs apps/web -> passed (no production advisories)
+# web on :3000 with MARKX_TURNSTILE_SITE_KEY=test-only-site-key, API with the development check
+$ node e2e/turnstile-widget.mjs
+  1 the widget loads under the page's security policy, with the site key and the sign_in action
+  2 before the check is solved, sending is refused in words and nothing is sent
+  3 solved: the API received bot_token test-only-token-1
+  4 a second attempt used a fresh token (test-only-token-2)
+  5 a refused token is reported in words, the widget is reset (1), and a fresh token works
+  console errors: none
+# found on the way: the journey must use the site's own origin (on :3001 the
+# API's anti-forgery check refused it, correctly), and a fresh phone number
+# per run (five codes a number an hour, correctly)
+# NOT run: anything against Cloudflare (no keys yet, by the founder's
+# instruction); Cloudflare's documentation (not reachable from this session)
+```
 
 **Security and CI session** (D-084), on `3a829d0`:
 
@@ -1370,10 +1411,12 @@ end. Work in this order within each. Finish and push each step first.
 
 **The back end:**
 
-0. **Recommended next: the real bot-check adapter (Cloudflare Turnstile)**
-   behind `BotCheck` in `core/botcheck.py`, with the widget on the sign-in
-   form (the web owner's part). Until it exists no real server can start
-   (D-084, SEC-2). It needs the founder to create a free Turnstile site key.
+0. **Turnstile (D-085) is built; it waits for the founder's keys.** Once the
+   founder has put them in the server's secret store, run the check in
+   `docs/SETUP.md` ("Before calling it working") and record the result. Do
+   not ask for the secret key in chat or put it in any file. **Then: the
+   real SMS adapter** (blueprint section O, question 23), the other thing
+   a real server needs before a code can be sent.
 1. When the founder confirms or changes an F- item (D-083): record it as a
    `D-` entry, change the code if the answer differs, and remove its
    `PROVISIONAL` marker and its line in `test_provisional_decisions.py`.

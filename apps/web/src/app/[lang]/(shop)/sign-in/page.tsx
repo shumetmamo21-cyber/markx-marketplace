@@ -32,7 +32,15 @@ export default async function SignInPage({ params, searchParams }: PageProps<"/[
       ) : (
         <>
           <p className="text-slate">{t.auth.lead}</p>
-          <SignInForm lang={lang} t={t.auth} next={next} dev={process.env.NODE_ENV !== "production"} />
+          <SignInForm
+            lang={lang}
+            t={t.auth}
+            next={next}
+            dev={process.env.NODE_ENV !== "production"}
+            // The public Turnstile site key, read when the page is served (D-085).
+            // The secret key is never here: only the API holds it.
+            siteKey={process.env.MARKX_TURNSTILE_SITE_KEY || undefined}
+          />
         </>
       )}
     </div>
