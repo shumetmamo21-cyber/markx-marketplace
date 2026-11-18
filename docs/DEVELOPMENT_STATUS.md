@@ -1347,6 +1347,21 @@ $ python -m markx.backup drill --seed-sample-files ...
 # runs it. Gitleaks: not installed here; CI runs it.
 ```
 
+On GitHub, on `937c410` (all five commits): **CI #129 (push) passed**, all
+five jobs: API (lint, types, migrations, the whole suite with the backup
+tests required, both API description checks, and the step "Backup,
+off-server copy and recovery drill (MinIO stand-in)", which fails unless the
+drill prints DRILL PASSED; its report is the `restore-drill` artifact, kept
+30 days); web; security (Gitleaks over the whole history, both dependency
+audits); containers (including the new backup image check); and the
+**production rehearsal: 74 passed, 0 failed**, among them the backup
+service's refusal as production, a healthy service with a complete signed
+set, the MXB2 local copy (owner 999, mode 600), the drill inside the stack,
+and the backup service stopping on SIGTERM in 3 s. **CI #130** (pull request
+#1, same commit) passed; **browser journeys #21** passed. The drill report
+itself could not be downloaded into this session (the artifact host is not
+reachable from here); the step's own check is the evidence.
+
 
 **Telegram account connection** (D-093), on 18 November 2026, commits
 `9d0a5ef` to `76b16b0` (on `366f8f9`), PostgreSQL 17 in Docker on the
