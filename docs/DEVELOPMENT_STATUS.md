@@ -834,6 +834,15 @@ Be careful with these. They were written and never exercised.
   working as designed); repeated journey runs reach it with the one demo
   buyer, so `admin-queues.mjs` lifts it through the staff settings route for
   its one review and restores it at once.
+- **Open question: one worker pass handled nothing.** In one run of
+  `admin-queues.mjs`, `python -m markx.worker --once` ran its eight due jobs
+  (all recorded as succeeded at 20:02:42) and exited without handling any of
+  the 68 outbox messages that were due, none of them even attempted; the
+  database logged no error. The next three passes, by hand and in the
+  rerun, handled everything at once, and it did not recur. The cause is not
+  known. The journey now keeps the worker's report and retries the pass up
+  to three times. If it recurs, read that report: a drain that stopped on an
+  exception logs "could not drain the outbox" (`markx/worker/runner.py`).
 - **`setup-and-account.mjs` leaves its traces switched off**: per run one
   closed demo shop, an archived product and an archived proposal, an
   inactive "Gadgets" category, an inactive test zone, a demo brand and a
@@ -915,8 +924,16 @@ $ check_openapi_copy --exact openapi.json and the web copy -> both match the API
 $ node e2e/setup-and-account.mjs -> 13 steps passed, "console errors: none"
 $ node e2e/seller-dashboard.mjs  -> 11 steps passed, "console errors: none"
 $ node e2e/buyer-journey.mjs     ->  6 steps passed, "console errors: none"
-# the full API suite, admin-queues.mjs and staff-journey.mjs on the final
-# tree are recorded in the next commit
+$ cd apps/api && uv run pytest ->  948 passed in 736.30s (0:12:16)
+  ruff check, ruff format --check, mypy (123 files), alembic check -> clean
+$ MARKX_DEMO_TOTP_SECRET=… node e2e/staff-journey.mjs ->  6 steps passed, "console errors: none"
+$ MARKX_DEMO_TOTP_SECRET=… node e2e/admin-queues.mjs  -> 15 steps passed, "console errors: none"
+  (its first run on this tree stopped at step 13: see Known problems, "one
+  worker pass handled nothing")
+  GitHub Actions run #63 on b12602a: success
+# shop-screens.mjs was not rerun after the second round: the demo buyer is at
+# the review hold limit for all three demo shops (Known problems); it passed
+# 14 steps on 326ae26
 ```
 
 **Tenth session** (the web app's owner), against PostgreSQL 17 in Docker,
