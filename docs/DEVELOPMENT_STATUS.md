@@ -1279,7 +1279,10 @@ $ setup-and-account, buyer-journey, seller-dashboard, page-weight -> passed,
 # GitHub, on 76b16b0
 Browser journeys #20: success, including "Telegram connection, switched off",
 "... switched on with test-only values" and "Telegram linking off again"
-CI #123 (push) and #124 (pull request #1): see below
+CI #123 and #124 on 76b16b0: cancelled by the next push (concurrency)
+CI #125 (push) and #126 (pull request #1) on d347175 (the same code plus
+this file): success. The journeys do not run on a documentation-only push;
+#20 above ran the same code
 ```
 
 **Notification system** (D-092), on 18 November 2026, commits `43bec22`,
