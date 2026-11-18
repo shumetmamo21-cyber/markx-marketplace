@@ -6,6 +6,7 @@ Alembic and the test suite import this; application code imports models directly
 from markx.accounts import models as accounts_models
 from markx.analytics import models as analytics_models
 from markx.audit import models as audit_models
+from markx.backup import models as backup_models
 from markx.catalog import models as catalog_models
 from markx.core import models as core_models
 from markx.delivery import models as delivery_models
@@ -24,6 +25,7 @@ __all__ = [
     "accounts_models",
     "analytics_models",
     "audit_models",
+    "backup_models",
     "catalog_models",
     "core_models",
     "delivery_models",
