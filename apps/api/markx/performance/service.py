@@ -15,12 +15,13 @@ nothing twice) and tells the store's members.
 
 from __future__ import annotations
 
+import logging
 import statistics
 import uuid
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from markx.accounts.permissions import SELLER_PERMISSIONS, SellerCapability
@@ -28,13 +29,16 @@ from markx.core import settings_store
 from markx.notifications import service as notifications
 from markx.offers import selectors as offer_selectors
 from markx.orders.deadlines import ADDIS_ABABA
-from markx.orders.models import OrderStatusEvent, SellerOrder, SellerOrderStatus
+from markx.orders.models import ActorType, OrderStatusEvent, SellerOrder, SellerOrderStatus
 from markx.performance.models import SellerWeeklyReport
 from markx.reviews.selectors import summary as rating_summary
 from markx.sellers.models import Seller, SellerMember, SellerStatus
 from markx.trust.models import Review, ReviewStatus
 
 WEEKLY_BATCH = 200
+
+
+logger = logging.getLogger("markx.performance")
 
 
 def _share(part: int, whole: int) -> float | None:
@@ -53,6 +57,22 @@ def figures(db: Session, seller_id: uuid.UUID, start: datetime, end: datetime) -
         ).all()
     )
     received = len(placed)
+    # Who ended each cancelled one (D-086): the buyer, or the system because
+    # the store did not fulfil it before its hold ran out (D-043). Counting
+    # every cancellation as the buyer's blamed buyers for the store's delays.
+    cancelled_by = dict(
+        db.execute(
+            select(OrderStatusEvent.actor_type, func.count())
+            .join(SellerOrder, SellerOrder.id == OrderStatusEvent.seller_order_id)
+            .where(
+                SellerOrder.seller_id == seller_id,
+                SellerOrder.created_at >= start,
+                SellerOrder.created_at < end,
+                OrderStatusEvent.to_status == SellerOrderStatus.CANCELLED,
+            )
+            .group_by(OrderStatusEvent.actor_type)
+        ).all()
+    )
     answered = [(c - p).total_seconds() / 60 for _, p, c in placed if c is not None]
     outcome = {s: sum(1 for status, _, _ in placed if status == s) for s in SellerOrderStatus}
     moves = dict(
@@ -94,7 +114,8 @@ def figures(db: Session, seller_id: uuid.UUID, start: datetime, end: datetime) -
         "orders_confirmed": len(answered),
         "orders_declined": outcome[SellerOrderStatus.DECLINED],
         "orders_unanswered": outcome[SellerOrderStatus.EXPIRED],
-        "orders_cancelled_by_buyer": outcome[SellerOrderStatus.CANCELLED],
+        "orders_cancelled_by_buyer": int(cancelled_by.get(ActorType.BUYER, 0)),
+        "orders_cancelled_unfulfilled": int(cancelled_by.get(ActorType.SYSTEM, 0)),
         "confirmation_share": _share(len(answered), received),
         "median_minutes_to_confirm": round(statistics.median(answered), 1) if answered else None,
         "delivered": delivered,
@@ -151,31 +172,58 @@ def send_weekly_reports(db: Session, now: datetime) -> int:
         )
     )
     roles = [role.value for role in SELLER_PERMISSIONS[SellerCapability.SEE_PERFORMANCE]]
+    sent = 0
     for seller_id in sellers:
-        numbers = figures(db, seller_id, start, end)
-        report = SellerWeeklyReport(seller_id=seller_id, week_start=week_start, figures=numbers)
-        db.add(report)
-        db.flush()
-        for user_id in db.scalars(
-            select(SellerMember.user_id)
-            .where(
-                SellerMember.seller_id == seller_id,
-                SellerMember.is_active,
-                SellerMember.role.in_(roles),
+        # Each store in its own savepoint (D-086, as D-060 does for orders):
+        # one that fails is undone alone, logged and tried on the next run,
+        # while every other store still gets its report.
+        try:
+            with db.begin_nested():
+                _send_one(db, seller_id, week_start, start, end, roles)
+                db.execute(text("set constraints all immediate"))
+        except Exception:
+            logger.exception(
+                "a store's weekly report could not be made; it is tried again next run",
+                extra={"seller_id": str(seller_id), "job": "sellers.weekly_report"},
             )
-            .order_by(SellerMember.created_at)
-        ):
-            notifications.notify(
-                db, user_id, "seller.weekly_report",
-                {
-                    "seller_id": str(seller_id), "report_id": str(report.id),
-                    "week_start": week_start.isoformat(),
-                    "orders_received": numbers["orders_received"],
-                    "completed": numbers["completed"],
-                    "completed_value_santim": numbers["completed_value_santim"],
-                },
-            )  # fmt: skip
-    return len(sellers)
+        else:
+            sent += 1
+        finally:
+            db.execute(text("set constraints all deferred"))
+    return sent
+
+
+def _send_one(
+    db: Session,
+    seller_id: uuid.UUID,
+    week_start: date,
+    start: datetime,
+    end: datetime,
+    roles: list[str],
+) -> None:
+    numbers = figures(db, seller_id, start, end)
+    report = SellerWeeklyReport(seller_id=seller_id, week_start=week_start, figures=numbers)
+    db.add(report)
+    db.flush()
+    for user_id in db.scalars(
+        select(SellerMember.user_id)
+        .where(
+            SellerMember.seller_id == seller_id,
+            SellerMember.is_active,
+            SellerMember.role.in_(roles),
+        )
+        .order_by(SellerMember.created_at)
+    ):
+        notifications.notify(
+            db, user_id, "seller.weekly_report",
+            {
+                "seller_id": str(seller_id), "report_id": str(report.id),
+                "week_start": week_start.isoformat(),
+                "orders_received": numbers["orders_received"],
+                "completed": numbers["completed"],
+                "completed_value_santim": numbers["completed_value_santim"],
+            },
+        )  # fmt: skip
 
 
 def weekly_reports(db: Session, seller_id: uuid.UUID, *, limit: int) -> list[SellerWeeklyReport]:

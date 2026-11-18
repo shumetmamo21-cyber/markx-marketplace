@@ -412,3 +412,59 @@ def test_search_filters_by_the_products_rating(bazaar: Bazaar) -> None:
     assert bazaar.product["slug"] in slugs(4)
     assert bazaar.product["slug"] not in slugs(5)
     assert ApiClient().get("/search", params={"min_rating": 6}).status_code == 422
+
+
+def _identifiers(value: Any) -> set[str]:
+    """Every id or order code anywhere in a JSON value."""
+    found: set[str] = set()
+    if isinstance(value, dict):
+        for item in value.values():
+            found |= _identifiers(item)
+    elif isinstance(value, list):
+        for item in value:
+            found |= _identifiers(item)
+    elif isinstance(value, str):
+        try:
+            uuid.UUID(value)
+        except ValueError:
+            if value.startswith("MX-"):
+                found.add(value)
+        else:
+            found.add(value)
+    return found
+
+
+def test_a_store_cannot_tell_which_order_or_buyer_wrote_a_review(
+    bazaar: Bazaar, db: DbSession
+) -> None:
+    """The store reads its reviews and its orders; nothing in the first may
+    point into the second (D-086). Its order pages list each line's id, the
+    order code and, once confirmed, the buyer's name and phone, so a shared
+    id would name the reviewer. Before, the review carried `order_item_id`."""
+    bought = Bought(bazaar, [(bazaar.a128, 1)])
+    (item,) = bought.items()
+    review = bought.review(item, body="Works well.")
+    assert review.status_code == 201, review.text
+    # The buyer still sees their own order on their review.
+    assert review.json()["order_item_id"] == item
+    assert review.json()["order_code"] == bought.order["code"]
+
+    part_id = bought.part("alpha")["id"]
+    order_page = bazaar.a.get(f"/seller/{bazaar.a_id}/orders/{part_id}").json()
+    order_list = bazaar.a.get(f"/seller/{bazaar.a_id}/orders").json()
+    known_to_the_store = _identifiers(order_page) | _identifiers(order_list)
+    assert item in known_to_the_store  # the line id is on the store's own order page
+    assert order_page["buyer"] is not None  # and so is the buyer, once confirmed
+
+    listed = bazaar.a.get(f"/seller/{bazaar.a_id}/reviews").json()
+    answered = bazaar.a.post(
+        f"/seller/{bazaar.a_id}/reviews/{review.json()['id']}/reply", json={"body": "Thank you."}
+    )
+    assert answered.status_code == 200, answered.text
+    for seen in (listed, answered.json()):
+        shared = _identifiers(seen) & known_to_the_store
+        # Only the product (shown publicly anyway) may appear on both.
+        assert shared <= {review.json()["product_id"]}, shared
+    assert answered.json()["order_item_id"] is None
+    assert answered.json()["order_id"] is None
+    assert answered.json()["order_code"] is None

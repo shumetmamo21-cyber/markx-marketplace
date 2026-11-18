@@ -4107,7 +4107,9 @@ export interface components {
         /**
          * MyReviewOut
          * @description A review with its state, for its buyer, its seller and staff. The
-         *     seller never sees the order code.
+         *     seller never sees which order it came from: not the order code, the order
+         *     id or the order line's id (D-086), which its own order pages list beside
+         *     the buyer's name and phone.
          */
         MyReviewOut: {
             /** Body */
@@ -4134,11 +4136,8 @@ export interface components {
             order_code: string | null;
             /** Order Id */
             order_id: string | null;
-            /**
-             * Order Item Id
-             * Format: uuid
-             */
-            order_item_id: string;
+            /** Order Item Id */
+            order_item_id: string | null;
             /**
              * Product Id
              * Format: uuid
@@ -4523,6 +4522,8 @@ export interface components {
             new_reviews_average: number | null;
             /** Orders Cancelled By Buyer */
             orders_cancelled_by_buyer: number;
+            /** Orders Cancelled Unfulfilled */
+            orders_cancelled_unfulfilled: number;
             /** Orders Confirmed */
             orders_confirmed: number;
             /** Orders Declined */

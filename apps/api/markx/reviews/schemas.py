@@ -60,12 +60,14 @@ class StoreReviewsOut(BaseModel):
 
 class MyReviewOut(BaseModel):
     """A review with its state, for its buyer, its seller and staff. The
-    seller never sees the order code."""
+    seller never sees which order it came from: not the order code, the order
+    id or the order line's id (D-086), which its own order pages list beside
+    the buyer's name and phone."""
 
     id: uuid.UUID
     order_id: uuid.UUID | None
     order_code: str | None
-    order_item_id: uuid.UUID
+    order_item_id: uuid.UUID | None
     product_id: uuid.UUID
     title: str
     variant_label: str

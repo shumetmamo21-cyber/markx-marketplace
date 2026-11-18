@@ -3580,7 +3580,7 @@
         "type": "object"
       },
       "MyReviewOut": {
-        "description": "A review with its state, for its buyer, its seller and staff. The\nseller never sees the order code.",
+        "description": "A review with its state, for its buyer, its seller and staff. The\nseller never sees which order it came from: not the order code, the order\nid or the order line's id (D-086), which its own order pages list beside\nthe buyer's name and phone.",
         "properties": {
           "body": {
             "title": "Body",
@@ -3650,9 +3650,16 @@
             "title": "Order Id"
           },
           "order_item_id": {
-            "format": "uuid",
-            "title": "Order Item Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Item Id"
           },
           "product_id": {
             "format": "uuid",
@@ -4562,6 +4569,10 @@
             "title": "Orders Cancelled By Buyer",
             "type": "integer"
           },
+          "orders_cancelled_unfulfilled": {
+            "title": "Orders Cancelled Unfulfilled",
+            "type": "integer"
+          },
           "orders_confirmed": {
             "title": "Orders Confirmed",
             "type": "integer"
@@ -4619,6 +4630,7 @@
           "orders_declined",
           "orders_unanswered",
           "orders_cancelled_by_buyer",
+          "orders_cancelled_unfulfilled",
           "confirmation_share",
           "median_minutes_to_confirm",
           "delivered",

@@ -2192,13 +2192,91 @@ the real keys in `docs/SETUP.md` confirms it.
   (CI #95 on `fbaf46c`). Its forgeries now always differ from the genuine
   link; the verification code is unchanged.
 
+## D-086 Order and payment integrity (the audit's P0-3)
+
+**Follows** blueprint D.12, D.15, D.19, G.6, G.10, J.5 and S-26, and the
+audit's P0-3 findings, each confirmed in the code first. **Accepted.** No
+money moves, no provider is connected, no data is deleted.
+
+**1. A part with a recorded payment never ends undelivered without staff.**
+A seller may record a direct payment from `confirmed` on (`PAYABLE`; a
+transfer before delivery is allowed). Three paths could still end such a
+part with the buyer's money recorded as received and nothing recording its
+way back: the buyer's cancel (from `confirmed`), the overdue-fulfilment job
+(`confirmed`, `ready`) and "returned" (`delivery_failed`). All three now
+refuse a part with `paid_at` set (`order_paid_contact_support`,
+`paid_order_needs_staff`; the job simply skips it), and migration `0013`
+adds `ck_seller_orders_paid_order_not_ended_undelivered`, so the database
+refuses a paid part ending `declined`, `expired`, `cancelled` or `returned`
+whatever code tries. The part keeps its state and its stock; the buyer's
+page no longer offers "Cancel" on it. A new watch check,
+`paid_orders_waiting`, tells staff by order code when a paid part has passed
+its fulfilment hold (`orders.paid_past_hold`) or has waited a day after a
+failed handover (`orders.paid_delivery_failed`); `orders.stuck_hold` no
+longer counts paid parts (it means "the job is failing"). **How staff then
+settle such a part is the founder's decision F-09**: today they can ask the
+shop to deliver (the part can still be dispatched) but have no button to
+close it with the money returned. Nothing invents a refund.
+
+**2. A store cannot tell which buyer wrote a review.** The store's review
+list and reply answer withheld the order code and id but returned
+`order_item_id`, the id of the order line, which the store's own order
+pages list beside the buyer's name and phone. It is now null for the store
+(`MyReviewOut.order_item_id` may be null; the web app's copy and types
+changed in the same commit, D-061). The buyer and staff still see it. "From
+a verified buyer" rests on the review's existence (only a completed line's
+buyer can write one), not on a link the store can follow. Left as is: the
+review's time and the product and variant, which the public page shows too;
+a store with very few orders may still guess.
+
+**3. The weekly report and the performance page.** `orders_cancelled_by_buyer`
+counted every cancelled part, including those the system cancelled because
+the store let the fulfilment hold run out, and the web page labelled the
+number "Cancelled by the buyer". It now counts only the buyer's
+cancellations (from the status event's actor), and
+`orders_cancelled_unfulfilled` counts the system's, shown as "Cancelled: not
+sent in time". Weekly reports already stored keep the old meaning. The
+weekly job made every store's report in one transaction, so one store's
+error undid every report of the run and blocked them all; each store now
+has its own savepoint, as D-060 does for orders.
+
+**4. When an action reads the clock.** An action a person starts on a seller
+order reads the clock once it holds the order (`resolve_dispute`,
+`cancel_by_buyer`, `confirm_received`, `record_direct_payment`). Read
+before, an action that waited behind another was stamped before the action
+that came first ("cancelled" before "confirmed": a history the life cycle
+does not allow). Kept as they were, on purpose: the three scheduled jobs
+(the time decides what is due, and they skip locked rows rather than wait,
+so they never act on a stale clock), and the two deadline checks a person is
+entitled to (`seller_respond`, `open_dispute`: the button was pressed in
+time; anything that came first changed the status, so the request then
+fails cleanly). Each fix has a test that fails on the old code.
+
+**5. Commission and the ledger: found, not changed.** Fees are zero by
+design: blueprint D.19 gives direct orders a zero rate in year one, and no
+`commission_rules` row exists, so `commission_bps` returns 0 and the ledger
+receives nothing (D-045 posts only non-zero fees). What is missing before any
+fee can be charged: (a) a staff tool to create versioned rules (today only a
+hand-written database row, D-042); (b) **the per-order cap is stored on a
+rule but never applied** (`cap_santim` is unused and `fee_charges.cap_applied`
+is always false), so a capped rule would over-charge sellers: it must be
+copied onto the order line at placement and applied at completion before any
+capped rule exists; (c) fee reversal on a refund (the columns exist; no path
+needs it while a completed part cannot be refunded); (d) invoicing and
+collecting what sellers owe on direct orders (the receivable account exists,
+with no invoice); (e) seller statements (S-14) and payouts and settlement
+(J.7, Release 2). The rates, caps and the moment fees start are the
+founder's decision F-10. Exports for an accountant (D-068) and the daily
+fee-to-ledger reconciliation (D-064) already exist.
+
 ---
 
 ## Decisions that need the founder
 
-**All eight have PROVISIONAL answers (D-083), given at the founder's request
-on 18 November 2026: the engineer's guess, which the founder must confirm or
-change before MarkX goes live.** Treat this list as part of the launch
+**F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
+request on 18 November 2026: the engineer's guess, which the founder must
+confirm or change before MarkX goes live. F-09 and F-10 (D-086) are open:
+options and a recommendation, no answer yet.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -2370,6 +2448,43 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   otherwise grow without limit once real traffic arrives.
 - **Blocks:** nothing before launch.
 - **Founder's approval required: yes**, because it deletes rows.
+
+### F-09 How staff settle a paid order that cannot go ahead
+
+- **Today (D-086):** a part with a recorded direct payment can no longer be
+  cancelled by the buyer or the overdue job, or marked returned; it waits,
+  and staff are alerted. Staff have no button that closes it with the money
+  returned, because MarkX moves no money in Release 1 and the life cycle has
+  no arrow for it outside a problem case.
+- **Options:**
+  1. **Staff record that the shop gave the money back** (as on a problem
+     case, J.5: "staff record it"), with a written reason, which then lets
+     the part end. Needs a refund record (the `refunds` table exists) and a
+     staff screen. Keeps pre-delivery payment possible.
+  2. **Record a payment only once the goods are handed over** (`delivered`
+     on). The problem cannot arise; a transfer made before delivery is
+     simply recorded at the handover. Smallest change; matches "pay at the
+     door after inspecting" (D.12) and makes advance-payment scams harder.
+  3. **Both:** option 2 now, option 1 when Protected checkout arrives.
+- **Recommendation:** option 3. Option 2 removes the problem at its source
+  for Release 1 at almost no cost; option 1 is needed anyway for Release 2.
+- **Blocks:** nothing technical. A paid part that cannot go ahead waits for
+  staff until this is decided.
+- **Founder's approval required: yes** (how buyers may pay is a business
+  rule).
+
+### F-10 When commission fees start, and at what rates and caps
+
+- **Today (D-086):** zero, by design (D.19: direct orders free in year one).
+- **To decide:** whether direct orders ever carry a fee; the rates per
+  category and the per-order caps (K.2 gives ranges marked [A]); when fees
+  start (with Protected checkout, Release 2, per D.19); how sellers are
+  invoiced for fees on direct orders, if any.
+- **Engineering before the first non-zero rule:** apply the cap (it is
+  stored but ignored today, so a capped rule would over-charge), a staff tool
+  for versioned rules, and fee reversal on refund.
+- **Blocks:** revenue, not launch.
+- **Founder's approval required: yes.**
 
 ---
 

@@ -1069,6 +1069,20 @@ def seller_respond(
 _BUYER_MAY_CANCEL_FROM = (SellerOrderStatus.PLACED, SellerOrderStatus.CONFIRMED)
 
 
+def _refuse_if_paid(seller_order: SellerOrder, code: str) -> None:
+    """A part with a recorded direct payment never ends undelivered without
+    staff (D-086): the buyer's money would be left with no record of its way
+    back. MarkX moves no money in Release 1, so nothing is refunded here; the
+    order stays as it is and staff settle it with the shop. The database
+    refuses the same end (`ck_seller_orders_paid_order_not_ended_undelivered`)."""
+    if seller_order.paid_at is not None:
+        raise Conflict(
+            code,
+            "A payment is recorded for this order, so MarkX staff must settle the buyer's "
+            "money with the shop first. Please contact MarkX support.",
+        )
+
+
 def cancel_by_buyer(
     db: Session,
     user: User,
@@ -1079,8 +1093,8 @@ def cancel_by_buyer(
     now: datetime | None = None,
 ) -> SellerOrder:
     """The buyer cancels one seller's part of their own order, before it is
-    packed. The stock goes back and the seller is told."""
-    now = now or _now()
+    packed. The stock goes back and the seller is told. Not once the seller
+    has recorded a payment: that needs MarkX staff (D-086)."""
     order = db.scalar(select(Order).where(Order.id == order_id, Order.buyer_user_id == user.id))
     if order is None:
         # The same answer for another buyer's order and one that does not exist.
@@ -1095,6 +1109,10 @@ def cancel_by_buyer(
         raise NotFound("order_not_found", "That order was not found.")
     if seller_order.status not in _BUYER_MAY_CANCEL_FROM:
         raise Conflict("order_cannot_be_cancelled", "This order can no longer be cancelled here.")
+    _refuse_if_paid(seller_order, "order_paid_contact_support")
+    # Read once this call holds the order (as in resolve_dispute), so its
+    # event is never stamped before one that came first.
+    now = now or _now()
     _move(
         db, seller_order, SellerOrderStatus.CANCELLED, actor_type=ActorType.BUYER,
         actor_user_id=user.id, reason=reason or "cancelled_by_buyer", now=now,
@@ -1436,9 +1454,11 @@ def return_to_seller(
     now: datetime | None = None,
 ) -> SellerOrder:
     """The goods go back to the shelf (`delivery_failed -> returned`): the
-    held stock is released and the pending payment intent cancelled."""
+    held stock is released and the pending payment intent cancelled. Not once
+    a payment is recorded: the buyer's money needs MarkX staff (D-086)."""
     now = now or _now()
     seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    _refuse_if_paid(seller_order, "paid_order_needs_staff")
     _move(
         db, seller_order, SellerOrderStatus.RETURNED, actor_type=ActorType.SELLER,
         actor_user_id=member.user_id, reason=reason, now=now,
@@ -1544,7 +1564,6 @@ def confirm_received(
 ) -> SellerOrder:
     """The buyer says the goods are right: the part completes at once instead
     of when the problem window closes (G.6)."""
-    now = now or _now()
     order = db.scalar(select(Order).where(Order.id == order_id, Order.buyer_user_id == user.id))
     if order is None:
         raise NotFound("order_not_found", "That order was not found.")
@@ -1558,6 +1577,9 @@ def confirm_received(
         raise NotFound("order_not_found", "That order was not found.")
     if seller_order.status != SellerOrderStatus.DELIVERED:
         raise Conflict("order_not_delivered", "Only a delivered order can be confirmed received.")
+    # Read once this call holds the order (as in resolve_dispute), so its
+    # event is never stamped before one that came first.
+    now = now or _now()
     return complete_seller_order(
         db, seller_order, actor_type=ActorType.BUYER, actor_user_id=user.id, now=now
     )
@@ -1618,7 +1640,8 @@ def complete_after_problem_window(db: Session, *, now: datetime | None = None) -
 def cancel_overdue_fulfilment(db: Session, *, now: datetime | None = None) -> int:
     """Scheduled job (D-043): a confirmed or ready seller order whose
     fulfilment hold on the stock has expired is cancelled and its stock
-    returns. A parcel already on the road is never touched here."""
+    returns. A parcel already on the road is never touched here, nor a part
+    with a recorded payment (D-086)."""
     now = now or _now()
     overdue = (
         select(OrderItem.seller_order_id)
@@ -1634,6 +1657,10 @@ def cancel_overdue_fulfilment(db: Session, *, now: datetime | None = None) -> in
             .where(
                 SellerOrder.status.in_((SellerOrderStatus.CONFIRMED, SellerOrderStatus.READY)),
                 SellerOrder.id.in_(overdue),
+                # A part the buyer has paid for is never cancelled by a job:
+                # it keeps its stock and the operations watch asks staff to
+                # settle it (D-086, `paid_orders_waiting`).
+                SellerOrder.paid_at.is_(None),
             )
             .order_by(SellerOrder.id)
             .limit(EXPIRY_BATCH)
@@ -1672,8 +1699,10 @@ def record_direct_payment(
     browser redirect: this is a signed-in member's deliberate action, and it
     is audit-logged.
     """
-    now = now or _now()
     seller_order = _own_seller_order(db, seller, member, seller_order_id)
+    # Read once this call holds the order (as in resolve_dispute), so its
+    # event is never stamped before one that came first.
+    now = now or _now()
     if seller_order.status not in PAYABLE:
         raise Conflict("payment_not_recordable", "This order is not one the buyer owes you for.")
     if seller_order.paid_at is not None:

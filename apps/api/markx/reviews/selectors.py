@@ -167,8 +167,11 @@ def _private_row(
         and now < open_until,
         "can_reply": viewer == "seller" and review.moderation_status == ReviewStatus.PUBLISHED,
     }
-    if viewer == "seller":  # the store never sees the order code
-        row.update(order_code=None, order_id=None, held_reason=None)
+    if viewer == "seller":
+        # The store never learns which order, and so which buyer, wrote it:
+        # its order pages show each line's id beside the buyer's contact
+        # (D-086). "Verified purchase" is the review's existence, not a link.
+        row.update(order_code=None, order_id=None, order_item_id=None, held_reason=None)
     return row
 
 

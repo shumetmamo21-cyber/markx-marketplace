@@ -36,6 +36,7 @@ export default async function SellerPerformancePage({ params, searchParams }: Pa
         [s.perfDeclined, f.orders_declined],
         [s.perfUnanswered, f.orders_unanswered],
         [s.perfCancelled, f.orders_cancelled_by_buyer],
+        [s.perfCancelledUnfulfilled, f.orders_cancelled_unfulfilled],
         [s.perfConfirmShare, share(f.confirmation_share)],
         [s.perfMedianConfirm, f.median_minutes_to_confirm === null || f.median_minutes_to_confirm === undefined ? s.perfNone : fill(s.perfMinutes, { minutes: Math.round(f.median_minutes_to_confirm) })],
         [s.perfDelivered, f.delivered],

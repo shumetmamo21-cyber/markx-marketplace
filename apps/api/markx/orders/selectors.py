@@ -358,7 +358,9 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
                 "problem_window_ends_at": seller_order.problem_window_ends_at,
                 "paid_method": seller_order.paid_method,
                 "paid_at": seller_order.paid_at,
-                "can_cancel": seller_order.status in _BUYER_MAY_CANCEL,
+                # Not once a payment is recorded: staff settle that (D-086).
+                "can_cancel": seller_order.status in _BUYER_MAY_CANCEL
+                and seller_order.paid_at is None,
                 "can_confirm_received": seller_order.status == "delivered",
                 "can_report_problem": seller_order.status == "delivered"
                 and seller_order.problem_window_ends_at is not None

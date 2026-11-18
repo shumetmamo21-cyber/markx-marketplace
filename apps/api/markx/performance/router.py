@@ -37,7 +37,10 @@ class PerformanceOut(BaseModel):
     orders_confirmed: int
     orders_declined: int
     orders_unanswered: int
+    # Cancelled by the buyer, and by the system because the store did not
+    # fulfil the order before its hold ran out (D-043, D-086).
     orders_cancelled_by_buyer: int
+    orders_cancelled_unfulfilled: int
     confirmation_share: float | None
     median_minutes_to_confirm: float | None
     delivered: int

@@ -1,6 +1,14 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **dispute timestamp fix**: a
+**Last updated:** 18 November 2026, by the **order and payment integrity
+session** (the audit's P0-3, D-086): a paid part can no longer be cancelled
+or returned without staff (service, database constraint and a staff alert);
+a store can no longer tell which buyer wrote a review; the weekly report
+splits buyer cancellations from the store's own unfulfilled orders and makes
+each store's report on its own; three more order actions read the clock
+after taking the order; commission and the ledger investigated (zero fees
+are by design; the per-order cap is stored but never applied). Two new
+founder decisions, F-09 and F-10. Before it, the **dispute timestamp fix**: a
 staff decision on a reported problem now reads the clock only once it holds
 the order, so `resolved_at` is the moment it took effect (a race test failed
 once in CI #97 because of it); a deterministic regression test. Before it,
@@ -114,7 +122,8 @@ deployed anywhere.
 | 7 (parallel, backend only) | after `eab7c21`; see `docs/HANDOFF.md`, Part A.0 | Independent review of search, the next-best offer, disputes, seller isolation and the worker; two search fixes and an evaluator fix (D-057); containers for a laptop and a CI job that builds them (D-058). **`apps/web` not touched** |
 | 8 (back end only) | `2e4944c` to `b2b674e`, then the performance commit after session nine's; see `docs/HANDOFF.md`, Part A.00 | Search throttle (D-059); completion job isolates each order (D-060); OpenAPI copy rule (D-061); pictures and problem photos, migration `0008` (D-062); backups and the restore drill (D-063); monitoring, alerts and reconciliation, migration `0009` (D-064); admin back end (D-065); a flaky contention test fixed; then reviews and ratings, migration `0010` (D-066), listing reports, migration `0011` (D-067), data exports (D-068), and the performance page and weekly seller message, migration `0012` (D-073). **`apps/web` not touched** |
 | 9 (web owner, resuming) | `eab7c21`, `207aafe`, `22339ed`, `9ac3b94` and the commits after it | The founder's confirmation of the fulfilment hold (D-043, D-053); one test ported from the alternative branch; the takedown queue route `GET /admin/offers/held` (D-069); every admin screen the API supports, a role-aware admin home and menu, codes shown in words, a not-allowed page state (D-070, D-071); `e2e/admin-queues.mjs`. 935 API tests, 21 web unit tests |
-| Dispute timestamp fix | the commit after `8b32485` | `resolve_dispute` reads the clock after taking the seller order's lock (one line); `test_a_decision_reads_the_clock_only_once_it_holds_the_order`, deterministic, both decisions. No `DECISIONS.md` entry: a fix within D-050's rule, not a new decision |
+| Order and payment integrity (D-086) | the commit after `1c55602` | Paid parts never end undelivered without staff (migration `0013`, `paid_orders_waiting` alert, buyer's Cancel hidden); `order_item_id` withheld from stores; weekly report: cancellations split by who ended them, one savepoint per store; `cancel_by_buyer`, `confirm_received`, `record_direct_payment` read the clock after the lock; commission and ledger gaps recorded (F-10) |
+| Dispute timestamp fix | `1c55602` | `resolve_dispute` reads the clock after taking the seller order's lock (one line); `test_a_decision_reads_the_clock_only_once_it_holds_the_order`, deterministic, both decisions. No `DECISIONS.md` entry: a fix within D-050's rule, not a new decision |
 | Turnstile, second round (D-085 update) | `8b32485` | Hostname validation at start-up, `localhost` refused on real servers; the local test widget and corrected test steps in `docs/SETUP.md`; rotation and security-review reminders; the flaky document-link forgery test made deterministic |
 | Turnstile (D-085) | `45a699c` and the status commit after it | Cloudflare Turnstile verified on the server (`TurnstileBotCheck`), its configuration with the secret kept out of logs, the widget on the sign-in form, the CSP opened for Turnstile only, `e2e/turnstile-widget.mjs` in the browser journeys. Stand-ins only; no key exists yet |
 | Security and CI (D-084) | `1698082`, `3a829d0` and the status commit | The audit's P0-1: sign-in open redirect (SEC-1), the fake bot check refused on real servers (SEC-2), trusted proxies only for forwarded addresses (SEC-3), security headers (SEC-5), exact-path anti-forgery exemptions (SEC-6); P0-2: Gitleaks, pip-audit, an npm audit gate with a reviewed allow-list, journeys on every code push against Compose, Playwright as a dev dependency, the page-weight check. 997 API tests, 64 web unit tests |
@@ -896,6 +905,17 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
+- **A paid part that cannot go ahead waits for staff with no button to close
+  it** (D-086, founder decision F-09). The buyer's cancel, the overdue job
+  and "returned" refuse it, and the watch alerts staff
+  (`orders.paid_past_hold`, `orders.paid_delivery_failed`); staff can ask
+  the shop to deliver, but cannot yet record that the money went back.
+- **The commission cap is stored but never applied** (D-086, F-10). Harmless
+  while every rate is zero (no `commission_rules` row exists); a capped rule
+  added by hand would over-charge sellers. Fix before any non-zero rule.
+- **Weekly reports stored before D-086** count every cancellation as the
+  buyer's; reports from now on split them.
+
 - **Resolved: the dispute race test failed once in CI** (#97 on
   `8b32485`: `test_two_decisions_and_a_reply_race_on_one_case`, `assert 1 ==
   0`, one seller reply stamped after the decision). The rule held (the reply
@@ -904,7 +924,10 @@ Be careful with these. They were written and never exercised.
   waiting for the lock, and a reply that got the lock in that wait was
   stamped later than the decision it preceded. Fixed by reading the clock
   after the lock, and proven by a deterministic test that fails on the old
-  code. **Open, low priority:** eight other order functions also read the
+  code. **Since reviewed (D-086):** three of the eight functions below were
+  fixed the same way (`cancel_by_buyer`, `confirm_received`,
+  `record_direct_payment`); the other five keep the clock first on purpose.
+  The original note: eight other order functions also read the
   clock before their lock (`seller_respond`, `cancel_by_buyer`,
   `expire_unanswered_orders`, `confirm_received`,
   `complete_after_problem_window`, `cancel_overdue_fulfilment`,
@@ -1035,6 +1058,30 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Order and payment integrity** (D-086), on the commit after `1c55602`. Each
+new test was also run against the old code (the fix taken out, the test
+kept):
+
+```text
+$ pytest tests/api/test_paid_orders.py -> 9 passed
+  old order code (constraint kept) -> 3 failed: the buyer's cancel, the overdue
+  job and "returned" all ended a paid part; 6 passed (unpaid baselines, database)
+$ pytest tests/db/test_clock_after_lock.py -> 3 passed; old code -> 3 failed
+$ pytest tests/api/test_reviews.py -k cannot_tell -> 1 passed
+  old code -> failed: the store's review shared the order line's id with its order page
+$ pytest tests/api/test_performance.py -> 7 passed (2 new)
+  old code -> 2 failed: KeyError 'orders_cancelled_unfulfilled' (both counted as
+  the buyer's); RuntimeError from one store stopped every store's report
+$ uv run pytest -> 1119 passed in 502.12s (0:08:22)   (1104 before; 15 new)
+  ruff check -> All checks passed!; ruff format --check -> 191 files already formatted
+  mypy markx -> no issues found in 124 source files
+  alembic upgrade head (0012 -> 0013) ok; alembic check -> no new upgrade operations
+  check_openapi_copy, both copies -> match exactly (regenerated in this commit)
+  pip-audit -> No known vulnerabilities found; npm audit gate -> passed
+$ web: npm run lint -> clean; typecheck -> clean; npm test -> 64 passed; build -> ok
+# browser journeys: on GitHub (they run on this push)
+```
 
 **Dispute timestamp fix**, on the commit after `8b32485`:
 
@@ -1451,6 +1498,7 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0010` | `20261117_1056_reviews_and_rating_summaries.py` | `reviews`: the `held` state, the moderation record, length limits; `rating_summaries` (D-066) |
 | `0011` | `20261117_1116_listing_reports.py` | `reports`: a note, the reason list, one open report per person and target, closing CHECKs (D-067) |
 | `0012` | `20261117_1158_seller_weekly_reports.py` | `seller_weekly_reports`: one row per store and week, starting on a Monday (D-073) |
+| `0013` | `20261118_0700_paid_orders_never_end_undelivered.py` | `ck_seller_orders_paid_order_not_ended_undelivered`: a part with a recorded payment never ends declined, expired, cancelled or returned (D-086). Checks existing rows; deletes nothing |
 
 The schema has 69 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
@@ -1511,6 +1559,12 @@ end. Work in this order within each. Finish and push each step first.
    secret in chat or put it in any file. **Then, only when the founder
    authorises it: the real SMS adapter** (blueprint section O, question 23),
    without which no real server can send a code.
+0a. **When the founder answers F-09** (D-086): build the chosen way for
+   staff to settle a paid part that cannot go ahead (recommended: record a
+   payment only from the handover on, and later a staff "the shop returned
+   the money" record). **Before any non-zero commission rule (F-10):** copy
+   the rule's cap onto the order line at placement and apply it at
+   completion, with tests; then a staff tool for versioned rules.
 1. When the founder confirms or changes an F- item (D-083): record it as a
    `D-` entry, change the code if the answer differs, and remove its
    `PROVISIONAL` marker and its line in `test_provisional_decisions.py`.

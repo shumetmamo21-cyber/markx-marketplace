@@ -25,7 +25,7 @@ from markx.catalog.models import ImageStatus, ProductImage
 from markx.core import ratelimit, settings_store
 from markx.notifications.models import Outbox
 from markx.offers.models import Inventory, InventoryReservation, ReservationStatus
-from markx.orders.models import Order, OrderItem, SellerOrder, SellerOrderStatus
+from markx.orders.models import Order, OrderItem, OrderStatusEvent, SellerOrder, SellerOrderStatus
 from markx.payments.models import FeeCharge, LedgerEntry
 from markx.trust.models import (
     CaseStatus,
@@ -48,6 +48,9 @@ STUCK_PLACED = timedelta(minutes=15)
 STUCK_HOLD = timedelta(minutes=30)
 OUTBOX_BACKLOG = timedelta(minutes=15)
 IMAGE_STUCK = timedelta(minutes=30)
+# A paid part whose handover failed is reported once it has waited a day for
+# a retry (D-086): going back to the shop needs staff to settle the money.
+PAID_DELIVERY_FAILED = timedelta(days=1)
 JOB_FAILURES_ALERT = 3
 SMS_WARNING_SHARE = 0.8
 
@@ -211,6 +214,8 @@ def stuck_orders(db: Session, now: datetime) -> list[Finding]:
             InventoryReservation.status == ReservationStatus.HELD,
             InventoryReservation.expires_at < now - STUCK_HOLD,
             SellerOrder.status.in_((SellerOrderStatus.CONFIRMED, SellerOrderStatus.READY)),
+            # Paid parts are kept on purpose and reported by paid_orders_waiting.
+            SellerOrder.paid_at.is_(None),
         )
     )
     if held:
@@ -223,6 +228,62 @@ def stuck_orders(db: Session, now: datetime) -> list[Finding]:
                 details={"count": held},
             )
         )
+    return findings
+
+
+def paid_orders_waiting(db: Session, now: datetime) -> list[Finding]:
+    """Parts the buyer has paid for that cannot end on their own (D-086).
+
+    A recorded direct payment stops the buyer's cancel, the overdue-fulfilment
+    job and "returned", so the buyer's money is never left without a record.
+    These parts wait for staff, who settle the money with the shop: the
+    finding names the order codes, never the people."""
+    overdue_hold = SellerOrder.id.in_(
+        select(OrderItem.seller_order_id)
+        .join(InventoryReservation, InventoryReservation.order_item_id == OrderItem.id)
+        .where(
+            InventoryReservation.status == ReservationStatus.HELD,
+            InventoryReservation.expires_at <= now,
+        )
+    )
+    failed_since = select(func.max(OrderStatusEvent.occurred_at)).where(
+        OrderStatusEvent.seller_order_id == SellerOrder.id,
+        OrderStatusEvent.to_status == SellerOrderStatus.DELIVERY_FAILED,
+    )
+    rules: Sequence[tuple[str, Any, str]] = (
+        (
+            "orders.paid_past_hold",
+            and_(
+                SellerOrder.paid_at.is_not(None),
+                SellerOrder.status.in_((SellerOrderStatus.CONFIRMED, SellerOrderStatus.READY)),
+                overdue_hold,
+            ),
+            "paid part(s) passed their fulfilment hold and were not cancelled, because the "
+            "buyer paid: settle them with the shop",
+        ),
+        (
+            "orders.paid_delivery_failed",
+            and_(
+                SellerOrder.paid_at.is_not(None),
+                SellerOrder.status == SellerOrderStatus.DELIVERY_FAILED,
+                failed_since.scalar_subquery() < now - PAID_DELIVERY_FAILED,
+            ),
+            "paid part(s) have waited a day after a failed handover; they cannot go back "
+            "to the shop until staff settle the buyer's money",
+        ),
+    )
+    findings = []
+    for key, condition, words in rules:
+        count, codes = _codes(db, condition)
+        if count:
+            findings.append(
+                Finding(
+                    key=key,
+                    severity="warning",
+                    summary=f"{count} {words} ({', '.join(codes)}).",
+                    details={"count": count, "order_codes": codes},
+                )
+            )
     return findings
 
 
@@ -354,6 +415,7 @@ WATCH: tuple[Check, ...] = (
     overdue_jobs,
     outbox_problems,
     stuck_orders,
+    paid_orders_waiting,
     overdue_problems,
     sms_budget,
     stuck_images,

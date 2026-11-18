@@ -159,6 +159,13 @@ class SellerOrder(UUIDPrimaryKey, Timestamps, Base):
             "total_santim = items_total_santim + delivery_fee_santim", name="total_adds_up"
         ),
         CheckConstraint("(paid_at is null) = (paid_method is null)", name="paid_fields_together"),
+        # A part the buyer paid for never ends undelivered without its money
+        # being settled by staff (D-086). In Release 1 nothing moves money, so
+        # no such end exists at all.
+        CheckConstraint(
+            "paid_at is null or status not in ('declined', 'expired', 'cancelled', 'returned')",
+            name="paid_order_not_ended_undelivered",
+        ),
         # One seller order per order and seller (G.8 rule 2).
         UniqueConstraint("order_id", "seller_id"),
         Index("ix_seller_orders_seller_status", "seller_id", "status"),

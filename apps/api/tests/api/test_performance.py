@@ -16,12 +16,14 @@ from sqlalchemy.orm import Session as DbSession
 from markx.core import settings_store
 from markx.core.db import session_scope
 from markx.notifications.models import Notification
+from markx.orders import service
 from markx.orders.deadlines import ADDIS_ABABA
 from markx.performance import service as performance
 from markx.performance.models import SellerWeeklyReport
 from tests.api.test_reviews import Bought
 from tests.bazaar import Bazaar
 from tests.conftest import ApiClient, error_code
+from tests.db.test_fulfilment_contention import Parcel
 from tests.factories import add_to_cart, checkout
 
 PROBLEM = {"problem_type": "not_as_described", "description": "The box says 128 GB, the phone 64."}
@@ -159,3 +161,54 @@ def test_the_store_page_shows_its_track_record(bazaar: Bazaar) -> None:
     assert page["delivery_success_share"] == 1.0
     assert page["median_minutes_to_confirm"] is not None
     assert page["median_minutes_to_confirm"] >= 0
+
+
+def test_cancellations_are_split_by_who_ended_them(bazaar: Bazaar, db: DbSession) -> None:
+    """D-086: a part the system cancelled because the store let its hold run
+    out is the store's delay, not the buyer's choice. Before, both counted as
+    "cancelled by the buyer"."""
+    by_buyer = Parcel(db, bazaar, state="confirmed")
+    cancelled = by_buyer.buyer.post(
+        f"/me/orders/{by_buyer.order_id}/seller-orders/{by_buyer.so_id}/cancel", json={}
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    not_sent = Parcel(db, bazaar, state="ready")
+    with session_scope() as session:
+        assert service.cancel_overdue_fulfilment(
+            session, now=datetime.now(UTC) + timedelta(days=30)
+        ) == 1  # fmt: skip
+    assert not_sent.status(db) == "cancelled"
+
+    numbers = bazaar.a.get(f"/seller/{bazaar.a_id}/performance", params={"days": 1}).json()
+    assert (numbers["orders_cancelled_by_buyer"], numbers["orders_cancelled_unfulfilled"]) == (1, 1)
+
+
+def test_one_store_failing_does_not_stop_the_others_weekly_report(
+    bazaar: Bazaar, db: DbSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-086: each store's report is made in its own savepoint. Before, one
+    store's error undid every report of the run, so nobody got one."""
+    real_figures = performance.figures
+
+    def figures_failing_for_alpha(session, seller_id, start, end):  # type: ignore[no-untyped-def]
+        if str(seller_id) == bazaar.a_id:
+            raise RuntimeError("a broken figure for Alpha only")
+        return real_figures(session, seller_id, start, end)
+
+    next_week = datetime.now(UTC) + timedelta(days=7)
+    monkeypatch.setattr(performance, "figures", figures_failing_for_alpha)
+    with session_scope() as session:
+        assert performance.send_weekly_reports(session, next_week) == 1  # Beta only
+    db.rollback()
+    assert list(db.scalars(select(SellerWeeklyReport.seller_id))) == [uuid.UUID(bazaar.b_id)]
+    beta_told = db.scalars(
+        select(Notification).where(Notification.template == "seller.weekly_report")
+    ).all()
+    assert [n.params["seller_id"] for n in beta_told] == [bazaar.b_id]
+
+    # Fixed, the next run sends Alpha's, and Beta's is not sent twice.
+    monkeypatch.setattr(performance, "figures", real_figures)
+    with session_scope() as session:
+        assert performance.send_weekly_reports(session, next_week) == 1
+    db.rollback()
+    assert db.scalar(select(func.count()).select_from(SellerWeeklyReport)) == 2
