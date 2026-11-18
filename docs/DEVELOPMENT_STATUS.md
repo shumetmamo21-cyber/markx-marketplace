@@ -645,6 +645,10 @@ API types are generated from the API's OpenAPI description.
   published and the performance page. Every page at 360 px in both
   languages.
 - **Demo data:** `apps/api/scripts/seed_demo.py` (D-056), laptop only.
+- **Third round** (D-079 to D-081): a store page's track record (accepts
+  share, typical time to accept, delivery success over 90 days), search by
+  rating and seller level, a single worker pass that reports failure in its
+  exit code, and the browser journeys on GitHub when asked.
 - **The remaining screens** (session ten, second round, D-077): the buyer's
   account (`/account`: name and language, saved addresses, messages from
   MarkX in words, data requests, sign out on every device), the next-best
@@ -670,6 +674,12 @@ session, and a check that the web app's copy of the API description is
 current) and the web job (lint, strict types, unit tests, production
 build, and a check that the generated API types are current). First runs:
 #1 to #4 passed.
+
+`.github/workflows/journeys.yml` (D-081) runs the six browser journeys in
+Chromium against a fresh demo database, only on a push whose message
+contains `[journeys]` (or, once on the default branch, from the Actions
+tab). It raises the sign-in limits on its throwaway database, keeps the
+screenshots and server logs for a week. Its first run is recorded in the next commit.
 
 ### The search evaluator (P8 criteria; D-054)
 
@@ -1168,10 +1178,14 @@ end. Work in this order within each. Finish and push each step first.
    `apps/web/src` (the handoff gives the command). A new screen gets its line
    in the admin or seller `menu.ts` and `menu.test.ts`, its words in both
    message files, and a step in one of the browser journeys.
-4. Run the browser journeys in CI: they need the API, the worker and demo
-   data in the job (`infra/compose` has the pieces).
-5. With the back end: ratings on the product card and in search (one change
-   to `ProductCardOut`), and the Telegram Mini App shell once the bot exists.
+4. The browser journeys run on GitHub when asked (D-081): push with
+   `[journeys]` in the commit message after changing a screen they cover,
+   and add a step to one of them for every new screen.
+5. With the back end: delivery speed as a search filter and "total cost to
+   the door" as a sort (D.8; they need the buyer's zone in search), and the
+   Telegram Mini App shell once the bot exists. A rating on the product
+   card is left out on purpose: blueprint D.9's card does not list one
+   (D-080).
 
 **The back end:**
 
