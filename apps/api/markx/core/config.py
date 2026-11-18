@@ -135,6 +135,14 @@ class Config(BaseSettings):
     # The founder's private Telegram group for alerts (blueprint F.12; D-064).
     # With the bot token set, alerts go there; otherwise to the log.
     alert_telegram_chat_id: str | None = None
+    # Backup monitoring in the worker's watch (D-094): alerts when the last
+    # backup failed or was incomplete, when no verified OFF-SERVER backup is
+    # newer than `backup_max_age_hours`, and when the last restore drill
+    # failed or none passed in `restore_drill_max_age_days`. "auto" watches
+    # on staging and production only (a laptop has no backup service).
+    backup_monitoring: Literal["auto", "on", "off"] = "auto"
+    backup_max_age_hours: int = Field(default=26, ge=1, le=24 * 14)
+    restore_drill_max_age_days: int = Field(default=35, ge=1, le=365)
     # Who carries notifications to people's Telegram (D-092). "none": nobody;
     # every Telegram delivery is recorded `unavailable` and the in-app list
     # still has the message. "fake" writes to a development file and is for a
@@ -439,6 +447,12 @@ class Config(BaseSettings):
     @property
     def is_real_environment(self) -> bool:
         return self.env in ("staging", "production")
+
+    @property
+    def backup_watched(self) -> bool:
+        if self.backup_monitoring == "auto":
+            return self.is_real_environment
+        return self.backup_monitoring == "on"
 
     @property
     def dev_tools_enabled(self) -> bool:

@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
+from markx.backup.models import BackupRun
 from markx.catalog.models import ImageStatus, ProductImage
 from markx.core import ratelimit, settings_store
 from markx.core.config import get_config
@@ -691,6 +692,134 @@ def _unreachable(store: str, reason: str) -> Finding:
     )
 
 
+# -- backups (D-094) ----------------------------------------------------------------------
+#
+# The backup service records every attempt in `backup_runs`; these checks turn
+# that record into alerts. An alert GENERATED here reaches a person only
+# through the alert channel: the founder's Telegram group once
+# MARKX_TELEGRAM_BOT_TOKEN and MARKX_ALERT_TELEGRAM_CHAT_ID are set, and the
+# log otherwise (markx/ops/alerts.py). A log line is not a person told.
+
+
+def _last_run(db: Session, kind: str, *statuses: str) -> BackupRun | None:
+    query = select(BackupRun).where(BackupRun.kind == kind)
+    if statuses:
+        query = query.where(BackupRun.status.in_(statuses))
+    return db.scalar(query.order_by(BackupRun.started_at.desc()).limit(1))
+
+
+def _run_facts(run: BackupRun) -> dict[str, Any]:
+    return {
+        "backup_id": run.backup_id,
+        "status": run.status,
+        "started_at": run.started_at.isoformat(),
+        "destination": run.destination,
+        "offsite": run.offsite,
+        "error_code": run.error_code,
+        "database_bytes": run.database_bytes,
+        "object_count": run.object_count,
+        "object_bytes": run.object_bytes,
+    }
+
+
+def backups(db: Session, now: datetime) -> list[Finding]:
+    """The last backup failed or was incomplete; or no verified off-server
+    backup is recent enough (including: none has ever been made)."""
+    config = get_config()
+    if not config.backup_watched:
+        return []
+    findings: list[Finding] = []
+    last = _last_run(db, "backup", "succeeded", "incomplete", "failed", "abandoned")
+    if last is not None and last.status in ("failed", "abandoned"):
+        findings.append(
+            Finding(
+                key="backup.failed",
+                severity="critical",
+                summary=f"The last backup attempt failed ({last.error_code}); the previous "
+                "verified backup is kept. See the backup service's log.",
+                details=_run_facts(last),
+            )
+        )
+    if last is not None and last.status == "incomplete":
+        findings.append(
+            Finding(
+                key="backup.incomplete",
+                severity="critical",
+                summary="The last backup set is incomplete: files the database refers to "
+                "were missing from storage. A restore refuses it by default.",
+                details={**_run_facts(last), "details": last.details},
+            )
+        )
+    good = db.scalar(
+        select(BackupRun)
+        .where(
+            BackupRun.kind == "backup",
+            BackupRun.status == "succeeded",
+            BackupRun.verified.is_(True),
+            BackupRun.offsite.is_(True),
+        )
+        .order_by(BackupRun.finished_at.desc())
+        .limit(1)
+    )
+    limit = timedelta(hours=config.backup_max_age_hours)
+    if good is None or good.finished_at is None:
+        findings.append(
+            Finding(
+                key="backup.stale",
+                severity="critical",
+                summary="No verified off-server backup exists. Losing this server would lose "
+                "the data.",
+                details={"max_age_hours": config.backup_max_age_hours},
+            )
+        )
+    elif now - good.finished_at > limit:
+        hours = (now - good.finished_at).total_seconds() / 3600
+        findings.append(
+            Finding(
+                key="backup.stale",
+                severity="critical",
+                summary=f"The newest verified off-server backup is {hours:.0f} hours old "
+                f"(the limit is {config.backup_max_age_hours}).",
+                details={**_run_facts(good), "age_hours": round(hours, 1)},
+            )
+        )
+    return findings
+
+
+def restore_drills(db: Session, now: datetime) -> list[Finding]:
+    """The last restore drill failed, or none passed recently (F.13: monthly)."""
+    config = get_config()
+    if not config.backup_watched:
+        return []
+    findings: list[Finding] = []
+    last = _last_run(db, "drill", "succeeded", "failed", "abandoned")
+    if last is not None and last.status != "succeeded":
+        findings.append(
+            Finding(
+                key="backup.drill_failed",
+                severity="critical",
+                summary="The last restore drill failed: a backup may not be recoverable. "
+                f"({(last.error_summary or last.error_code or '')[:120]})",
+                details=_run_facts(last),
+            )
+        )
+    passed = _last_run(db, "drill", "succeeded")
+    limit = timedelta(days=config.restore_drill_max_age_days)
+    last_passed = passed.finished_at if passed is not None else None
+    if last_passed is None or now - last_passed > limit:
+        days = config.restore_drill_max_age_days
+        findings.append(
+            Finding(
+                key="backup.drill_overdue",
+                severity="warning",
+                summary=f"No restore drill has passed in the last {days} days "
+                "(docs/runbooks/backup-and-restore.md, the monthly drill).",
+                details={"last_passed": last_passed.isoformat() if last_passed else None},
+            )
+        )
+    return findings
+
+
 WATCH: tuple[Check, ...] = (
     failing_jobs,
     overdue_jobs,
@@ -709,6 +838,8 @@ WATCH: tuple[Check, ...] = (
     held_reviews,
     waiting_reports,
     file_storage,
+    backups,
+    restore_drills,
 )
 
 
