@@ -11,15 +11,34 @@ MarkX has **no** off-server backup.
 
 Targets (blueprint H.2): at most 24 hours of data lost, 4 hours to restore.
 
+**Hardened on 19 November 2026 (D-096; audit BK-1, BK-2, BK-3, BK-6,
+BK-7, BK-17), tested with PostgreSQL 17.12 and MinIO only.** Three rules
+follow from it, and every procedure below keeps them:
+
+1. **Nothing on the server can delete a backup.** The server's backup key
+   may only add, read and list. Retention runs elsewhere, with its own key.
+   On staging and production the bucket must have an object lock, or the
+   backup service does not start (PROVISIONAL, F-16).
+2. **The recovery key never comes to the server.** `verify`, `restore`,
+   `drill` and `prune` refuse to run on staging and production. Drills and
+   restores happen on a separate, throwaway **recovery machine**.
+3. **A restore runs as an ordinary role, in a box with no network.** The
+   archive is restored as `markx_migrator`, never the superuser, into a
+   throwaway PostgreSQL container without network or secrets, and a
+   restore never resets a database password.
+
 ## What exists
 
 | Piece | State |
 | --- | --- |
 | `python -m markx.backup` (`apps/api/markx/backup/`): one backup **set** = the PostgreSQL dump + every stored file, encrypted, uploaded, read back, signed | **Tested** (pytest on PostgreSQL 17 + MinIO, the CI drill, the rehearsal) |
-| The `backup` service in the production Compose file: a set at start-up and daily, retries, retention, health check | **Tested** in the rehearsal; **Real world**: never run for days on a server |
+| The `backup` service in the production Compose file: a set at start-up and daily, retries, health check; **no retention, no delete** (D-096) | **Tested** in the rehearsal; **Real world**: never run for days on a server |
 | A set before every migration (`deploy.sh deploy`) and on demand (`deploy.sh backup`) | **Tested** in the rehearsal |
 | Restore into a NEW database and EMPTY file stores, with full verification | **Tested** |
 | The recovery drill, with seven injected faults | **Tested** in CI on every push (report kept as the `restore-drill` artifact) and in the rehearsal |
+| The off-server drill (`drill --from-destination`) on a throwaway recovery machine, with a read-only key (D-096) | **Tested** in CI on every push: a container with no network, MinIO, test keys. **Real world**: never run against a real bucket |
+| Retention away from the server (`prune`, its own key), version- and lock-aware (D-096) | **Tested** against MinIO (versioned and object-locked buckets). **Real world**: never run |
+| Object lock required on staging and production (D-096) | **Tested** against MinIO's S3 Object Lock. **NOT VERIFIED** on Amazon S3 or Cloudflare R2 |
 | Alerts: failed, incomplete or stale backups; failed or overdue drills (the worker's watch) | **Tested** (generated). **Prepared** (delivered): a person hears of them only once the founder's Telegram alert group is configured (F-18); until then they reach the log only |
 | An off-server destination (S3 or R2) | **Founder** (F-16). The code refuses to call anything else off-server |
 | `infra/backup/restore-legacy-cbc.sh`: decrypt-and-restore of the retired `.dump.enc` format (D-063) | Kept for old dumps only; nothing makes that format any more |
@@ -52,9 +71,14 @@ The backup id is the start time and a random part, e.g.
 4. **Files, after the snapshot.** Both buckets are listed and each object
    is encrypted into a blob named by a keyed hash of its content. An object
    whose fingerprint (size and ETag) is unchanged since the last run is not
-   read again; a blob already at the destination is not uploaded again.
+   read again. A blob already at the destination is reused **only** when
+   the destination still lists it with the size and the ETag it had right
+   after its own read-back passed (the blob ledger, D-096); anything else,
+   including an upload whose check failed, is uploaded again over it.
 5. **Upload and verify** each piece: size from the destination, then a full
-   read-back compared with the SHA-256 of what was sent.
+   read-back compared with the SHA-256 of what was sent; with an object
+   lock, the object must also be locked. A reused blob whose lock would end
+   too soon has it lengthened.
 6. **Manifest last**, signed. Only now does the set exist.
 
 **Why the files match the database.** Every MarkX upload writes the file
@@ -68,8 +92,11 @@ after; otherwise this guarantee no longer holds.*
 
 **A recoverable set** is one whose manifest is present, verifies against a
 trusted signer key, and says `complete`; whose every piece has the hash the
-manifest records; and whose every blob exists. `verify --deep` also
-decrypts every blob and checks it against the file's own hash.
+manifest records; and whose every blob exists with the encrypted size the
+index records. `verify --deep` also decrypts every blob and checks it
+against the file's own hash, and reports any blob uploaded again since the
+set was made (other encrypted bytes, the same file). A set is written
+`complete` only when every one of its blobs passed its check.
 
 ### Encryption and keys (`markx/backup/crypto.py`)
 
@@ -128,7 +155,12 @@ once.
   10 kept;
 - `file-catalog-<keys>.json` (which object is which blob, for the next run;
   one per key pair, so no blob of an old key is reused after a rotation),
-  `status.json` (the health check), `.lock`.
+  `blob-ledger-<keys>.json` (each blob whose read-back passed: its
+  encrypted size and SHA-256 and the destination's ETag right after; a
+  blob not in it, or listed otherwise, is uploaded again), `status.json`
+  (the health check), `.lock`. Losing this folder costs one full upload of
+  every file at the next set (on a versioned bucket, the old copies stay
+  until retention), never a backup.
 
 Files are mode 600 (the service runs with `umask 077`).
 
@@ -173,88 +205,165 @@ infra/production/deploy.sh backup
 Exit 0 means a complete, verified set exists. `deploy.sh deploy` takes one
 before every migration and stops if it fails.
 
-## The monthly drill (blueprint F.13)
+## The recovery machine (D-096)
 
-On the server, by the person who holds the recovery key. It takes a fresh
-set, verifies it in full, restores it into a new database and into a
-temporary folder (no new bucket is needed), compares everything, drops what
-it created and records the result for the watch. It never touches the
-running database or the live buckets.
+Every drill and every restore runs here, **never on the server**. It is a
+throwaway machine: the recovery-key holder's own laptop (PROVISIONAL
+P-096-6), or a free CI runner (CI does exactly this on every push, with
+test keys and MinIO). It needs:
+
+- Docker, and a checkout of the MarkX repository at the release that made
+  the set (or newer) with `uv` (`cd apps/api && uv sync --locked`);
+- the backup bucket's **read-only key** (list and get only; never the
+  server's key, never the retention key);
+- `recovery.key` and `signer-public.key`, from where the founder keeps them
+  (F-19), into a folder only you can read, removed afterwards;
+- **nothing from the server**: no `/etc/markx` file, no database password,
+  no `MARKX_SECRET_KEY`, no SSH key to the server.
+
+The database it restores into is a **throwaway PostgreSQL 17.12 container
+with no network at all**, reached only through a socket folder, holding no
+secret. `infra/backup/recovery-host.sh` makes it and removes it with all
+its data. The restore runs as the `markx_migrator` role, never the
+superuser, so even a forged backup cannot run a program there, and a
+restore never resets a role's password (D-096).
 
 ```bash
-# The recovery key and signer key come on a USB stick or from the password
-# manager, into a folder only root can read, and are removed afterwards.
-install -d -m 700 -o 999 -g 999 /root/recovery && cp /media/usb/recovery.key /media/usb/signer-public.key /root/recovery/
-chown 999:999 /root/recovery/*; chmod 600 /root/recovery/recovery.key
-cd /opt/markx/infra/production
-set -a; . /etc/markx/postgres.env; set +a     # in this shell only
-docker compose -f compose.yaml --env-file /etc/markx/compose.env run --rm --no-deps \
-  -v /root/recovery:/run/recovery:ro \
-  -e PGUSER=postgres -e PGPASSWORD="$POSTGRES_PASSWORD" \
-  -e MARKX_DB_MIGRATOR_PASSWORD -e MARKX_DB_APP_PASSWORD -e MARKX_DB_READONLY_PASSWORD \
-  backup python -m markx.backup drill \
-    --recovery-key /run/recovery/recovery.key --signer /run/recovery/signer-public.key
-shred -u /root/recovery/recovery.key; rm -rf /root/recovery
+cd markx-marketplace/apps/api
+install -d -m 700 ~/markx-recovery && cp /media/usb/recovery.key /media/usb/signer-public.key ~/markx-recovery/
+chmod 600 ~/markx-recovery/recovery.key
+# The bucket, read-only (in this shell only; never on a command line you save):
+export MARKX_BACKUP_DESTINATION=s3   # or r2, as F-16 chose
+export MARKX_BACKUP_DESTINATION_ENDPOINT_URL=https://<endpoint> MARKX_BACKUP_DESTINATION_REGION=<region>
+export MARKX_BACKUP_DESTINATION_BUCKET=<backup bucket> MARKX_BACKUP_DESTINATION_PREFIX=markx/production
+read -rs MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY; export MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY
+export MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID=<read-only key id>
+eval "$(../../infra/backup/recovery-host.sh start)"   # the throwaway PostgreSQL, no network
 ```
 
-`MARKX_RELEASE` must be set to the running release (`tail -1
-/etc/markx/releases.log`). "DRILL PASSED" and the time it took go into
-`docs/DEVELOPMENT_STATUS.md`. **Always pass the three `MARKX_DB_*_PASSWORD`
-values** to a restore or a drill on a server (D-091).
+Do **not** set `MARKX_ENV` (the commands refuse staging and production), and
+do not set any `MARKX_DB_*_PASSWORD` (a restore never resets one).
 
-Doing the drill on the server puts the recovery key there for minutes. The
-safer alternative is a restore on a separate machine (below), which also
-proves recovery without the server.
+**When you are done, always:**
+
+```bash
+../../infra/backup/recovery-host.sh stop      # the container and its data are gone
+shred -u ~/markx-recovery/recovery.key; rm -rf ~/markx-recovery
+unset MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY
+```
+
+### Backups made after a suspected break-in are not trusted
+
+The server holds the key that signs manifests (moving signing off the
+server is a later option, D-096). Someone in control of the server can
+therefore make sets that verify perfectly and hold anything. If a break-in
+on the server is suspected from a moment T:
+
+- **trust no set made after T**, however well it verifies; restore the
+  newest complete set made **before** T (`created_at` in `list`);
+- restore it only on the recovery machine as above (no network, the owner
+  role), never anywhere that holds secrets;
+- treat the signing key as stolen: make a new key pair (`keygen`, off the
+  server), and after the server is rebuilt, sign only with the new one;
+  keep the old `signer-public.key` only to read sets made before T.
+
+## The monthly drill (blueprint F.13)
+
+On the recovery machine (above), by the person who holds the recovery
+key. It takes **no** backup and writes **nothing** to the bucket: it picks
+the newest complete set the server made, verifies it in full (every blob
+decrypted), restores it into a new database in the throwaway PostgreSQL and
+the files into a temporary folder, compares everything, proves on a local
+copy that seven kinds of tampering are refused, removes what it made, and
+writes a report.
+
+```bash
+uv run python -m markx.backup drill --from-destination \
+  --recovery-key ~/markx-recovery/recovery.key --signer ~/markx-recovery/signer-public.key \
+  --report ~/drill-$(date -u +%Y%m%d).json
+```
+
+"DRILL PASSED" and the time it took go into `docs/DEVELOPMENT_STATUS.md`.
+(`--set <id>` drills another set than the newest.) Then enter the result
+on the server, so the watch knows a drill passed (`backup.drill_overdue`).
+The report holds no secret; `record-drill` checks that its set exists and
+verifies with the server's own signer:
+
+```bash
+scp ~/drill-<date>.json <server>:/tmp/
+# on the server:
+cd /opt/markx/infra/production
+docker compose -f compose.yaml --env-file /etc/markx/compose.env run --rm --no-deps \
+  -v /tmp/drill-<date>.json:/run/drill.json:ro backup python -m markx.backup record-drill --report /run/drill.json
+```
+
+Then retention, if it is due (below), and the cleanup of the recovery
+machine. On a laptop or in CI, `python -m markx.backup drill` (without
+`--from-destination`) is the **rehearsal**: it takes a new set first, from
+a laptop's or CI's own database, which needs the signing key. It refuses
+staging and production like every drill.
 
 ## Restoring
 
 Needs **the founder's written approval** whenever it is meant to replace
 live data: everything written since the set is lost. A restore only ever
-writes into a NEW database and EMPTY file stores; it never overwrites. You
-need: the backup destination's read credentials, the recovery key, the
-signer public key, a PostgreSQL 17 server where you are superuser, and the
-MarkX code (the `backup` image, or a checkout with `uv`).
+writes into a NEW database and EMPTY file stores; it never overwrites. It
+always starts on the recovery machine (above).
 
 1. **Stop the writers** if the live system still runs: `docker compose ...
    stop proxy web api worker backup`. Keep the database running.
 2. **Keep what is there.** If PostgreSQL still starts, take a set
    (`deploy.sh backup`). Never delete the old volume or buckets until the
    recovery is verified.
-3. **Choose the set**: `python -m markx.backup list --signer signer-public.key`,
-   the newest `complete` one from before the damage. Check it:
+3. **Choose the set**, on the recovery machine:
+   `uv run python -m markx.backup list --signer ~/markx-recovery/signer-public.key`,
+   the newest `complete` one from before the damage (and from before any
+   suspected break-in, above). Check it:
 
    ```bash
-   python -m markx.backup verify --set <id> --deep \
-     --recovery-key recovery.key --signer signer-public.key
+   uv run python -m markx.backup verify --set <id> --deep \
+     --recovery-key ~/markx-recovery/recovery.key --signer ~/markx-recovery/signer-public.key
    ```
-4. **Restore into new targets.** Files go to two new, empty buckets (or a
-   folder); the target buckets' keys go in `MARKX_RESTORE_TARGET_ACCESS_KEY_ID`
-   and `MARKX_RESTORE_TARGET_SECRET_ACCESS_KEY`, never on the command line.
-   The database name must be new and must be typed twice:
+4. **Restore it into the throwaway PostgreSQL** and a folder, and read the
+   report:
 
    ```bash
-   python -m markx.backup restore --set <id> \
-     --recovery-key recovery.key --signer signer-public.key \
+   uv run python -m markx.backup restore --set <id> \
+     --recovery-key ~/markx-recovery/recovery.key --signer ~/markx-recovery/signer-public.key \
      --target-db markx_restored --confirm-target markx_restored \
-     --target-provider r2 --target-endpoint https://<account>.r2.cloudflarestorage.com \
-     --target-private-bucket <new-private> --target-public-bucket <new-public> \
-     --report restore-report.json
+     --target-files-dir ~/markx-restored-files --report restore-report.json
    ```
 
-   (`--target-files-dir DIR` restores files into a folder; `--no-files`
-   restores the database alone.) The restore refuses: a manifest that does
-   not verify, a changed piece, an incomplete set (unless
-   `--accept-incomplete`, in a disaster only; the report then says FAILED
-   for completeness), an existing database, the backed-up database's own
-   name, a system database, a mismatched confirmation, non-empty target
-   stores and the live buckets.
-5. **Read the report.** `RESULT: PASSED` only when: every file restored and
-   read back with its checksum, private files only in the private target
-   and that target not readable anonymously, the migration version and
-   every table's row count equal to the snapshot's, no invalid index or
-   unvalidated constraint, the audit log still protected, and every file a
-   row refers to present.
-6. **Swap**, as the superuser, with nothing connected:
+   The restore refuses: a manifest that does not verify, a changed piece, a
+   blob of the wrong size, an incomplete set (unless `--accept-incomplete`,
+   in a disaster only; the report then says FAILED for completeness), an
+   existing database, the backed-up database's own name, a system database,
+   a mismatched confirmation, non-empty target stores, the live buckets,
+   and any `MARKX_DB_*_PASSWORD` given where the MarkX roles already exist.
+   `RESULT: PASSED` only when: every file restored and read back with its
+   checksum, private files only in the private target and that target not
+   readable by others, the migration version and every table's row count
+   equal to the snapshot's, no invalid index or unvalidated constraint, the
+   audit log still protected from `markx_app`, and every file a row refers
+   to present. Look at the data you expect to recover (as `markx_migrator`,
+   through the socket: `psql -h "$PGHOST" -U markx_migrator markx_restored`).
+5. **Put it in place**, once the founder agrees in writing. The verified
+   set is restored a second time, now into the **new or repaired server's**
+   PostgreSQL, still run from the recovery machine (through an SSH tunnel
+   to that server's database port), into a new name:
+   - point `PG*` at the server's PostgreSQL superuser through the tunnel
+     (in this shell only), with `MARKX_RESTORE_OWNER_PASSWORD` and
+     `MARKX_RESTORE_APP_PASSWORD` the roles' real passwords; **never**
+     `MARKX_DB_*_PASSWORD` (a restore never resets them and refuses them).
+     On a brand-new server whose roles do not exist yet, give the three
+     `MARKX_DB_*_PASSWORD` values instead: they create the roles;
+   - files into two new, empty buckets: `--target-provider s3|r2
+     --target-endpoint ... --target-private-bucket <new-private>
+     --target-public-bucket <new-public>`, their keys in
+     `MARKX_RESTORE_TARGET_ACCESS_KEY_ID` and
+     `MARKX_RESTORE_TARGET_SECRET_ACCESS_KEY`, never on the command line;
+   - the archive is again restored as `markx_migrator`, never the superuser.
+6. **Swap**, on the server, as the superuser, with nothing connected:
    `alter database markx rename to markx_damaged_<date>;`
    `alter database markx_restored rename to markx;`
    Point `MARKX_STORAGE_PRIVATE_BUCKET`/`_PUBLIC_BUCKET` at the restored
@@ -266,33 +375,63 @@ MarkX code (the `backup` image, or a checkout with `uv`).
 8. Post-deployment checks (`checklists.md`); tell the founder what was lost
    (from the set's `created_at` to the damage).
 9. Drop `markx_damaged_<date>` and the old buckets only after the founder
-   agrees in writing.
+   agrees in writing. Clean up the recovery machine (above).
 
 **If the whole server is lost:** a new server (`deploy.md`, "Once"), the
 settings from where the founder keeps them, then steps 3 to 8 from the
 backup destination. Nothing from the old server is needed.
 
-## Retention
+## Retention (away from the server, D-096)
 
 `MARKX_BACKUP_RETENTION_DAYS` (0 keeps everything) and
-`MARKX_BACKUP_RETENTION_MIN_SETS` are **required** on staging and
-production and are the founder's choice (F-20); a laptop defaults to 7 days
-and 3 sets. After each successful nightly set the service applies them
-(`python -m markx.backup prune` shows the plan; `--execute` applies it):
+`MARKX_BACKUP_RETENTION_MIN_SETS` are the founder's choice (F-20); they are
+required on staging and production and whenever retention deletes from
+off-server storage; a laptop defaults to 7 days and 3 sets. **The server
+never applies them**: its key cannot delete. Retention is run on the
+recovery machine (PROVISIONAL P-096-5: by hand, monthly, right after the
+drill) with the **retention key**, the only key that may delete, kept with
+the recovery key and never on the server:
+
+```bash
+export MARKX_BACKUP_RETENTION_DAYS=<days> MARKX_BACKUP_RETENTION_MIN_SETS=<sets>
+export MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID=<retention key id>   # and its secret, read -rs
+uv run python -m markx.backup prune --signer ~/markx-recovery/signer-public.key            # the plan
+uv run python -m markx.backup prune --signer ~/markx-recovery/signer-public.key --execute  # apply it
+```
 
 - the newest `MIN_SETS` complete sets, and always the newest one, are kept
   whatever their age; with no complete set nothing is deleted;
-- only sets signed by this service's key count; nothing is deleted because
+- only sets signed by the trusted signer count; nothing is deleted because
   of an unsigned or foreign manifest;
 - a blob goes only when no kept set lists it and it is older than 48 hours
-  (`MARKX_BACKUP_BLOB_GRACE_HOURS`); if any kept set's blob list cannot be
-  read and checked, no blob is deleted;
-- it runs under the backup lock, and only inside the destination's prefix.
-  It never touches the stored files themselves.
+  (`MARKX_BACKUP_BLOB_GRACE_HOURS`), so a backup running at the same moment
+  is safe; if any kept set's blob list cannot be read and checked, no blob
+  is deleted;
+- **every version** of an object is removed, so a versioned bucket really
+  frees the space and keeps no delete marker; objects already hidden behind
+  a delete marker are removed too once older than the retention period,
+  unless a kept set needs them;
+- **an object still under its lock stays**: retention says how many it
+  left, and a later run removes them; a set whose manifest is still locked
+  is left whole, so a half-deleted set never looks complete;
+- only inside the destination's prefix; it never touches the stored files.
 
-Object versioning or an object lock on the backup bucket (where the
-provider offers it) would protect sets even against someone holding the
-backup key; it is part of F-16.
+**The alternative: the provider's own expiry rules** ("lifecycle rules").
+They need no retention key at all, which is simpler, but they delete by age
+alone: they cannot know which sets are complete, keep the newest set, or
+see that a new set still needs an old blob. If they are used, they may
+expire **only** the `sets/` prefix after the retention period, and
+**never** objects under `objects/` (old blobs are still needed by new
+sets); blobs no set needs are then left for `prune` to remove. On a
+versioned bucket, a rule may also remove noncurrent versions, again never
+under `objects/`. Which way is the founder's choice (F-20).
+
+**The object lock and retention together.** With the lock (below),
+nothing can be removed before its lock ends, by anyone. Set the bucket's
+default retention to the minimum lock plus about two weeks (PROVISIONAL
+P-096-4: 30 + 14 = 44 days), so that a reused blob's lock is lengthened
+about once a fortnight; the bucket then holds at least about 44 days of
+sets whatever `MARKX_BACKUP_RETENTION_DAYS` says.
 
 ## Activating off-server backups (needs the founder)
 
@@ -303,20 +442,71 @@ backup key; it is part of F-16.
    `recovery.key` and `signer-public.key` twice, apart; then delete
    `recovery.key` from that machine.
 3. **The bucket** (founder's account, written approval): private, no public
-   access, no website, versioning or object lock if offered, in the chosen
-   location. **Its own access key**, allowed only `ListBucket`, `GetObject`,
-   `PutObject`, `DeleteObject` and `AbortMultipartUpload` on that bucket.
-   A **read-only key** for the two file buckets (list and get only).
+   access, no website, in the chosen location, created **with S3 Object
+   Lock enabled** (whether it can be switched on later is the provider's
+   rule: check it, UNKNOWN here), a
+   default retention in **COMPLIANCE** mode of at least
+   `MARKX_BACKUP_OBJECT_LOCK_MIN_DAYS` (30) days, 44 recommended
+   (PROVISIONAL P-096-1 to P-096-4). Staging and production refuse to start
+   the backup service without it. Then **three keys on that bucket**, each
+   for one place:
+   - **the server's key** (into `backup.env`): `ListBucket`,
+     `GetBucketLocation`, `GetBucketObjectLockConfiguration`,
+     `ListBucketMultipartUploads`, `PutObject`, `GetObject`,
+     `GetObjectRetention`, `PutObjectRetention` (COMPLIANCE only ever
+     lengthens a lock), `AbortMultipartUpload`, `ListMultipartUploadParts`.
+     **No `DeleteObject`, no `DeleteObjectVersion`, no bypass of the lock,
+     no bucket settings.**
+   - **the recovery machine's read-only key**: `ListBucket`,
+     `GetBucketLocation`, `GetBucketObjectLockConfiguration`, `GetObject`,
+     `GetObjectRetention`. Kept with the recovery key.
+   - **the retention key**: the read-only key's rights plus
+     `ListBucketVersions`, `GetObjectVersion`, `DeleteObject`,
+     `DeleteObjectVersion`. Kept with the recovery key, never on the server.
+
+   `infra/backup/minio-least-privilege.sh` shows the same three policies
+   for MinIO. A **read-only key** for the two file buckets (list and get
+   only).
 4. `/etc/markx/backup.env` from `infra/production/env/backup.env.example`;
    `/etc/markx/backup-public.key` (root, 644) and
    `/etc/markx/backup-signing.key` (999, 400). `deploy.sh check`.
 5. `deploy.sh deploy <release>`: the service starts and takes a set; it
    refuses to start if anything is missing or the destination is not
    off-server.
-6. A drill with the recovery key (above), then a restore on a separate
-   machine. Record both in `docs/DEVELOPMENT_STATUS.md`.
+6. **Prove the key's limits once, by hand:** with the server's key, a
+   delete of any object must be refused; with the read-only key, a write
+   must be refused. Then the drill on the recovery machine (above), its
+   `record-drill` on the server, and a timed restore on the recovery
+   machine (the measured RTO). Record all in `docs/DEVELOPMENT_STATUS.md`.
 7. Configure the alert group (F-18) and confirm a test alert arrives on a
    phone. Only then may anyone say MarkX has off-server backups.
+
+## To test on the real provider, once F-16 is decided (D-096)
+
+Built and tested against MinIO only. Before anyone says MarkX has
+off-server backups, on the chosen provider, with the founder's approval:
+
+1. The object-lock check: a bucket without a lock, with GOVERNANCE, and
+   with too short a period are each refused; the chosen bucket passes.
+2. **Cloudflare R2 especially (UNKNOWN today):** whether R2's "bucket
+   locks" answer `GetObjectLockConfiguration`, whether `PutObjectRetention`
+   lengthens one object's lock, whether a locked object's version can be
+   deleted (it must not), and whether a head returns the lock date. If R2
+   does not answer these, the code refuses an R2 bucket on staging and
+   production; the choice is then S3, or a code change for R2's own lock
+   API, decided by the founder.
+3. The server's key cannot delete (`DeleteObject`, `DeleteObjects`,
+   `DeleteObjectVersion`), cannot shorten a lock and cannot change bucket
+   settings; the read-only key cannot write.
+4. A first set: every object locked; ETags as listed equal ETags after
+   upload (the blob ledger relies on it; for multipart uploads too); a
+   second set reuses every blob (`new_blobs: 0`).
+5. Upload checksums: boto3 sends its default checksums on every upload;
+   check the provider accepts them on a locked bucket.
+6. `drill --from-destination` from a recovery machine with the read-only
+   key; `record-drill` on the server; then `prune` with the retention key,
+   dry run first: locked objects reported as held, nothing else removed.
+7. A timed full restore (the RTO).
 
 ## Legacy dumps (D-063)
 

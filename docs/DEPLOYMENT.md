@@ -57,7 +57,7 @@ step (blueprint F.0, F.13):
 | `api` | `markx/api:<release>` (`apps/api/Dockerfile`) | Every business rule | `GET /api/v1/healthz/ready` (readiness) | 30 s (uvicorn drains for 20 s) |
 | `worker` | the API image, `python -m markx.worker` | Scheduled jobs, the outbox, pictures; also the scheduler | `--check-heartbeat` (a pass in the last 5 min) | 60 s (finishes the row in hand) |
 | `postgres` | `postgres:17.12` | The database, on a named volume, data checksums on | `pg_isready` | 60 s |
-| `backup` | `markx/backup:<release>` (the `backup` stage of `apps/api/Dockerfile`), `python -m markx.backup serve` | A backup set (database and files) at start-up and daily: encrypted, uploaded, read back, signed; retries and retention (D-094) | a verified set under 26 h old, off-server on staging and production | 30 s |
+| `backup` | `markx/backup:<release>` (the `backup` stage of `apps/api/Dockerfile`), `python -m markx.backup serve` | A backup set (database and files) at start-up and daily: encrypted, uploaded, read back, signed; retries (D-094). It never deletes a backup and never runs retention (D-096); on staging and production it does not start without the bucket's object lock | a verified set under 26 h old, off-server on staging and production | 30 s |
 | `migrate` | the API image, `alembic upgrade head` | The one-time migration step; never started by `up` | — | — |
 
 Hardening on the application containers (**Tested** by the rehearsal):
@@ -179,18 +179,28 @@ Procedures: `docs/runbooks/backup-and-restore.md`.
 | `PGPASSWORD` | the `markx_migrator` password (the schema owner reads every table) |
 | `MARKX_BACKUP_DESTINATION` | `s3` or `r2`; staging and production refuse `local` and `minio` |
 | `MARKX_BACKUP_DESTINATION_ENDPOINT_URL`, `_REGION`, `_BUCKET`, `_PREFIX` | the dedicated backup bucket, never a file bucket; `https://` only |
-| `MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` | **its own key**, scoped to that bucket; never the file stores' key, never the machine's credentials |
+| `MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` | **its own key**, scoped to that bucket; never the file stores' key, never the machine's credentials. It may add, read and list only, **never delete** (D-096; the rights are listed in the runbook, "Activating") |
 | `MARKX_BACKUP_SOURCE_PROVIDER`, `_ENDPOINT_URL`, `_REGION`, `_PRIVATE_BUCKET`, `_PUBLIC_BUCKET` | the two file buckets to copy |
 | `MARKX_BACKUP_SOURCE_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` | a **read-only** key for the two file buckets |
 | `MARKX_BACKUP_HOUR_UTC` | the nightly set (default 23, 02:00 in Addis Ababa) |
-| `MARKX_BACKUP_RETENTION_DAYS`, `MARKX_BACKUP_RETENTION_MIN_SETS` | **required** on a real server; the founder's decision (F-20); 0 days keeps everything |
+| `MARKX_BACKUP_RETENTION_DAYS`, `MARKX_BACKUP_RETENTION_MIN_SETS` | **required** on a real server; the founder's decision (F-20); 0 days keeps everything. The server does not apply them (D-096): retention (`prune`) runs on a separate machine with its own key, which needs them too |
+| `MARKX_BACKUP_OBJECT_LOCK_MIN_DAYS` | optional, default **30** (PROVISIONAL, D-096, F-16): the backup bucket's COMPLIANCE object lock must be at least this long on staging and production, or the service does not start |
+| `MARKX_BACKUP_REQUIRE_OBJECT_LOCK` | a laptop and the tests only (`1` asks for the same lock check); always on for staging and production |
 | `MARKX_BACKUP_RETRY_ATTEMPTS`, `_RETRY_DELAY_SECONDS`, `_MAX_AGE_HOURS`, `_LOCAL_KEEP_SETS`, `_BLOB_GRACE_HOURS` | optional: 3 attempts, 600 s, 26 h, 2 local copies, 48 h |
 | `/etc/markx/backup-public.key` | the recovery key's PUBLIC half: the server encrypts, never decrypts |
 | `/etc/markx/backup-signing.key` | signs manifests; secret, owner 999, mode 400 |
 
 The **recovery key** (private) and the signer public key are kept off the
 server by the founder (F-19); a restore needs only them and the bucket's
-read access. In `api.env`, `MARKX_BACKUP_MONITORING` (`auto`: on for
+read access.
+
+Never on the server (D-096): `verify`, `restore`, `drill` and `prune` refuse
+to run on staging and production. On the recovery machine a restore logs in
+with `MARKX_RESTORE_OWNER_PASSWORD` (markx_migrator) and
+`MARKX_RESTORE_APP_PASSWORD` (markx_app) and never resets a role's password;
+it refuses `MARKX_DB_*_PASSWORD` where the roles already exist. On the server,
+`python -m markx.backup record-drill --report FILE` enters an off-server
+drill's result for the watch. In `api.env`, `MARKX_BACKUP_MONITORING` (`auto`: on for
 staging and production), `MARKX_BACKUP_MAX_AGE_HOURS` (26) and
 `MARKX_RESTORE_DRILL_MAX_AGE_DAYS` (35) set the worker's backup alerts.
 

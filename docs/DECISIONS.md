@@ -3248,6 +3248,151 @@ before reporting); `CLAUDE.md`. Until this decision every session worked on
 `claude/project-scaffold`, which was merged into `main` through pull
 request #1 on 19 November 2026.
 
+## D-096 Backup trust hardening: the server cannot delete a backup, an object lock, verified reuse, drills and restores away from the server
+
+**Engineering decision, 19 November 2026** (the independent audit's BK-1,
+BK-2, BK-3, BK-6, BK-7 and BK-17; `docs/reports/2026-11-19-independent-audit.md`
+sections 3 to 6, 17 and 20). **Built and tested with PostgreSQL 17.12 and
+MinIO only. Nothing is connected; no account, bucket or key exists.**
+Several parts are **PROVISIONAL**: listed at the end, each for the founder.
+
+**What changed, and why.**
+
+- **BK-1. The server can no longer delete backups.** The backup service
+  (`run`, `serve`) only adds, reads and lists; its key is given no delete
+  right. `serve` no longer applies retention after each set. Retention is
+  `python -m markx.backup prune`, which refuses to run on staging and
+  production: it runs on a separate machine with its own key that may
+  delete. It removes every version of an object (so space is really freed
+  on a versioned bucket and no delete marker is left), leaves what an
+  object lock still holds and says so, leaves a set whole when its manifest
+  is still locked, and also removes objects already hidden behind a delete
+  marker once they are older than the retention period (never what a kept
+  set needs). It trusts only the signer PUBLIC key it is given and takes no
+  lock: a running backup is protected by the 48-hour blob grace period.
+  **The alternative**, the storage provider's own expiry ("lifecycle")
+  rules, is documented in the runbook: simpler, but they delete by age
+  alone, without knowing which sets are complete or which blobs a kept set
+  still needs, so they must never expire objects under `objects/`.
+- **BK-1. Object lock.** On staging and production the backup bucket must
+  have S3 Object Lock in COMPLIANCE mode with a default retention of at
+  least `MARKX_BACKUP_OBJECT_LOCK_MIN_DAYS` (30); `serve` refuses to start
+  otherwise (`destination.py`, `check_access`). Every object the server
+  writes is checked to be locked after its upload. A blob that a new set
+  reuses has its lock lengthened (COMPLIANCE never allows shortening, and
+  the server's key cannot), so every object of the newest set stays locked
+  at least the minimum period. A laptop and the tests ask for the same
+  check with `MARKX_BACKUP_REQUIRE_OBJECT_LOCK=1`.
+- **BK-3. A damaged upload is never reused.** The blob ledger
+  (`blob-ledger-<keys>.json` in the working folder) records each blob whose
+  full read-back matched: its encrypted size, the SHA-256 of its encrypted
+  bytes and the destination's own fingerprint (ETag) right after the check.
+  A later run reuses a blob only when the destination lists it with that
+  size and that ETag; otherwise it uploads it again, over it (the server
+  cannot delete it, so "treat it as never uploaded" is the fix). A blob
+  whose check fails is dropped from the ledger at once; even an interrupted
+  run keeps the ledger. Every index entry now records its blob's
+  `ciphertext_bytes` and `ciphertext_sha256`; `verify` checks each blob's
+  size without decrypting, and `verify --deep` reports a blob uploaded
+  again since a set (its bytes differ, it still decrypts to the file). A
+  set is written `complete` only when every one of its blobs passed in
+  this run or is unchanged since it did (`files.verified_blobs`).
+- **BK-2. Drills and restores never run on the server.** `verify`,
+  `restore`, `drill` and `prune` refuse to run when `MARKX_ENV` is staging
+  or production: the recovery key must never come to the server. `drill
+  --from-destination` is the monthly drill on a separate, throwaway
+  recovery machine: it takes no backup, reads the newest complete set (or
+  `--set`) with the bucket's READ-ONLY key, restores it into a temporary
+  folder and a throwaway PostgreSQL, and puts a LOCAL copy of the set
+  through the seven injected faults, so it never writes to or deletes from
+  the bucket. `infra/backup/recovery-host.sh` starts that PostgreSQL: the
+  pinned 17.12 image, `--network none`, reached through a Unix socket only,
+  no secret. The drill's report is entered on the server with `python -m
+  markx.backup record-drill --report FILE`, which checks that the set it
+  names exists and verifies, so `backup.drill_overdue` keeps working.
+- **BK-6. A restore cannot harm the recovery machine.** `pg_restore` runs
+  logged in as `markx_migrator` (the owner), never the superuser, and the
+  restored copy is checked as `markx_migrator` and `markx_app`. A `SET
+  ROLE` would not do: the archive could `RESET ROLE`. The superuser only
+  checks the target is new, runs bootstrap.sh (our own SQL) and drops a
+  database the restore made. Proved by a test: a forged, correctly signed
+  set whose restore runs `COPY ... TO PROGRAM` runs it as the superuser and
+  is refused as the owner. Found while doing it: bootstrap.sh's default
+  privileges would have given `markx_app` UPDATE and DELETE on every table
+  the owner creates during the restore (the archive's grants only add), so
+  the audit log would have lost its protection. The restore now clears
+  those default privileges in the new, empty database first; the archive
+  restores the source's own at its end. A test compares every table's
+  owner and grants with the source's. Sets made after a suspected break-in
+  on the server must not be trusted (runbook).
+- **BK-7. A restore never resets a password.** When the MarkX roles
+  already exist on the target PostgreSQL, the restore never passes
+  `MARKX_DB_*_PASSWORD` to bootstrap.sh, and refuses to run when they are
+  given. It logs in with `MARKX_RESTORE_OWNER_PASSWORD` and
+  `MARKX_RESTORE_APP_PASSWORD` (else bootstrap's defaults, right on a
+  throwaway container). The BK-2 refusal alone does not cover this: a
+  machine with `MARKX_ENV` unset could still point `PGHOST` at production.
+  The production rehearsal's drill now passes those login passwords
+  instead of the reset ones.
+- **BK-17. Least privilege in the tests and CI.** `infra/backup/minio-least-privilege.sh`
+  makes five MinIO users (development values only): the server's backup
+  key (add, read, list, lengthen a lock, abort its own uploads; no delete),
+  the recovery machine's key (read and list), the retention key (read, list,
+  delete every version), the file stores' reader, and a key for the drill's
+  own `markx-drill-*` buckets. The tests' file buckets are named
+  `markx-test-files-*` so the reader's policy can name them (MinIO matches a
+  wildcard at the end of a bucket name only). CI's PostgreSQL service and
+  client tools are pinned to `postgres:17.12`.
+
+**Not done here, recorded for later.** Moving manifest signing off the
+server (a co-signer away from it) would stop a compromised server from
+forging sets (audit 3B, BK-6's optional part); it is a later option with
+an operating cost, not built. Still open from the backup findings: BK-4
+(alerts that work without the server), BK-5 (an off-server escrow of the
+application secrets), BK-8 to BK-16 and BK-18; scheduled deep verification
+(BK-11) is not built either.
+
+**PROVISIONAL, for the founder to confirm.**
+
+- **P-096-1. An object lock is required on staging and production**
+  (`config.py`, `object_lock_required`). It costs storage: nothing can be
+  removed before its lock ends, so the bucket holds at least the lock
+  period of sets. Confirm with F-16.
+- **P-096-2. COMPLIANCE mode, not GOVERNANCE** (`destination.py`,
+  `_checked_lock`). Nobody, not even the account owner, can delete a
+  locked object early; a mistake costs storage until the lock ends. Confirm
+  with F-16.
+- **P-096-3. The minimum lock is 30 days** (`MARKX_BACKUP_OBJECT_LOCK_MIN_DAYS`,
+  the blueprint's backup period, H.2). Confirm with F-16 and F-20.
+- **P-096-4. The bucket's default retention should be the minimum plus 14
+  days** (44), so that a reused blob's lock is lengthened about once every
+  two weeks instead of every night (each lengthening is one request per
+  blob). A runbook recommendation, not enforced. Confirm with F-16.
+- **P-096-5. Retention is run by hand, monthly, at the drill**, from the
+  recovery machine with the retention key (`prune`, dry run first), rather
+  than by the provider's expiry rules. Confirm with F-20.
+- **P-096-6. The recovery machine is the recovery-key holder's own laptop**
+  by default; a free CI runner works the same way (CI does it on every
+  push with test keys), but holding the real recovery key in a CI system
+  is a custody choice for F-19.
+- **Cloudflare R2 is NOT VERIFIED.** R2 has its own "bucket locks"; whether
+  they answer the S3 object-lock calls this code makes, whether a per-object
+  lock can be lengthened there, and how R2 answers a delete of a locked
+  object are all UNKNOWN. Nothing contacted R2. If R2 does not answer the
+  S3 call, the service refuses an R2 bucket on staging and production, by
+  design. To test once F-16 is decided (runbook, "To test on the real
+  provider").
+
+**Where:** `apps/api/markx/backup/` (`config.py`, `destination.py`,
+`runner.py`, `retention.py`, `database.py`, `restore.py`, `drill.py`,
+`__main__.py`); tests `apps/api/tests/storage/test_backup_trust.py`,
+`apps/api/tests/unit/test_backup_commands.py` and the least-privilege
+fixtures in `apps/api/tests/storage/test_backup_recovery.py`;
+`infra/backup/minio-least-privilege.sh`, `infra/backup/recovery-host.sh`;
+`.github/workflows/ci.yml`; `infra/production/rehearsal/rehearse.sh`;
+`docs/runbooks/backup-and-restore.md`; `docs/DEPLOYMENT.md`;
+`infra/production/env/backup.env.example`.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -3538,10 +3683,15 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   server on staging and production, and is tested against MinIO. **No
   provider, account or bucket is chosen or created; MarkX has no off-server
   backup.**
+- **Since D-096 (PROVISIONAL, to confirm here):** staging and production
+  require S3 Object Lock in COMPLIANCE mode on the backup bucket, at least
+  30 days, and refuse to start without it; the server's key cannot delete.
+  This costs storage for the lock period. Cloudflare R2's own bucket locks
+  are NOT VERIFIED with this code: test them before choosing R2.
 - **To decide:** the provider (AWS S3 or Cloudflare R2), the bucket's
-  location (backups hold personal data: blueprint O.1), versioning or an
-  object lock on the bucket (protects sets against a stolen backup key),
-  and the spending. Also whether the blueprint's weekly copy to an
+  location (backups hold personal data: blueprint O.1), confirming the
+  object lock, its mode and its period (P-096-1 to P-096-4), and the
+  spending. Also whether the blueprint's weekly copy to an
   encrypted drive the founder holds is kept (a second destination).
 - **Blocks:** the controlled launch should not start without an off-server
   set, a passed drill and an alert channel (F-18). **Founder's approval
@@ -3591,9 +3741,13 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   `MARKX_BACKUP_RETENTION_MIN_SETS`; a laptop keeps 7 days and 3 sets. The
   newest complete set is never deleted. The blueprint says 30 days (H.2);
   that is not chosen here.
+- **Since D-096:** retention no longer runs on the server. It is `prune`,
+  run away from the server with its own delete key (PROVISIONAL P-096-5:
+  by hand, monthly, at the drill), and it cannot remove anything before
+  its object lock ends.
 - **To decide:** the days and the minimum number of sets, with the legal
   retention of the personal data in them (the founder's own checks) and
-  the storage cost.
+  the storage cost; who runs retention and how often (P-096-5).
 - **Founder's approval required: yes.**
 
 ## Open questions carried over from session 1
