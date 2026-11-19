@@ -236,6 +236,10 @@ No check was removed or weakened.
   rehearsal drill and the off-server drill), web app, containers, the
   production stack rehearsal, and the security scans.
 - **Browser journeys run 26** passed.
+- **CI run 146** (push) and **CI run 147** (pull request) also passed all
+  five jobs on the final commit, `3085cc7`. That commit added these
+  results to the documents and no code. The browser journeys do not run
+  for a change to documents only, so run 26 is the latest for them.
 
 Earlier runs, for the record:
 
