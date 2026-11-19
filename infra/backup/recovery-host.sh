@@ -59,8 +59,17 @@ EOF
 }
 
 stop() {
+  # A clean shutdown first: PostgreSQL then removes its own socket files,
+  # which an ordinary user could not (the image makes the folder "sticky").
+  docker stop -t 30 "$NAME" >/dev/null 2>&1 || true
   docker rm -f -v "$NAME" >/dev/null 2>&1 || true
-  rm -rf "$SOCKET_DIR"
+  if [[ -d "$SOCKET_DIR" ]] && ! rm -rf "$SOCKET_DIR" 2>/dev/null; then
+    # Anything left behind belongs to the container's user: remove it from a
+    # throwaway container of the same image, without network.
+    docker run --rm --network none -v "$SOCKET_DIR:/socket" --entrypoint sh "$IMAGE" \
+      -c 'rm -rf /socket/* /socket/.[!.]*' >/dev/null 2>&1 || true
+    rm -rf "$SOCKET_DIR"
+  fi
   echo "recovery PostgreSQL $NAME removed with its data" >&2
 }
 
