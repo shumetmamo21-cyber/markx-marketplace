@@ -15,6 +15,21 @@ of contents and found every table the snapshot holds, alembic_version's
 data among them. The plaintext is streamed: to the encryption, which writes
 only ciphertext to disk, and to `pg_restore --list`. It is never written to
 disk in the clear.
+
+**A restore runs as an ordinary owner role, never as the superuser (BK-6).**
+A dump is executable content: a forged set could carry SQL that, run by a
+superuser, executes shell commands on the database host (`COPY ... TO
+PROGRAM`). The superuser only creates the empty database and the MarkX roles
+(bootstrap.sh, our own SQL) and drops a database this process made; the
+archive is fed to pg_restore logged in as `markx_migrator`, the schema owner,
+and the restored copy is checked as `markx_migrator` and `markx_app`. A
+`SET ROLE` would not do: the archive could simply `RESET ROLE`.
+
+**A restore never resets a role's password (BK-7).** Roles are shared by
+the whole PostgreSQL server. When the MarkX roles already exist there, the
+restore leaves their passwords alone, and it refuses to run at all if
+MARKX_DB_*_PASSWORD values are given, because bootstrap.sh would otherwise
+reset them (on a production server that would lock the running app out).
 """
 
 from __future__ import annotations
@@ -36,6 +51,25 @@ from markx.backup.crypto import Encryptor, RecipientKey, StreamDigest
 _READ = 1024 * 1024
 _SAFE_DB = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 _FORWARDED_PREFIXES = ("MARKX_", "AWS_")
+
+MARKX_ROLES = ("markx_migrator", "markx_app", "markx_readonly")
+# The variables bootstrap.sh resets a role's password from (D-091).
+ROLE_PASSWORD_VARIABLES = (
+    "MARKX_DB_MIGRATOR_PASSWORD",
+    "MARKX_DB_APP_PASSWORD",
+    "MARKX_DB_READONLY_PASSWORD",
+)
+# The passwords bootstrap.sh gives a role when none is given: a laptop's, CI's
+# and a throwaway recovery container's. Not secrets (docs/SETUP.md).
+_DEV_PASSWORDS = {
+    "markx_migrator": "markx_migrator_dev-only",
+    "markx_app": "markx_app_dev-only",
+}
+# Log in as these roles for a restore, without ever setting their password.
+_LOGIN_VARIABLES = {
+    "markx_migrator": ("MARKX_RESTORE_OWNER_PASSWORD", "MARKX_DB_MIGRATOR_PASSWORD"),
+    "markx_app": ("MARKX_RESTORE_APP_PASSWORD", "MARKX_DB_APP_PASSWORD"),
+}
 
 
 class DumpFailed(Exception):
@@ -91,6 +125,17 @@ class PgServer:
             if value:
                 env[name] = value
         return env
+
+    def as_role(self, role: str) -> PgServer:
+        """The same server, logged in as one of the MarkX roles (BK-6). The
+        password comes from MARKX_RESTORE_OWNER_PASSWORD (markx_migrator) or
+        MARKX_RESTORE_APP_PASSWORD (markx_app), else the one bootstrap.sh gave
+        it on this machine, else bootstrap.sh's default."""
+        password = next(
+            (os.environ[v] for v in _LOGIN_VARIABLES[role] if os.environ.get(v)),
+            _DEV_PASSWORDS[role],
+        )
+        return PgServer(self.host, self.port, role, password)
 
     def connect(self, dbname: str, **kwargs: Any) -> psycopg.Connection[Any]:
         params: dict[str, Any] = {"dbname": checked_database_name(dbname)}
@@ -202,21 +247,37 @@ def database_exists(server: PgServer, name: str) -> bool:
     return row is not None
 
 
+def existing_markx_roles(server: PgServer) -> list[str]:
+    with server.connect("postgres", autocommit=True) as conn:
+        rows = conn.execute(
+            "select rolname from pg_roles where rolname = any(%s) order by rolname",
+            (list(MARKX_ROLES),),
+        ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
 def create_database(
     server: PgServer, name: str, *, bootstrap_script: Path, psql_command: str
 ) -> None:
     """A new database with the three MarkX roles, exactly as bootstrap.sh makes it.
-    Role passwords are never reset here unless the MARKX_DB_*_PASSWORD
-    variables are given (D-091)."""
+    Roles that already exist keep their passwords: none is ever reset here
+    (BK-7). New roles take the MARKX_DB_*_PASSWORD values when given (a
+    throwaway recovery server that should not use the defaults)."""
+    given = [v for v in ROLE_PASSWORD_VARIABLES if os.environ.get(v)]
+    existing = existing_markx_roles(server)
+    if given and existing:
+        raise RestoreFailed(
+            "roles_exist_passwords_given: the MarkX roles already exist on this PostgreSQL "
+            "server and a restore never resets their passwords; unset "
+            + ", ".join(given)
+            + " (log in with MARKX_RESTORE_OWNER_PASSWORD instead), or restore on a "
+            "throwaway recovery server"
+        )
     env = server.child_environment()
     env["PSQL"] = psql_command
-    for name_ in (
-        "MARKX_DB_MIGRATOR_PASSWORD",
-        "MARKX_DB_APP_PASSWORD",
-        "MARKX_DB_READONLY_PASSWORD",
-    ):
-        if name_ in os.environ:
-            env[name_] = os.environ[name_]
+    if not existing:
+        for variable in given:
+            env[variable] = os.environ[variable]
     result = subprocess.run(  # noqa: S603
         [str(bootstrap_script), checked_database_name(name)],
         env=env, capture_output=True, timeout=300, check=False,

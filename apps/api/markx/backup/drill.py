@@ -1,29 +1,46 @@
 """The automated recovery drill (D-094; blueprint F.13 "a restore drill every
 month", H.7 "a backup restored successfully into a fresh database").
 
-    1. take a real backup set of the source database and stores;
+    1. take a real backup set of the source database and stores (the
+       rehearsal, on a laptop and in CI), or pick the newest complete set
+       already at the destination (`run_offsite_drill`: the monthly drill on
+       a separate recovery machine, BK-2);
     2. verify it at the destination, every blob decrypted and hashed;
     3. restore it into a NEW database and new, empty file targets;
     4. compare: the migration version, every table's row count, every file's
        checksum, every database file reference, the private target's privacy
        and the audit log's protection (restore.py);
-    5. with failure injection: copy the set under a separate drill prefix and
-       prove that a changed dump, a cut-short index, a missing manifest, an
-       edited manifest, a missing blob and a wrong recovery key are each
-       REFUSED, and that a restore refused this way writes nothing;
+    5. with failure injection: copy the set into a local folder and prove
+       that a changed dump, a cut-short index, a missing manifest, an edited
+       manifest, a missing blob and a wrong recovery key are each REFUSED,
+       and that a restore refused this way writes nothing. The copy is local,
+       so the drill never writes to or deletes from the backup bucket, and a
+       read-only key is enough;
     6. remove only what the drill itself created: its database, its file
-       targets, its injection copies. Never the set it made (that is a real
-       backup), never a source.
+       targets, its local copies. Never the set (that is a real backup),
+       never a source.
 
-On a laptop and in CI the file targets are two fresh MinIO buckets when the
-source is MinIO, otherwise a temporary folder. On a server, files are
-restored into a temporary folder: the drill never needs a new paid bucket.
-The result is recorded in `backup_runs` (kind `drill`) for the watch.
+**Never on the server (BK-2).** Both refuse to run when MARKX_ENV is staging
+or production: the drill needs the recovery key, which must never be on the
+server, and it restores into a PostgreSQL that must not be production's.
+The monthly drill runs on a separate, throwaway recovery machine (a laptop,
+or a free CI runner) with its own PostgreSQL 17 container without network,
+the backup bucket's read-only key, and the recovery key
+(docs/runbooks/backup-and-restore.md, "The monthly drill").
+
+The rehearsal's file targets are two fresh MinIO buckets when the source is
+MinIO (made with MARKX_RESTORE_TARGET_ACCESS_KEY_ID when set), otherwise a
+temporary folder; the off-server drill always uses a temporary folder, so it
+never needs a new bucket. The rehearsal is recorded in `backup_runs` (kind
+`drill`); the off-server drill writes a report, which `record-drill` enters
+on the server for the watch.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import secrets
 import shutil
 import tempfile
@@ -38,11 +55,19 @@ from markx.backup.crypto import RecoveryKey, SignerKey, generate_keys
 from markx.backup.database import PgServer, database_exists, drop_database
 from markx.backup.destination import (
     Destination,
+    DestinationError,
     LocalDestination,
-    S3Destination,
 )
 from markx.backup.records import Recorder, RunRecord
-from markx.backup.restore import FileTargets, Report, restore_set, verify_set
+from markx.backup.restore import (
+    FileTargets,
+    Report,
+    SetRefused,
+    list_sets,
+    read_manifest,
+    restore_set,
+    verify_set,
+)
 from markx.backup.runner import BackupContext, run_backup
 from markx.core.storage import (
     LocalPrivateStorage,
@@ -60,6 +85,9 @@ class DrillResult:
     restore: Report | None
     injections: list[tuple[str, bool, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    finished_at: datetime | None = None
+    kind: str = "rehearsal"  # or "offsite": on a separate recovery machine
 
     def text(self) -> str:
         lines = [f"RECOVERY DRILL of set {self.backup_id}"]
@@ -77,27 +105,27 @@ class DrillResult:
         return {"passed": self.passed, "backup_id": self.backup_id,
                 "restore": self.restore.as_dict() if self.restore else None,
                 "injections": [{"name": n, "refused": ok, "detail": d} for n, ok, d in self.injections],
-                "notes": self.notes}  # fmt: skip
+                "notes": self.notes, "kind": self.kind, "started_at": self.started_at.isoformat(),
+                "finished_at": self.finished_at.isoformat() if self.finished_at else None}  # fmt: skip
 
 
-# -- the injection copy ------------------------------------------------------------------
+class DrillRefused(Exception):
+    """The drill must not run here."""
 
 
-def _sibling(destination: Destination, prefix: str) -> Destination:
-    """The same destination under another prefix: where injections happen."""
-    if isinstance(destination, LocalDestination):
-        return LocalDestination(destination._root, prefix=prefix)
-    assert isinstance(destination, S3Destination)
-    return S3Destination(
-        destination._settings, prefix=prefix, offsite=destination.offsite,
-        identity=f"{destination.identity}-drill", client=destination._client,
-    )  # fmt: skip
+def refuse_on_a_server(config: BackupConfig) -> None:
+    if config.is_real_environment:
+        raise DrillRefused(
+            f"a drill never runs on {config.env} (BK-2): run it on a separate recovery machine "
+            "(docs/runbooks/backup-and-restore.md, 'The monthly drill')"
+        )
+
+
+# -- the injection copy, in a local folder ------------------------------------------------
 
 
 def _copy(source: Destination, target: Destination, key: str, scratch: Path) -> None:
     path = scratch / "copy"
-    import hashlib
-
     digest = hashlib.sha256()
     with source.reader(key) as stream, path.open("wb") as out:
         while chunk := stream.read(1024 * 1024):
@@ -108,17 +136,10 @@ def _copy(source: Destination, target: Destination, key: str, scratch: Path) -> 
 
 
 def _replace(target: Destination, key: str, data: bytes, scratch: Path) -> None:
-    import hashlib
-
     path = scratch / "replaced"
     path.write_bytes(data)
     target.put_file(key, path, hashlib.sha256(data).hexdigest())
     path.unlink()
-
-
-def _clear(target: Destination) -> None:
-    for obj in list(target.list("")):
-        target.delete(obj.key)
 
 
 def inject_failures(
@@ -126,17 +147,20 @@ def inject_failures(
     keys: dict[str, RecoveryKey], manifest: dict[str, Any], scratch: Path,
     server: PgServer, bootstrap_script: Path, psql_command: str, pg_restore_command: str,
 ) -> list[tuple[str, bool, str]]:  # fmt: skip
-    """Each case on a fresh copy of the set; True means it was refused as it must be."""
+    """Each case on a fresh LOCAL copy of the set; True means it was refused
+    as it must be. Nothing is written to, or deleted from, `destination`."""
     results: list[tuple[str, bool, str]] = []
-    prefix = getattr(destination, "_prefix", "markx")
-    copy = _sibling(destination, f"{prefix}-drill-{secrets.token_hex(4)}")
+    pristine_root, case_root = scratch / "pristine", scratch / "case"
+    pristine = LocalDestination(pristine_root, prefix="markx")
     set_keys = [o.key for o in destination.list(f"{manifest_mod.set_prefix(backup_id)}/")]
     blob_keys = sorted({manifest_mod.blob_key(b) for b in _blob_ids(destination, manifest)})
+    for key in set_keys + blob_keys:
+        _copy(destination, pristine, key, scratch)
+    copy = LocalDestination(case_root, prefix="markx")
 
     def fresh() -> None:
-        _clear(copy)
-        for key in set_keys + blob_keys:
-            _copy(destination, copy, key, scratch)
+        shutil.rmtree(case_root, ignore_errors=True)
+        shutil.copytree(pristine_root, case_root)
 
     def expect_refused(name: str, report: Report, wanted: str) -> None:
         details = "; ".join(d for _, ok, d in report.checks if not ok)
@@ -208,7 +232,8 @@ def inject_failures(
                         not report.passed and not exists, "no database created" if not exists else
                         "A DATABASE WAS CREATED"))  # fmt: skip
     finally:
-        _clear(copy)
+        shutil.rmtree(case_root, ignore_errors=True)
+        shutil.rmtree(pristine_root, ignore_errors=True)
     return results
 
 
@@ -239,9 +264,15 @@ def disposable_file_targets(config: BackupConfig, scratch: Path) -> DisposableTa
             f"markx-drill-{token}-private",
             f"markx-drill-{token}-public",
         )
+        # The source's key only reads (BK-17): a key that may make and remove
+        # markx-drill-* buckets is given for that, when there is one.
+        key_id = os.environ.get("MARKX_RESTORE_TARGET_ACCESS_KEY_ID") or settings.access_key_id
+        secret = (
+            os.environ.get("MARKX_RESTORE_TARGET_SECRET_ACCESS_KEY") or settings.secret_access_key
+        )
         target = ObjectStorageSettings(
             provider="minio", endpoint_url=settings.endpoint_url, region=settings.region,
-            access_key_id=settings.access_key_id, secret_access_key=settings.secret_access_key,
+            access_key_id=key_id, secret_access_key=secret,
             private_bucket=private_bucket, public_bucket=public_bucket,
         )  # fmt: skip
         client = make_s3_client(target)
@@ -264,6 +295,10 @@ def disposable_file_targets(config: BackupConfig, scratch: Path) -> DisposableTa
             FileTargets(stores, f"minio buckets {private_bucket}, {public_bucket}", forbidden),  # type: ignore[arg-type]
             [remove],
         )
+    return _folder_targets(scratch, forbidden)
+
+
+def _folder_targets(scratch: Path, forbidden: frozenset[str]) -> DisposableTargets:
     folder = scratch / "files"
     stores_local = {
         "private": LocalPrivateStorage(folder / "private"),
@@ -278,11 +313,109 @@ def disposable_file_targets(config: BackupConfig, scratch: Path) -> DisposableTa
 # -- the drill ---------------------------------------------------------------------------------
 
 
+def _drill_set(
+    result: DrillResult, destination: Destination, backup_id: str, manifest: dict[str, Any], *,
+    config: BackupConfig, superuser: PgServer, keys: dict[str, RecoveryKey],
+    signers: list[SignerKey], bootstrap_script: Path, inject: bool, target_db: str,
+    scratch: Path, targets: DisposableTargets,
+) -> None:  # fmt: skip
+    """Steps 2 to 5 for one set: deep verify, restore, compare, inject."""
+    deep = verify_set(destination=destination, backup_id=backup_id, signers=signers, keys=keys,
+                      deep=True)  # fmt: skip
+    if not deep.passed:
+        result.restore = deep
+        result.notes.append("the set did not verify at the destination")
+        return
+    result.restore = restore_set(
+        destination=destination, backup_id=backup_id, signers=signers, keys=keys,
+        server=superuser, target_db=target_db, confirm=target_db, files=targets.targets,
+        bootstrap_script=bootstrap_script, psql_command=config.psql_command,
+        pg_restore_command=config.pg_restore_command,
+    )  # fmt: skip
+    if inject:
+        result.injections = inject_failures(
+            destination, backup_id, signers=signers, keys=keys, manifest=manifest,
+            scratch=scratch, server=superuser, bootstrap_script=bootstrap_script,
+            psql_command=config.psql_command, pg_restore_command=config.pg_restore_command,
+        )  # fmt: skip
+    result.passed = result.restore.passed and all(ok for _, ok, _ in result.injections)
+
+
+def _cleanup(
+    result: DrillResult, superuser: PgServer, target_db: str, targets: DisposableTargets | None,
+    scratch: Path,
+) -> None:  # fmt: skip
+    result.finished_at = datetime.now(UTC)
+    if database_exists(superuser, target_db):
+        drop_database(superuser, target_db)
+        result.notes.append(f"drill database {target_db} dropped")
+    if targets is not None:
+        for step in targets.cleanup:
+            step()
+        result.notes.append(f"drill file targets removed ({targets.targets.description})")
+    shutil.rmtree(scratch, ignore_errors=True)
+
+
+def newest_complete_set(destination: Destination, signers: list[SignerKey]) -> str | None:
+    """The newest set whose manifest verifies and says complete."""
+    for backup_id in list_sets(destination):
+        try:
+            body = read_manifest(destination, backup_id, signers)
+        except SetRefused:
+            continue
+        if body.get("status") == manifest_mod.STATUS_COMPLETE:
+            return backup_id
+    return None
+
+
+def run_offsite_drill(
+    config: BackupConfig, destination: Destination, *, superuser: PgServer,
+    keys: dict[str, RecoveryKey], signers: list[SignerKey], bootstrap_script: Path,
+    inject: bool = True, backup_id: str | None = None,
+) -> DrillResult:  # fmt: skip
+    """The monthly drill on a separate recovery machine (BK-2): no backup is
+    taken and nothing is written to the bucket, so the bucket's read-only
+    key, the recovery key and the signer PUBLIC key are all it needs. The
+    newest complete set (or `backup_id`) is verified in full, restored into
+    a NEW database on `superuser`'s server (a throwaway container) and a
+    temporary folder, compared, and put through the injected failures."""
+    refuse_on_a_server(config)
+    started = datetime.now(UTC)
+    result = DrillResult(False, None, None, started_at=started, kind="offsite")
+    scratch = Path(tempfile.mkdtemp(prefix="markx-drill-"))
+    target_db = f"markx_drill_{started.strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(2)}"
+    targets: DisposableTargets | None = None
+    try:
+        chosen = backup_id or newest_complete_set(destination, signers)
+        result.backup_id = chosen
+        if chosen is None:
+            result.notes.append("no complete set signed by a trusted key at the destination")
+            return result
+        try:
+            manifest = read_manifest(destination, chosen, signers)
+        except SetRefused as exc:
+            result.notes.append(f"the set was refused: {exc.reason}")
+            return result
+        targets = _folder_targets(scratch, frozenset())
+        _drill_set(result, destination, chosen, manifest, config=config, superuser=superuser,
+                   keys=keys, signers=signers, bootstrap_script=bootstrap_script, inject=inject,
+                   target_db=target_db, scratch=scratch, targets=targets)  # fmt: skip
+        result.notes.append(f"set made at {manifest.get('created_at')}, off-server drill")
+        return result
+    except DestinationError as exc:
+        result.notes.append(f"the destination failed: {exc.reason}")
+        return result
+    finally:
+        _cleanup(result, superuser, target_db, targets, scratch)
+
+
 def run_drill(
     ctx: BackupContext, *, superuser: PgServer, keys: dict[str, RecoveryKey],
     signers: list[SignerKey], bootstrap_script: Path, inject: bool, record: bool = True,
 ) -> DrillResult:  # fmt: skip
+    """The rehearsal, on a laptop and in CI: a backup is taken first."""
     config = ctx.config
+    refuse_on_a_server(config)
     started = datetime.now(UTC)
     recorder = Recorder(superuser if record else None, config.database)
     run = RunRecord(kind="drill", environment=config.env, destination=ctx.destination.identity,
@@ -300,37 +433,14 @@ def run_drill(
                 f"the backup did not succeed: {outcome.status} {outcome.error_code}"
             )
             return result
-        deep = verify_set(destination=ctx.destination, backup_id=str(outcome.backup_id),
-                          signers=signers, keys=keys, deep=True)  # fmt: skip
-        if not deep.passed:
-            result.restore = deep
-            result.notes.append("the set did not verify at the destination")
-            return result
         disposable = disposable_file_targets(config, scratch)
-        result.restore = restore_set(
-            destination=ctx.destination, backup_id=str(outcome.backup_id), signers=signers,
-            keys=keys, server=superuser, target_db=target_db, confirm=target_db,
-            files=disposable.targets, bootstrap_script=bootstrap_script,
-            psql_command=config.psql_command, pg_restore_command=config.pg_restore_command,
-        )  # fmt: skip
-        if inject:
-            result.injections = inject_failures(
-                ctx.destination, str(outcome.backup_id), signers=signers, keys=keys,
-                manifest=outcome.manifest, scratch=scratch, server=superuser,
-                bootstrap_script=bootstrap_script, psql_command=config.psql_command,
-                pg_restore_command=config.pg_restore_command,
-            )  # fmt: skip
-        result.passed = result.restore.passed and all(ok for _, ok, _ in result.injections)
+        _drill_set(result, ctx.destination, str(outcome.backup_id), outcome.manifest,
+                   config=config, superuser=superuser, keys=keys, signers=signers,
+                   bootstrap_script=bootstrap_script, inject=inject, target_db=target_db,
+                   scratch=scratch, targets=disposable)  # fmt: skip
         return result
     finally:
-        if database_exists(superuser, target_db):
-            drop_database(superuser, target_db)
-            result.notes.append(f"drill database {target_db} dropped")
-        if disposable is not None:
-            for step in disposable.cleanup:
-                step()
-            result.notes.append(f"drill file targets removed ({disposable.targets.description})")
-        shutil.rmtree(scratch, ignore_errors=True)
+        _cleanup(result, superuser, target_db, disposable, scratch)
         run.status = "succeeded" if result.passed else "failed"
         run.finished_at = datetime.now(UTC)
         run.verified = result.passed

@@ -2,13 +2,16 @@
 
     python -m markx.backup keygen --out DIR        make the keys (once, off the server)
     python -m markx.backup run                     one backup set now
-    python -m markx.backup serve                   the service: daily, with retries and retention
+    python -m markx.backup serve                   the service: daily, with retries
     python -m markx.backup check                   exit 0 if a verified set is fresh enough
     python -m markx.backup list                    the sets at the destination
+    python -m markx.backup record-drill --report F enter an off-server drill's result (server)
+  Never on the server (they refuse on staging and production, BK-1 and BK-2):
     python -m markx.backup verify --set ID ...     check a set without writing anywhere
     python -m markx.backup restore --set ID ...    restore into a NEW database and empty stores
-    python -m markx.backup prune [--execute]       retention (a dry run without --execute)
-    python -m markx.backup drill ...               the recovery drill
+    python -m markx.backup drill ...               the recovery drill (rehearsal: laptop and CI)
+    python -m markx.backup drill --from-destination ...   the monthly drill, recovery machine
+    python -m markx.backup prune [--execute]       retention, with its own delete key
 
 Exit status: 0 success; 1 a failed, incomplete or refused operation;
 2 a usage or settings error; 3 skipped because another backup is running.
@@ -35,7 +38,7 @@ from markx.backup import crypto
 from markx.backup.config import BackupConfig
 from markx.backup.database import PgServer
 from markx.backup.destination import DestinationError, make_destination
-from markx.backup.records import Recorder
+from markx.backup.records import Recorder, RunRecord
 from markx.backup.restore import FileTargets, list_sets, read_manifest, restore_set, verify_set
 from markx.backup.retention import prune
 from markx.backup.runner import (
@@ -106,6 +109,18 @@ def _context(config: BackupConfig) -> BackupContext:
     )  # fmt: skip
 
 
+def _not_on_a_server(config: BackupConfig, what: str, why: str) -> None:
+    """BK-1, BK-2: some commands must never run where the live system runs."""
+    if config.is_real_environment:
+        raise SystemExit(
+            f"{what} never runs on {config.env} ({why}); run it on a separate machine "
+            "(docs/runbooks/backup-and-restore.md)"
+        )
+
+
+_RECOVERY_KEY_STAYS_OFF = "the recovery key never comes to the server (BK-2)"
+
+
 def _keys(paths: list[str]) -> dict[str, crypto.RecoveryKey]:
     keys = {}
     for path in paths:
@@ -164,32 +179,31 @@ def cmd_run(args: argparse.Namespace) -> int:
     return _report_outcome(run_backup(_context(config)))
 
 
-def _prune(config: BackupConfig, ctx: BackupContext, *, execute: bool) -> int:
-    from markx.backup.runner import backup_lock
-
-    with backup_lock(ctx.server, config.database, config.work_dir.resolve()) as held:
-        if not held:
-            say("retention skipped: a backup is running")
-            return EXIT_SKIPPED
-        plan = prune(
-            ctx.destination, [ctx.signing.signer], now=datetime.now(UTC),
-            retention_days=config.effective_retention_days,
-            min_sets=config.effective_retention_min_sets,
-            grace=timedelta(hours=config.blob_grace_hours), execute=execute,
-        )  # fmt: skip
-    verb = "deleted" if execute else "would delete"
-    say(f"retention: keep {len(plan.keep)} sets; {verb} {len(plan.delete_sets)} sets and "
-          f"{len(plan.delete_blobs)} blobs")  # fmt: skip
+def cmd_prune(args: argparse.Namespace) -> int:
+    """Retention, on a machine away from the server, with a key that may
+    delete (BK-1). Trusts only the signer PUBLIC key it is given."""
+    config = _config(service=False)
+    _not_on_a_server(config, "retention", "the server's backup key cannot delete, by design (BK-1)")
+    if config.offsite and (config.retention_days is None or config.retention_min_sets is None):
+        raise SystemExit(
+            "MARKX_BACKUP_RETENTION_DAYS and MARKX_BACKUP_RETENTION_MIN_SETS must be set "
+            "explicitly to delete from off-server storage (the founder's decision, F-20)"
+        )
+    destination = make_destination(config)
+    plan = prune(
+        destination, _signers(args.signer, config), now=datetime.now(UTC),
+        retention_days=config.effective_retention_days,
+        min_sets=config.effective_retention_min_sets,
+        grace=timedelta(hours=config.blob_grace_hours), execute=args.execute,
+    )  # fmt: skip
+    verb = "deleted" if args.execute else "would delete"
+    say(f"retention: keep {len(plan.keep)} sets; {verb} {len(plan.delete_sets)} sets, "
+          f"{len(plan.delete_blobs)} blobs and {len(plan.delete_hidden)} hidden objects")  # fmt: skip
     for note in plan.notes:
         say(f"  note: {note}")
     for backup_id in plan.delete_sets:
         say(f"  {verb}: {backup_id}")
     return 0
-
-
-def cmd_prune(args: argparse.Namespace) -> int:
-    config = _config(service=True)
-    return _prune(config, _context(config), execute=args.execute)
 
 
 _stop = False
@@ -207,9 +221,26 @@ def _sleep(seconds: float) -> None:
         time.sleep(min(5.0, max(0.0, end - time.monotonic())))
 
 
+def _refuse_an_unsafe_destination(ctx: BackupContext) -> None:
+    """The service does not start against a bucket it must not use: one
+    without the required object lock (BK-1), a public one, a missing one. A
+    destination that does not answer now is retried by the runs instead."""
+    try:
+        ctx.destination.check_access()
+    except DestinationError as exc:
+        if not exc.retryable:
+            raise SystemExit(f"backup destination refused: {exc.reason}") from None
+        logger.warning(
+            "the backup destination does not answer yet", extra={"error_code": exc.reason}
+        )
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
+    """Backups only. It never deletes anything at the destination: retention
+    runs elsewhere, with its own key (BK-1; `prune`)."""
     config = _config(service=True)
     ctx = _context(config)
+    _refuse_an_unsafe_destination(ctx)
     signal.signal(signal.SIGTERM, _on_term)
     signal.signal(signal.SIGINT, _on_term)
     say(f"backup service: a set now, then daily at {config.hour_utc}:00 UTC, to "
@@ -220,15 +251,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
             lambda: run_backup(ctx), attempts=config.retry_attempts,
             delay_seconds=config.retry_delay_seconds, sleep=_sleep,
         )  # fmt: skip
-        last = attempts.outcomes[-1]
-        _report_outcome(last)
-        if last.status == "succeeded":
-            try:
-                _prune(config, ctx, execute=True)
-            except DestinationError as exc:
-                logger.error(
-                    "retention failed; nothing more was deleted", extra={"error_code": exc.reason}
-                )
+        _report_outcome(attempts.outcomes[-1])
         _sleep(seconds_until(config.hour_utc, datetime.now(UTC)))
     return 0
 
@@ -263,6 +286,7 @@ def _write_report(path: str | None, data: dict[str, Any]) -> None:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     config = _config(service=False)
+    _not_on_a_server(config, "verify", _RECOVERY_KEY_STAYS_OFF)
     report = verify_set(
         destination=make_destination(config), backup_id=args.set, signers=_signers(args.signer),
         keys=_keys(args.recovery_key), deep=args.deep,
@@ -327,6 +351,7 @@ def _target_files(args: argparse.Namespace, config: BackupConfig) -> FileTargets
 
 def cmd_restore(args: argparse.Namespace) -> int:
     config = _config(service=False)
+    _not_on_a_server(config, "a restore", _RECOVERY_KEY_STAYS_OFF)
     report = restore_set(
         destination=make_destination(config), backup_id=args.set, signers=_signers(args.signer),
         keys=_keys(args.recovery_key), server=PgServer.from_environment(),
@@ -340,9 +365,25 @@ def cmd_restore(args: argparse.Namespace) -> int:
 
 
 def cmd_drill(args: argparse.Namespace) -> int:
-    from markx.backup.drill import run_drill
+    from markx.backup.drill import run_drill, run_offsite_drill
 
     config = _config(service=False)
+    _not_on_a_server(config, "the drill", _RECOVERY_KEY_STAYS_OFF)
+    if args.from_destination:
+        if args.seed_sample_files:
+            raise SystemExit("--seed-sample-files takes a new backup; not with --from-destination")
+        offsite = run_offsite_drill(
+            config, make_destination(config), superuser=PgServer.from_environment(),
+            keys=_keys(args.recovery_key), signers=_signers(args.signer),
+            bootstrap_script=_default_bootstrap(),
+            inject=args.inject_failures if args.inject_failures is not None else True,
+            backup_id=args.set,
+        )  # fmt: skip
+        say(offsite.text())
+        _write_report(args.report, offsite.as_dict())
+        return 0 if offsite.passed else EXIT_FAILED
+    if args.set:
+        raise SystemExit("--set needs --from-destination")
     ctx = _context(config)
     if args.seed_sample_files:
         if config.is_real_environment:
@@ -360,6 +401,48 @@ def cmd_drill(args: argparse.Namespace) -> int:
     return 0 if result.passed else EXIT_FAILED
 
 
+def cmd_record_drill(args: argparse.Namespace) -> int:
+    """On the server: enter the report of a drill run on a separate recovery
+    machine, so the watch knows a drill passed (backup.drill_overdue). The
+    set it names must exist at the destination and verify with this
+    service's signer; nothing secret is needed or read."""
+    from markx.backup.restore import SetRefused, read_manifest
+
+    config = _config(service=False)
+    try:
+        report = json.loads(Path(args.report).read_text(encoding="utf-8"))
+        backup_id = str(report["backup_id"])
+        passed = report["passed"] is True
+        finished = datetime.fromisoformat(str(report["finished_at"]))
+        started = datetime.fromisoformat(str(report.get("started_at") or report["finished_at"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        raise SystemExit("not a drill report (python -m markx.backup drill --report)") from None
+    if report.get("kind") != "offsite":
+        raise SystemExit("only an off-server drill's report is entered here")
+    if finished > datetime.now(UTC) + timedelta(minutes=5) or started > finished:
+        raise SystemExit("the report's times are not possible")
+    destination = make_destination(config)
+    try:
+        read_manifest(destination, backup_id, _signers(args.signer, config))
+    except SetRefused as exc:
+        raise SystemExit(f"the report's set {backup_id} is refused: {exc.reason}") from None
+    restore = report.get("restore") or {}
+    record = RunRecord(kind="drill", environment=config.env, destination=destination.identity,
+                       offsite=destination.offsite, started_at=started, backup_id=backup_id)  # fmt: skip
+    record.status = "succeeded" if passed else "failed"
+    record.finished_at, record.verified = finished, passed
+    if not passed:
+        record.error_code = "drill_failed"
+        record.error_summary = "the off-server drill failed (its report has the details)"
+    record.details = {"offsite_report": True, "seconds": (restore.get("facts") or {}).get("seconds"),
+                      "injections": len(report.get("injections") or [])}  # fmt: skip
+    recorder = Recorder(PgServer.from_environment(), config.database)
+    recorder.start(record)
+    recorder.finish(record)
+    say(f"drill of set {backup_id} recorded: {'PASSED' if passed else 'FAILED'}")
+    return 0
+
+
 # A 1x1 PNG and a 1x1 WebP: representative, and nobody's data.
 _PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
@@ -371,12 +454,15 @@ _WEBP = bytes.fromhex(
 
 
 def _seed_samples(config: BackupConfig) -> None:
+    """Sample files, written the way the API writes files: through its own
+    stores and its own key (MARKX_STORAGE_*), never the backup's source key,
+    which only reads (BK-17)."""
     from markx.core.storage import (
         LocalPrivateStorage,
         LocalPublicStorage,
         ObjectStore,
-        S3ObjectStore,
-        make_s3_client,
+        get_private_storage,
+        get_public_storage,
     )
 
     stores: dict[str, ObjectStore]
@@ -384,10 +470,7 @@ def _seed_samples(config: BackupConfig) -> None:
         stores = {"private": LocalPrivateStorage(config.source_dir / "private"),
                   "public": LocalPublicStorage(config.source_dir / "public")}  # fmt: skip
     else:
-        settings = config.source_settings()
-        client = make_s3_client(settings)
-        stores = {"private": S3ObjectStore(client, settings.private_bucket, name="private", settings=settings),
-                  "public": S3ObjectStore(client, settings.public_bucket, name="public", settings=settings)}  # fmt: skip
+        stores = {"private": get_private_storage(), "public": get_public_storage()}
     # Distinct bytes per file (trailing bytes after the image end), so each has its own blob.
     for n in range(3):
         stores["private"].put(f"drill-samples/document-{n}.png", _PNG + bytes([n]), "image/png")
@@ -414,9 +497,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("list", help="the sets at the destination")
     p.add_argument("--signer", action="append", default=[])
     p.set_defaults(func=cmd_list)
-    p = sub.add_parser("prune", help="apply retention (dry run without --execute)")
+    p = sub.add_parser("prune", help="retention, off the server (dry run without --execute)")
     p.add_argument("--execute", action="store_true")
+    p.add_argument("--signer", action="append", default=[], help="trusted signer key file")
     p.set_defaults(func=cmd_prune)
+    p = sub.add_parser("record-drill", help="enter an off-server drill's report (on the server)")
+    p.add_argument("--report", required=True)
+    p.add_argument("--signer", action="append", default=[])
+    p.set_defaults(func=cmd_record_drill)
     for name, func in (("verify", cmd_verify), ("restore", cmd_restore)):
         p = sub.add_parser(name)
         p.add_argument("--set", required=True, help="the backup id")
@@ -446,6 +534,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--signer", action="append", default=[])
     p.add_argument("--report")
     p.add_argument("--seed-sample-files", action="store_true")
+    p.add_argument(
+        "--from-destination",
+        action="store_true",
+        help="drill the newest complete set already there; take no backup (BK-2)",
+    )
+    p.add_argument("--set", help="with --from-destination: this set instead of the newest")
     p.add_argument("--inject-failures", dest="inject_failures", action="store_true", default=None)
     p.add_argument("--no-inject-failures", dest="inject_failures", action="store_false")
     p.set_defaults(func=cmd_drill)

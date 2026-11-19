@@ -43,6 +43,7 @@ from markx.backup.destination import (
     DestinationError,
     DestinationUnavailable,
     LocalDestination,
+    RemoteObject,
     S3Destination,
     VerificationFailed,
 )
@@ -494,10 +495,10 @@ def test_an_interrupted_backup_leaves_no_set_and_the_next_one_resumes(
     _marketplace(db)
     real_put = setup.destination.put_file
 
-    def cut_off(key: str, path: Path, sha256: str) -> None:
+    def cut_off(key: str, path: Path, sha256: str) -> RemoteObject:
         if key.endswith("files.index.mxb"):
             raise DestinationUnavailable("timeout")  # the line dropped mid-backup
-        real_put(key, path, sha256)
+        return real_put(key, path, sha256)
 
     monkeypatch.setattr(setup.destination, "put_file", cut_off)
     interrupted = run_backup(setup.ctx)

@@ -22,13 +22,27 @@ The order is what makes a set recoverable:
 
 Unchanged files are not read again: the last run's catalog (kept in the
 working folder) maps each file's fingerprint (size and ETag, or size, mtime
-and inode) to its blob, and the destination is listed once to confirm the
-blob is still there. Equal files share one blob. A run that was interrupted
-leaves its blobs behind for the next run to reuse.
+and inode) to its blob. Equal files share one blob. A run that was
+interrupted leaves its blobs behind for the next run to reuse.
 
-A failure never deletes anything at the destination: the last good set
-stays, and the failed attempt's working folder (the encrypted pieces, the
-tool output, a report) is kept under `failed/` for investigation.
+**A blob is reused only when it is provably the one that passed its check
+(BK-3).** The blob ledger (kept in the working folder) records, for each
+blob whose upload was read back in full and matched, its encrypted size,
+the SHA-256 of its encrypted bytes, and the destination's own fingerprint of
+the stored object (its ETag) right after that check. A later run reuses the
+blob only when the destination still lists it with that size and that ETag;
+anything else (an upload whose check failed, an object written again since,
+a blob the ledger does not know) is uploaded again, over it. A blob whose
+check fails is removed from the ledger at once, so it is never reused even
+by the same run. Every index entry records its blob's encrypted size and
+SHA-256, and a set is `complete` only when every blob in it passed.
+
+**Nothing here deletes anything at the destination (BK-1).** The server's
+key cannot. On a failure the last good set stays, and the failed attempt's
+working folder (the encrypted pieces, the tool output, a report) is kept
+under `failed/` for investigation. With an object lock, a blob that a new
+set reuses has its lock lengthened, so that every object of the newest set
+is locked for at least `MARKX_BACKUP_OBJECT_LOCK_MIN_DAYS`.
 """
 
 from __future__ import annotations
@@ -64,6 +78,8 @@ from markx.backup.destination import (
     Destination,
     DestinationError,
     DestinationUnavailable,
+    RemoteObject,
+    VerificationFailed,
 )
 from markx.backup.records import Recorder, RunRecord
 from markx.backup.references import (
@@ -125,10 +141,26 @@ class FileEntry:
     content_type: str | None
     blob: str
     fingerprint: str
+    # The blob as stored: its encrypted size and the SHA-256 of its encrypted bytes (BK-3).
+    ciphertext_bytes: int
+    ciphertext_sha256: str
 
     def public(self) -> dict[str, Any]:
         return {"store": self.store, "key": self.key, "size": self.size, "sha256": self.sha256,
-                "content_type": self.content_type, "blob": self.blob}  # fmt: skip
+                "content_type": self.content_type, "blob": self.blob,
+                "ciphertext_bytes": self.ciphertext_bytes,
+                "ciphertext_sha256": self.ciphertext_sha256}  # fmt: skip
+
+
+@dataclass(slots=True)
+class LedgerEntry:
+    """A blob whose upload was read back in full and matched (BK-3)."""
+
+    bytes: int
+    sha256: str
+    # The destination's fingerprint of the object right after that check.
+    etag: str
+    locked_until: str | None = None
 
 
 @dataclass(slots=True)
@@ -138,6 +170,8 @@ class FilesResult:
     reused_blobs: int
     missing_references: list[FileReference]
     skipped: dict[str, int]
+    # Blobs proved this run: read back now, or unchanged since they were.
+    proved: set[str] = field(default_factory=set)
 
 
 # -- locks ------------------------------------------------------------------------------
@@ -210,8 +244,48 @@ def _save_catalog(path: Path, entries: list[FileEntry]) -> None:
     os.replace(tmp, path)
 
 
-def vars_(entry: FileEntry) -> dict[str, Any]:
+def vars_(entry: FileEntry | LedgerEntry) -> dict[str, Any]:
     return {slot: getattr(entry, slot) for slot in entry.__slots__}
+
+
+def _ledger_path(ctx: BackupContext, work_dir: Path) -> Path:
+    return work_dir / f"blob-ledger-{ctx.recipient.key_id}-{ctx.signing.key_id}.json"
+
+
+def _load_ledger(path: Path) -> dict[str, LedgerEntry]:
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return {}
+    ledger: dict[str, LedgerEntry] = {}
+    if not isinstance(rows, dict):
+        return ledger
+    for blob, row in rows.items():
+        try:
+            ledger[str(blob)] = LedgerEntry(**row)
+        except TypeError:
+            continue
+    return ledger
+
+
+def _save_ledger(path: Path, ledger: dict[str, LedgerEntry]) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps({b: vars_(e) for b, e in sorted(ledger.items())}), encoding="utf-8")
+    tmp.chmod(0o600)
+    os.replace(tmp, path)
+
+
+def _reusable(blob: str, remote: dict[str, RemoteObject], ledger: dict[str, LedgerEntry]) -> bool:
+    """The destination still holds exactly the object that passed its check:
+    the same size and the same fingerprint (ETag) as right after it."""
+    obj, record = remote.get(blob), ledger.get(blob)
+    return (
+        obj is not None
+        and record is not None
+        and obj.size == record.bytes
+        and obj.etag is not None
+        and obj.etag == record.etag
+    )
 
 
 # -- the pieces ---------------------------------------------------------------------------
@@ -241,58 +315,122 @@ def _encrypt_source(
     return out_path, digest, sniff_image_type(head)
 
 
+def _keep_locked(ctx: BackupContext, blob: str, record: LedgerEntry, now: datetime) -> None:
+    """With an object lock, a reused blob must stay locked as long as a new
+    object would: lengthen its lock when it would end too soon (BK-1)."""
+    lock = ctx.destination.lock
+    if lock is None:
+        return
+    needed = now + timedelta(days=ctx.config.object_lock_min_days)
+    if record.locked_until is not None and datetime.fromisoformat(record.locked_until) >= needed:
+        return
+    until = ctx.destination.extend_lock(
+        manifest_mod.blob_key(blob), now + timedelta(days=lock.days)
+    )
+    if until is None or until < needed:
+        raise VerificationFailed("object_not_locked", manifest_mod.blob_key(blob))
+    record.locked_until = until.isoformat()
+
+
 def backup_files(
     ctx: BackupContext, refs: list[FileReference], work_dir: Path, scratch: Path
 ) -> FilesResult:
-    catalog_path = _catalog_path(ctx, work_dir)
-    catalog = _load_catalog(catalog_path)
-    remote: dict[str, int] = {
-        obj.key.rsplit("/", 1)[-1]: obj.size for obj in ctx.destination.list("objects/")
+    catalog = _load_catalog(_catalog_path(ctx, work_dir))
+    ledger_path = _ledger_path(ctx, work_dir)
+    ledger = _load_ledger(ledger_path)
+    remote: dict[str, RemoteObject] = {
+        obj.key.rsplit("/", 1)[-1]: obj for obj in ctx.destination.list("objects/")
     }
+    now = ctx.clock()
     entries: list[FileEntry] = []
     skipped: dict[str, int] = {}
+    proved: set[str] = set()
     new = reused = 0
-    for store in STORES:
-        for item in ctx.source.list(store):
-            if isinstance(item, Skipped):
-                skipped[item.reason] = skipped.get(item.reason, 0) + 1
-                continue
-            cached = catalog.get((item.store, item.key))
-            if cached and cached.fingerprint == item.fingerprint and cached.blob in remote:
-                entries.append(cached)
-                reused += 1
-                continue
-            try:
-                path, digest, content_type = _encrypt_source(ctx, item, scratch)
-            except SourceMissing:
-                # Listed, then gone. If a row needs it, it is reported below.
-                skipped["vanished"] = skipped.get("vanished", 0) + 1
-                continue
-            except SourceCorrupt:
-                # Not backed up as if it were good. If a row needs it, the set
-                # is incomplete, and the count says why.
-                logger.error(
-                    "a stored file does not match its checksum", extra={"store": item.store}
-                )
-                skipped["corrupt"] = skipped.get("corrupt", 0) + 1
-                continue
-            blob = blob_id(ctx.signing, ctx.recipient, digest.plaintext_sha256)
-            if blob in remote:
-                reused += 1
-            else:
-                ctx.destination.put_file(
-                    manifest_mod.blob_key(blob), path, digest.ciphertext_sha256
-                )
-                remote[blob] = digest.ciphertext_bytes
-                new += 1
-            path.unlink(missing_ok=True)
-            entries.append(
-                FileEntry(item.store, item.key, digest.plaintext_bytes, digest.plaintext_sha256,
-                          content_type, blob, item.fingerprint)
-            )  # fmt: skip
+
+    def reuse(blob: str) -> LedgerEntry | None:
+        if not _reusable(blob, remote, ledger):
+            return None
+        record = ledger[blob]
+        if blob not in proved:
+            _keep_locked(ctx, blob, record, now)
+            proved.add(blob)
+        return record
+
+    try:
+        for store in STORES:
+            for item in ctx.source.list(store):
+                if isinstance(item, Skipped):
+                    skipped[item.reason] = skipped.get(item.reason, 0) + 1
+                    continue
+                cached = catalog.get((item.store, item.key))
+                if cached and cached.fingerprint == item.fingerprint:
+                    record = reuse(cached.blob)
+                    if record is not None:
+                        cached.ciphertext_bytes, cached.ciphertext_sha256 = (
+                            record.bytes, record.sha256,
+                        )  # fmt: skip
+                        entries.append(cached)
+                        reused += 1
+                        continue
+                try:
+                    path, digest, content_type = _encrypt_source(ctx, item, scratch)
+                except SourceMissing:
+                    # Listed, then gone. If a row needs it, it is reported below.
+                    skipped["vanished"] = skipped.get("vanished", 0) + 1
+                    continue
+                except SourceCorrupt:
+                    # Not backed up as if it were good. If a row needs it, the set
+                    # is incomplete, and the count says why.
+                    logger.error(
+                        "a stored file does not match its checksum", extra={"store": item.store}
+                    )
+                    skipped["corrupt"] = skipped.get("corrupt", 0) + 1
+                    continue
+                blob = blob_id(ctx.signing, ctx.recipient, digest.plaintext_sha256)
+                record = reuse(blob)
+                if record is not None and record.bytes == digest.ciphertext_bytes:
+                    reused += 1
+                else:
+                    record = _upload_blob(ctx, blob, path, digest, remote, ledger)
+                    proved.add(blob)
+                    new += 1
+                path.unlink(missing_ok=True)
+                entries.append(
+                    FileEntry(item.store, item.key, digest.plaintext_bytes,
+                              digest.plaintext_sha256, content_type, blob, item.fingerprint,
+                              record.bytes, record.sha256)
+                )  # fmt: skip
+    finally:
+        # Even an interrupted run keeps what it proved, for the next run.
+        _save_ledger(ledger_path, ledger)
     present = {(e.store, e.key) for e in entries}
     missing = [ref for ref in refs if (ref.store, ref.key) not in present]
-    return FilesResult(entries, new, reused, missing, skipped)
+    return FilesResult(entries, new, reused, missing, skipped, proved)
+
+
+def _upload_blob(
+    ctx: BackupContext, blob: str, path: Path, digest: Any, remote: dict[str, RemoteObject],
+    ledger: dict[str, LedgerEntry],
+) -> LedgerEntry:  # fmt: skip
+    """Upload one blob (over whatever the destination holds under its name)
+    and record it only once its read-back matched."""
+    ledger.pop(blob, None)
+    remote.pop(blob, None)
+    try:
+        stored = ctx.destination.put_file(
+            manifest_mod.blob_key(blob), path, digest.ciphertext_sha256
+        )
+    except VerificationFailed:
+        # Never reused: not in the ledger, so the next run uploads it again.
+        logger.error("a blob did not read back as sent; it will be uploaded again")
+        raise
+    if stored.etag is None:
+        raise VerificationFailed("no_fingerprint", manifest_mod.blob_key(blob))
+    record = LedgerEntry(digest.ciphertext_bytes, digest.ciphertext_sha256, stored.etag,
+                         stored.locked_until.isoformat() if stored.locked_until else None)  # fmt: skip
+    ledger[blob] = record
+    remote[blob] = stored
+    return record
 
 
 def _encrypt_bytes_to(ctx: BackupContext, data: bytes, path: Path) -> Any:
@@ -444,7 +582,11 @@ def _make_set(
     blobs_sha = _sha256_file(blobs_path)
     destination.put_file(f"{prefix}/blobs.txt", blobs_path, blobs_sha)
 
-    # 4. The manifest, last.
+    # 4. The manifest, last. Complete only when every file is there and every
+    # blob of the set passed its check (BK-3).
+    unproved = sorted(set(blobs) - files.proved)
+    if unproved:
+        raise VerificationFailed(f"blobs_not_verified:{len(unproved)}")
     complete = not files.missing_references and unclassified == 0
     by_store = {
         store: {"objects": sum(1 for e in files.entries if e.store == store),
@@ -491,6 +633,7 @@ def _make_set(
             "unclassified_references": unclassified,
             "new_blobs": files.new_blobs,
             "reused_blobs": files.reused_blobs,
+            "verified_blobs": len(files.proved & set(blobs)),
             "skipped": files.skipped,
         },
         "encryption": {
@@ -502,6 +645,9 @@ def _make_set(
         "verification": {
             "database_dump": "pg_restore_list_ok",
             "uploads": "read_back_sha256_ok",
+            # Every blob: read back now, or the same size and ETag as when it was.
+            "blobs": "read_back_or_unchanged_since_read_back",
+            "object_lock_days": destination.lock.days if destination.lock else None,
             "references": "complete" if complete else "missing",
         },
     }

@@ -23,11 +23,22 @@ constraint, the application role still unable to rewrite the audit log,
 every file a row refers to present in the restored stores, and the private
 store not readable without credentials. A failed restore drops only the
 database it created itself.
+
+**Who runs what (BK-6).** The PostgreSQL superuser given (PG* variables)
+only checks that the target is new, creates it with the MarkX roles
+(bootstrap.sh) and drops a database this restore made. The archive itself is
+restored, and the restored copy checked, logged in as `markx_migrator` (the
+owner) and `markx_app`: never as the superuser, so SQL in a forged dump
+cannot run shell commands on the recovery machine. Restore on a throwaway
+PostgreSQL with no network and no secrets (docs/runbooks/backup-and-restore.md).
+The `restore`, `verify` and `drill` commands refuse to run on staging and
+production (BK-2): the recovery key never comes to the server.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
 import os
@@ -245,7 +256,12 @@ def fetch_and_verify(
     ):
         raise SetRefused("index_does_not_match_manifest")
     seen: set[tuple[str, str]] = set()
+    stored: dict[str, tuple[Any, Any]] = {}
     for entry in entries:
+        # One blob is one stored object: its encrypted size and hash are one too (BK-3).
+        recorded = (entry.get("ciphertext_bytes"), entry.get("ciphertext_sha256"))
+        if stored.setdefault(entry.get("blob", ""), recorded) != recorded:
+            raise SetRefused("index_disagrees_on_a_blob")
         if entry["store"] not in ("private", "public"):
             raise SetRefused("index_names_an_unknown_store")
         try:
@@ -264,10 +280,16 @@ def verify_blobs(
     destination: Destination, verified: VerifiedSet, keys: dict[str, RecoveryKey], *, deep: bool,
     report: Report,
 ) -> None:  # fmt: skip
-    """Every blob is present; with `deep`, every blob decrypts to its file's
-    hash. Counted per distinct blob: equal files share one."""
+    """Every blob is present, with the encrypted size the index records (BK-3;
+    sets made before D-096 record none); with `deep`, every blob decrypts to
+    its file's hash. Counted per distinct blob: equal files share one.
+
+    A blob whose encrypted bytes differ from the index's SHA-256 but decrypt
+    to the right file was uploaded again after this set (the backup does that
+    over an object it cannot prove unchanged); `deep` reports how many."""
     missing: set[str] = set()
     damaged: set[str] = set()
+    replaced: set[str] = set()
     checked_blobs: dict[str, str] = {}
     for entry in verified.entries:
         blob = entry["blob"]
@@ -277,25 +299,47 @@ def verify_blobs(
             continue
         checked_blobs[blob] = entry["sha256"]
         key = manifest_mod.blob_key(blob)
+        expected_size = entry.get("ciphertext_bytes")
         if not deep:
-            if destination.head(key) is None:
+            head = destination.head(key)
+            if head is None:
                 missing.add(blob)
+            elif expected_size is not None and head.size != expected_size:
+                damaged.add(blob)
             continue
         try:
-            data = _blob_plaintext(destination, key, keys)
+            data, cipher_sha, cipher_size = _blob_plaintext_and_hash(destination, key, keys)
         except ObjectMissing:
             missing.add(blob)
             continue
         except DecryptionError:
             damaged.add(blob)
             continue
-        if hashlib.sha256(data).hexdigest() != entry["sha256"] or len(data) != entry["size"]:
+        wrong_file = (
+            hashlib.sha256(data).hexdigest() != entry["sha256"] or len(data) != entry["size"]
+        )
+        wrong_size = expected_size is not None and cipher_size != expected_size
+        if wrong_file or wrong_size:
             damaged.add(blob)
+        elif entry.get("ciphertext_sha256") not in (None, cipher_sha):
+            replaced.add(blob)
     report.check(
-        "every file's blob present" + (" and decrypts to its checksum" if deep else ""),
+        "every file's blob present"
+        + (" and decrypts to its checksum" if deep else " with its recorded size"),
         not missing and not damaged,
-        f"{len(checked_blobs)} blobs, {len(missing)} missing, {len(damaged)} damaged",
+        f"{len(checked_blobs)} blobs, {len(missing)} missing, {len(damaged)} damaged"
+        + (f", {len(replaced)} uploaded again since and intact" if replaced else ""),
     )
+
+
+def _blob_plaintext_and_hash(
+    destination: Destination, key: str, keys: dict[str, RecoveryKey]
+) -> tuple[bytes, str, int]:
+    """The decrypted blob, and the SHA-256 and size of its encrypted bytes."""
+    with destination.reader(key) as stream:
+        encrypted = stream.read()
+    digest = hashlib.sha256(encrypted).hexdigest()
+    return b"".join(decrypt_stream(io.BytesIO(encrypted), keys)), digest, len(encrypted)
 
 
 def _blob_plaintext(destination: Destination, key: str, keys: dict[str, RecoveryKey]) -> bytes:
@@ -409,11 +453,13 @@ def _restore_files(
 
 
 def _verify_database(
-    server: PgServer, target: str, manifest: dict[str, Any], restored_files: set[tuple[str, str]] | None,
-    files: FileTargets | None, report: Report,
+    owner: PgServer, app: PgServer, target: str, manifest: dict[str, Any],
+    restored_files: set[tuple[str, str]] | None, files: FileTargets | None, report: Report,
 ) -> None:  # fmt: skip
+    """Checked as the owner and the application role, never the superuser:
+    the restored copy holds functions an attacker may have written (BK-6)."""
     database = manifest["database"]
-    with server.connect(target, autocommit=True) as conn:
+    with owner.connect(target, autocommit=True) as conn:
         revision = alembic_revision(conn)
         report.check(
             "migration version",
@@ -438,9 +484,8 @@ def _verify_database(
                 "audit log protection", True, "not applicable: the set holds an unmigrated database"
             )
         else:
-            report.check(
-                "audit log still protected from the application role", _audit_protected(conn)
-            )
+            protected, detail = _audit_protected(app, target)
+            report.check("audit log still protected from the application role", protected, detail)
         refs = file_references(conn)
         unclassified = unclassified_references(conn)
         report.check("no unclassified file references", unclassified == 0, str(unclassified))
@@ -462,20 +507,20 @@ def _verify_database(
                  f"{min(len(refs), 50)} checked")  # fmt: skip
 
 
-def _audit_protected(conn: psycopg.Connection[Any]) -> bool:
+def _audit_protected(app: PgServer, target: str) -> tuple[bool, str]:
+    """Logged in as markx_app itself: rewriting the audit log must fail."""
     try:
-        with conn.transaction():
-            conn.execute("set local role markx_app")
-            conn.execute("update audit_log set action = action")
-            raise _Rollback
-    except _Rollback:
-        return False
+        conn = app.connect(target)
     except psycopg.Error:
-        return True
-
-
-class _Rollback(Exception):
-    pass
+        return False, "could not log in as markx_app to check"
+    with conn:
+        try:
+            conn.execute("update audit_log set action = action")
+        except psycopg.Error:
+            return True, ""
+        finally:
+            conn.rollback()
+    return False, "markx_app can rewrite the audit log"
 
 
 def check_private(files: FileTargets, report: Report) -> None:
@@ -533,16 +578,21 @@ def restore_set(
             server, target_db, bootstrap_script=bootstrap_script, psql_command=psql_command
         )
         created = True
+        owner = server.as_role("markx_migrator")
         pg_restore(
-            server=server, target=target_db, plaintext=_plaintext(verified.dump_path, keys),
+            server=owner, target=target_db, plaintext=_plaintext(verified.dump_path, keys),
             pg_restore_command=pg_restore_command, evidence_dir=scratch,
         )  # fmt: skip
-        report.check("database restored in one transaction", True, target_db)
+        report.check(
+            "database restored in one transaction, as the owner role (not a superuser)",
+            True, target_db,
+        )  # fmt: skip
         restored = None
         if files is not None:
             restored = _restore_files(destination, verified, keys, files, report)
             check_private(files, report)
-        _verify_database(server, target_db, verified.manifest, restored, files, report)
+        _verify_database(owner, server.as_role("markx_app"), target_db, verified.manifest,
+                         restored, files, report)  # fmt: skip
         report.facts["seconds"] = round(time.monotonic() - started, 1)
         report.facts["source"] = {
             "created_at": verified.manifest["created_at"],
