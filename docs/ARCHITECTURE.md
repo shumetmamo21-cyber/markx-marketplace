@@ -13,7 +13,7 @@ domain.
 | Part | State |
 | --- | --- |
 | API (`apps/api`) | Built: schema, sign-in, permissions, delivery zones, catalogue, sellers, offers and inventory, cart, checkout, the whole seller order life cycle with problems and staff decisions, search, pictures, monitoring, the admin back end, reviews, reports, exports. Not built: Release 2 payments |
-| PostgreSQL | Schema for all of Release 1 (68 tables), three roles |
+| PostgreSQL | Schema for all of Release 1 (75 tables after migration `0018`), three roles |
 | Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account with its Telegram connection section (D-093), the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher, which carries notifications to Telegram and SMS with a delivery record per channel (D-092). **No real channel is connected**: no bot, no SMS provider, notification SMS off |
 | File storage | Built (D-090): one interface; local folders, MinIO, Amazon S3 and Cloudflare R2 by configuration. Tested against MinIO only; **no bucket or account exists** (F-01) |

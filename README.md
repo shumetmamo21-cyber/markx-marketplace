@@ -4,12 +4,13 @@ A multi-vendor marketplace that starts in Ethiopia: one page per product, many
 verified sellers' offers under it, each with a price that shows when it was
 last confirmed.
 
-> **Status: back end in progress.** Sign-in, the catalogue, seller onboarding,
-> seller offers with stock, the background worker, the cart and checkout are
-> built and tested as an API: a buyer can place an order that fans out to each
-> seller, and each seller confirms or declines its part. What happens after
-> confirmation (dispatch, handover, completion, payment) is not built. There
-> is no web app, and nothing is deployed.
+> **Status (19 November 2026): built and tested, not launched.** Sign-in, the
+> catalogue, seller onboarding, seller offers with stock, the background
+> worker, the cart and checkout, and the whole order life cycle after
+> confirmation (dispatch, handover, completion, the direct payment record)
+> are built and tested as an API. The web app in `apps/web` has the buyer's,
+> the seller's and the staff's screens, and the browser journeys test it on
+> GitHub. Nothing is deployed and no outside service is connected.
 > See [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) for exactly what
 > exists.
 
@@ -18,7 +19,7 @@ last confirmed.
 | Read | For |
 | --- | --- |
 | [MARKX_MASTER_BLUEPRINT.md](MARKX_MASTER_BLUEPRINT.md) | The product: strategy, requirements, architecture, roadmap. The single source of truth |
-| [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) | What is built, what is tested, what is not, and the next task |
+| [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) | What is built, what is tested, what is not, and known problems. Next task: waiting for the founder's choice |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Engineering decisions and every departure from the blueprint |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organised |
 | [docs/SETUP.md](docs/SETUP.md) | How to run and test it |
@@ -28,8 +29,8 @@ last confirmed.
 
 ## Stack
 
-Python with FastAPI, SQLAlchemy and Alembic on PostgreSQL. The web app will be
-Next.js with TypeScript and Tailwind CSS. The founder confirmed this stack in
+Python with FastAPI, SQLAlchemy and Alembic on PostgreSQL. The web app is
+Next.js with TypeScript and Tailwind CSS (`apps/web`). The founder confirmed this stack in
 the blueprint (section N).
 
 ## Rules that never bend
