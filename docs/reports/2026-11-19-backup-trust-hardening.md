@@ -183,7 +183,9 @@ approved" when you are ready.
   - `ffbfc39` the code;
   - `2b4e179` the tests, CI and the permissions fix;
   - `f9b8c99` the documents;
-  - and the commit that adds this report.
+  - `5fef17a` the local results and this report;
+  - `adf128a` the recovery script's clean-up fix;
+  - and a last commit with the GitHub results.
 - **Changed files:**
   - **backup code:** `apps/api/markx/backup/` (`__main__.py`, `config.py`,
     `database.py`, `destination.py`, `drill.py`, `restore.py`,
@@ -227,7 +229,29 @@ No check was removed or weakened.
 - Both CI drills, run here with CI's exact commands: **DRILL PASSED**, 7 of
   7 injected faults refused, in each.
 
-**On GitHub:** GITHUB_RESULTS
+**On GitHub:** every check passed on commit `adf128a`.
+
+- **CI run 144** (on the push) and **CI run 145** (on the pull request)
+  passed all five jobs: API (lint, types, migrations, 1789 tests, the
+  rehearsal drill and the off-server drill), web app, containers, the
+  production stack rehearsal, and the security scans.
+- **Browser journeys run 26** passed.
+
+Earlier runs, for the record:
+
+- **CI 139** (first commit): the production rehearsal failed. My new
+  password guard (BK-7) correctly refused the rehearsal's old practice of
+  passing the reset passwords. Fixed in `2b4e179`; the rehearsal has
+  passed in every run since.
+- **Browser journeys 24** (first commit): one step failed ("the product
+  card picture does not load"). It touches no code I changed, and it did
+  not happen again in runs 25 and 26.
+- **CI 140 and 141**: cancelled by GitHub when a newer commit arrived.
+- **CI 142**: passed.
+- **CI 143**: every test and both drills passed, then the clean-up of my
+  new recovery script failed. An ordinary user could not delete the
+  database's socket files. Fixed in `adf128a`, by shutting the database
+  down cleanly first.
 
 ## PROVISIONAL choices for you to confirm
 

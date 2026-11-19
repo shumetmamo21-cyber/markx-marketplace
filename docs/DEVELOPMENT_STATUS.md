@@ -1576,8 +1576,10 @@ $ uv run mypy markx              ->  Success: no issues found in 144 source file
 # The exact-grants test fails with prepare_for_owner_restore removed, passes with it.
 ```
 
-GitHub: see `docs/reports/2026-11-19-backup-trust-hardening.md` for the run
-numbers on the pull request.
+GitHub, pull request #4, commit `adf128a`: **CI 144 and 145 passed** (all
+five jobs; the API job ran 1789 tests and both drills), **Browser journeys 26
+passed**. Earlier runs and why they failed:
+`docs/reports/2026-11-19-backup-trust-hardening.md`.
 
 
 **Off-server backup and disaster recovery** (D-094), on 18 November 2026,

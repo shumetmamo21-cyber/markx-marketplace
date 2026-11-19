@@ -51,6 +51,9 @@ real storage used.** In plain words, for the founder:
   safe copy of the application's secrets), moving backup signing off the
   server, the other lower findings; and every test against the real
   provider, Cloudflare R2's lock above all (UNKNOWN today).
+- **Checks:** 1789 tests passed locally; on GitHub, pull request #4's CI
+  runs 144 and 145 and Browser journeys run 26 passed on `adf128a`. The
+  report: `docs/reports/2026-11-19-backup-trust-hardening.md`.
 - Details, tests and proof: `docs/DEVELOPMENT_STATUS.md`, "Backup trust
   hardening"; decision D-096 in `docs/DECISIONS.md`; procedures in
   `docs/runbooks/backup-and-restore.md`.
