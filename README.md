@@ -4,21 +4,27 @@ A multi-vendor marketplace that starts in Ethiopia: one page per product, many
 verified sellers' offers under it, each with a price that shows when it was
 last confirmed.
 
-> **Status: back end in progress.** Sign-in, the catalogue, seller onboarding,
-> seller offers with stock, the background worker, the cart and checkout are
-> built and tested as an API: a buyer can place an order that fans out to each
-> seller, and each seller confirms or declines its part. What happens after
-> confirmation (dispatch, handover, completion, payment) is not built. There
-> is no web app, and nothing is deployed.
+> **Status (19 November 2026): built and tested, not launched.** The API
+> (`apps/api`) and the web app (`apps/web`, Next.js) are built and tested:
+> sign-in, the catalogue, seller onboarding, offers with stock, the background
+> worker, the cart, checkout, multi-seller orders and what follows
+> confirmation (dispatch, the handover code, completion, the direct payment
+> record), problems, reviews, reports and the staff screens. The work was
+> merged into `main` by pull request #1 on 19 November 2026. **Nothing is
+> deployed**, and no outside account (payments, SMS, Telegram bot, file
+> storage, backups, domain) exists yet. Seller notifications are a launch
+> blocker (no channel is connected).
 > See [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) for exactly what
-> exists.
+> exists, and
+> [docs/reports/2026-11-19-markx-readonly-audit-report.md](docs/reports/2026-11-19-markx-readonly-audit-report.md)
+> for the audit of 19 November 2026.
 
 ## Start here
 
 | Read | For |
 | --- | --- |
 | [MARKX_MASTER_BLUEPRINT.md](MARKX_MASTER_BLUEPRINT.md) | The product: strategy, requirements, architecture, roadmap. The single source of truth |
-| [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) | What is built, what is tested, what is not, and the next task |
+| [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) | What is built, what is tested, what is not, and the next task (now: waiting for the founder's choice) |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Engineering decisions and every departure from the blueprint |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organised |
 | [docs/SETUP.md](docs/SETUP.md) | How to run and test it |
@@ -28,7 +34,7 @@ last confirmed.
 
 ## Stack
 
-Python with FastAPI, SQLAlchemy and Alembic on PostgreSQL. The web app will be
+Python with FastAPI, SQLAlchemy and Alembic on PostgreSQL. The web app is
 Next.js with TypeScript and Tailwind CSS. The founder confirmed this stack in
 the blueprint (section N).
 

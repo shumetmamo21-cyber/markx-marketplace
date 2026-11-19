@@ -11,6 +11,10 @@ Before doing anything in this repository:
 Do not rely on conversation history from an earlier session. Everything a new
 session needs is in those files and in the code.
 
-Work on the branch `claude/project-scaffold`. Never touch the founder's
+Start every session from the latest `main` and work on your own new branch,
+made from it for this session. Never merge into `main` without the founder's
+written approval. Never touch the founder's
 existing AWS servers or payment bot, never create paid resources, and never
-commit secrets.
+commit secrets. The founder's working rules (mobile app only, the planning
+Claude Project, plain-English reports, the three documents updated at the end
+of every session) are in `AGENTS.md`, section 4a.

@@ -112,8 +112,24 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
 
 ## 4. The working branch
 
-Work on **`claude/project-scaffold`**. Do not push to `main` without the
+Every session starts from the **latest `main`** and works on **its own new
+branch**, made from that `main` for that session. Never merge into `main`
+without the founder's **written approval**. Do not push to `main` without the
 founder's instruction. Do not open a pull request unless asked.
+
+(Until 19 November 2026 this section said to work on
+`claude/project-scaffold`. That branch was merged into `main` by pull
+request #1 on 19 November 2026 and is no longer the working branch.)
+
+## 4a. How the founder works
+
+- **The founder works only from the Claude mobile app.** Claude Code writes
+  the code and pushes its own branches.
+- **A separate Claude Project is the founder's architect and planning hub.**
+  Prompts for Claude Code come from there.
+- **Reports to the founder are in plain English, without code.**
+- **At the end of every session, update `docs/DEVELOPMENT_STATUS.md`,
+  `docs/DECISIONS.md` and `docs/HANDOFF.md` before reporting.**
 
 ## 5. Running the checks
 

@@ -440,6 +440,10 @@ tool also required its own branch, `claude/markx-seller-management-oag1a4`.
 Every commit was pushed to both and they are identical. Continue on
 `claude/project-scaffold`.
 
+(Note added 19 November 2026: `claude/project-scaffold` was merged into
+`main` by pull request #1 on 19 November 2026. The working-branch practice
+from then on is recorded in D-095.)
+
 ## D-032 A staff takedown holds until staff lift it
 
 **Fills a gap** in blueprint AD-03. **Accepted.** Found in the session-three
@@ -1036,7 +1040,7 @@ was implemented):
 | Seller verification for used goods (F-04) | Every `used` offer needs Level 2, in every category | `USED_GOODS_MIN_LEVEL` in `markx/offers/service.py` |
 | A rejected applicant (F-05) | Needs a fresh invitation | invitation use in `markx/sellers/service.py` (D-019) |
 | Ownership transfer (F-02) | Not built: no route transfers a store | to be built once decided |
-| Document storage (F-01) | Local disk on a laptop only; refuses staging and production | `get_private_storage` in `markx/core/storage.py`: one new adapter class |
+| Document storage (F-01) | Local disk on a laptop only; refuses staging and production | `get_private_storage` in `markx/core/storage.py`: one new adapter class. (Fact corrected 19 November 2026: since D-090 the S3/R2 adapter exists, `S3ObjectStore` in `markx/core/storage.py`, tested against MinIO; no new adapter class is needed. What remains is the founder's F-01 choice, the private bucket and the `MARKX_STORAGE_*` values.) |
 | Fulfilment hold (D-043) | A part still `confirmed` or `ready` 14 days after confirmation is cancelled and its stock freed; a part out for delivery is never touched. **Confirmed by the founder on 17 November 2026 as the provisional pilot policy** | the setting `orders.fulfilment_hold_days`, or the job `cancel_overdue_fulfilment` |
 | Merged products' offers (F-06), lifting a takedown (F-07) | As their F- entries say | as their F- entries say |
 
@@ -3222,6 +3226,30 @@ reads one file into memory (MarkX stores pictures of at most 20 MB); the
 weekly copy to the founder's drive (blueprint F.13) is the founder's choice
 of destination and is not automated (a second destination can be a second
 `backup` service with another `backup.env`).
+
+## D-095 How the founder works with Claude: the planning Project, the mobile app, branches and plain prompts
+
+**Founder decisions of 19 November 2026.** **Accepted.** Recorded by the
+documents repair session of 19 November 2026; no code changed.
+
+The founder decided three things:
+
+1. **A separate Claude Project is the architect and planning hub.** Prompts
+   for Claude Code come from that Project. ChatGPT no longer writes prompts.
+2. **The founder works only from the Claude mobile app.** Claude Code
+   writes the code and pushes its own branches. `main` changes only on a
+   merge the founder approves. In practice: every session starts from the
+   latest `main`, works on its own new branch, and never merges into `main`
+   without the founder's written approval (`AGENTS.md`, section 4). This
+   replaces the working-branch instruction of D-031 ("continue on
+   `claude/project-scaffold`"), which was merged into `main` by pull request
+   #1 on 19 November 2026.
+3. **Prompts for Claude Code are one message in plain words.**
+
+Also recorded in `AGENTS.md` (sections 4 and 4a): reports to the founder
+are in plain English, without code, and at the end of every session
+`docs/DEVELOPMENT_STATUS.md`, `docs/DECISIONS.md` and `docs/HANDOFF.md` are
+updated before reporting.
 
 ## Decisions that need the founder
 

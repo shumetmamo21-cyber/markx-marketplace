@@ -121,7 +121,9 @@ or 8000 are taken. `docker compose -f
 infra/compose/compose.yaml down` stops it; adding `-v` also deletes its
 database and uploaded files.
 
-The web app is not in the Compose file yet: run it from `apps/web` with
+The web app is not in this laptop Compose file (`infra/compose/compose.yaml`)
+yet; the production Compose file (`infra/production/compose.yaml`) does have a
+`web` service (`docs/DEPLOYMENT.md`). On a laptop, run it from `apps/web` with
 `npm run dev`, as in section 6. The image holds no test tools, so the demo
 data (section 4b) is loaded from `apps/api` on your machine, pointed at the
 container's database:

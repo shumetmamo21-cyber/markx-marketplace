@@ -4,7 +4,7 @@
 kept current at each pushed milestone; Parts A.00 and A.0 were added by the
 two back-end-only sessions that followed, Part A.000 by the ninth session
 and Part A.0000 by the tenth (both the web app's owner), and Parts A.00000
-to A.0000000 by the deployment, Telegram and backup sessions.
+to A.0000000 by the deployment, Telegram and backup sessions; "State on 19 November 2026" by the documents repair session.
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -13,6 +13,28 @@ to A.0000000 by the deployment, Telegram and backup sessions.
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# State on 19 November 2026
+
+- **`main` now holds all the work.** Pull request #1 merged
+  `claude/project-scaffold` into `main` on 19 November 2026; `main` is
+  commit `10a72b1`, and CI run 133 and Browser journeys run 22 passed on it.
+  Every session now starts from the latest `main` on its own new branch, and
+  never merges into `main` without the founder's written approval
+  (`AGENTS.md`, section 4). Parts A to C below were written before the merge;
+  where they say "work on `claude/project-scaffold`" or "`main` is
+  untouched", that is no longer true.
+- **The read-only audit of 19 November 2026** is in
+  [`docs/reports/2026-11-19-markx-readonly-audit-report.md`](reports/2026-11-19-markx-readonly-audit-report.md). It found
+  all eight earlier findings (a to h) still true; they are listed in
+  `docs/DEVELOPMENT_STATUS.md`, "Known problems".
+- **Next task: waiting for the founder's choice.**
+- **Old commit numbers.** The history before commit `daaee71` was squashed
+  on 18 November 2026 (`daaee71` has no parent), so older commit numbers
+  quoted in this file and the other documents can no longer be found in the
+  repository. They are kept as a record; do not try to look them up.
 
 ---
 
@@ -84,8 +106,7 @@ runbooks (`docs/DEPLOYMENT.md`, `docs/runbooks/`). **Nothing was deployed and
 no account, server, domain or certificate was created.** MarkX is not
 production-ready: it cannot start on a real server until the founder
 decides F-01, F-11 and F-15, and it has no off-server backups (F-16) and no
-backups of stored files (F-14). The next engineering task is in
-`docs/DEVELOPMENT_STATUS.md`, "The exact next task".
+backups of stored files (F-14). Next task: waiting for the founder's choice.
 
 ---
 
@@ -361,11 +382,11 @@ checked end to end, then removed. **No real search query exists yet; the
 | | |
 | --- | --- |
 | Repository | `shumetmamo21-cyber/markx-marketplace` |
-| Working branch | `claude/project-scaffold` |
+| Working branch | `claude/project-scaffold` at the time; merged into `main` by pull request #1 on 19 November 2026. Each session now works on its own new branch from the latest `main` |
 | Latest head | see `git log -1 origin/claude/project-scaffold`; the commits of this session are listed in A.2 |
-| `main` | `617a276`, the initial commit. **Untouched.** |
-| Other branches | `claude/markx-engineering-p10-daa24c`, `claude/markx-seller-management-oag1a4`, `claude/markx-third-session-cq58yj`: kept, not touched |
-| Pull request | #1 exists for this branch (not opened in this session). Nothing was merged |
+| `main` | `617a276`, the initial commit, at the time. **Corrected 19 November 2026:** pull request #1 was merged; `main` is `10a72b1` |
+| Other branches | `claude/markx-seller-management-oag1a4`, `claude/markx-third-session-cq58yj`: kept, not touched. (Corrected 19 November 2026: a branch `claude/markx-engineering-p10-daa24c` was listed here, but no such branch exists on GitHub) |
+| Pull request | #1 exists for this branch (not opened in this session). Nothing was merged at the time; #1 was merged into `main` on 19 November 2026 |
 
 ## A.2 What this session did, in order (each step pushed)
 
@@ -517,10 +538,12 @@ a back-end-only session follows the same brief with step 5b.
 
 You continue MarkX from its existing state. Do not rebuild anything.
 
-**1. Repository and branch.** `shumetmamo21-cyber/markx-marketplace`,
-branch **`claude/project-scaffold`**. Never touch `main` or delete a
-branch. Verify the head: `git fetch origin claude/project-scaffold && git
-log -5 FETCH_HEAD`.
+**1. Repository and branch.** `shumetmamo21-cyber/markx-marketplace`.
+Start from the **latest `main`** and make **your own new branch** from it
+for this session. Never merge into `main` without the founder's written
+approval, and never delete a branch. Verify the head: `git fetch origin
+main && git log -5 FETCH_HEAD`. (Until 19 November 2026 this said to work
+on `claude/project-scaffold`; that branch is merged into `main`.)
 
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
@@ -572,7 +595,9 @@ cover.
 since the tenth session: `cd apps/api && uv run python -m
 scripts.export_openapi ../web/src/lib/api/openapi.json`, then `cd ../web &&
 npm run gen:api` (D-061; it was current at the tenth session's last commit).
-Then the list in "The exact next task" in `docs/DEVELOPMENT_STATUS.md`.
+Next task: waiting for the founder's choice. (The open work earlier sessions
+named is kept as a record in "The exact next task" in
+`docs/DEVELOPMENT_STATUS.md`; it is not a chosen order.)
 **Every route a person uses has its screen** (D-070 to D-078) except
 Telegram sign-in and linking, which wait for the bot. Check it again by
 comparing `apps/api/openapi.json` with the `/api/v1/...` paths in
@@ -587,19 +612,21 @@ boundary; the web app only shows what it returns and sends the member's
 choices. Every text in both message files; client components receive only
 the message sections they use. Test at 360 pixels.
 
-**5b. Task (a back-end-only session):** the back-end list in "The exact
-next task". Do not modify `apps/web`; add routes and schemas only, never
+**5b. Task (a back-end-only session):** Next task: waiting for the
+founder's choice. Do not modify `apps/web`; add routes and schemas only, never
 change an existing one (D-061), and keep `apps/api/openapi.json` current
 (`uv run python -m scripts.export_openapi openapi.json`).
 
 **6. Boundaries:** no AWS, no deployment, no paid resource, no secret in
-the repository, no data deletion, no merge into `main`, no weakened test.
+the repository, no data deletion, no merge into `main` without the
+founder's written approval, no weakened test.
 MarkX never holds customers' money. Treat every provisional decision as
 changeable.
 
 **7. Finish** by updating `docs/DEVELOPMENT_STATUS.md`,
 `docs/DECISIONS.md` and this file, with the commands you ran and what they
-printed.
+printed, before reporting. Report to the founder in plain English, without
+code (`AGENTS.md`, section 4a).
 
 **END OF BRIEF**
 
@@ -623,7 +650,11 @@ printed.
 | P12 onwards | Not started |
 
 **Numbers:** 943 API tests; 69 tables; migrations `0001` to `0012`; 122
-typed API source files. The web app's own numbers are in Part A.000.
+typed API source files. (These are an older snapshot. Corrected
+19 November 2026: the schema has 75 tables and migrations `0001` to `0018`;
+the latest test counts are in `docs/DEVELOPMENT_STATUS.md`. The phase table
+above is also an older snapshot; the current one is in
+`docs/DEVELOPMENT_STATUS.md`, "Blueprint phase tracking".) The web app's own numbers are in Part A.000.
 
 **Traps already paid for:** see `docs/DEVELOPMENT_STATUS.md` ("Lessons" and
 the rules at its end), plus the sixth session's three: two test sessions

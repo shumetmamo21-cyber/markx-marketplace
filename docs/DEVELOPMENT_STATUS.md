@@ -1,6 +1,59 @@
 # Development status
 
-**Last updated:** 18 November 2026, by the **off-server backup and disaster
+## State on 19 November 2026
+
+Source: the read-only audit report of 19 November 2026,
+[`docs/reports/2026-11-19-markx-readonly-audit-report.md`](reports/2026-11-19-markx-readonly-audit-report.md). Its plain-English summary, in short:
+
+- **Where things stand.** MarkX is a well-built but **unlaunched**
+  marketplace. All the work of the AI sessions was merged into `main` on
+  19 November 2026 (pull request #1; `main` is commit `10a72b1`). Both
+  automatic test suites passed on that exact version: the main test run
+  (CI run 133) and the website click-through tests (Browser journeys run
+  22). Nothing is running on the internet, and no outside account
+  (payments, SMS, Telegram bot, file storage, backups, domain) exists yet.
+- **What works (in testing).** A buyer can search in Amharic or English,
+  see every seller's offer for a product, fill a cart, order from several
+  sellers at once, pay the seller directly at handover using a six-digit
+  code, and report a problem. Sellers can apply, list offers, manage stock
+  and handle orders. Staff have screens for approvals, problems, reviews,
+  reports, settings and exports. Encrypted backups and a production server
+  setup exist as code and are rehearsed automatically.
+- **What is not done.** Sellers are not yet told about new orders by phone
+  (no Telegram bot or SMS provider is connected): a **launch blocker**.
+  There is no real server, domain, file store or off-server backup. A few
+  Release 1 features are missing: the legal notice before ordering, "lite
+  mode", the price-history chart, share cards/QR code, a seller's customer
+  list, reorder, the gate photo on addresses, and the Ethiopian
+  calendar/clock.
+- **Earlier findings.** All eight earlier findings (a to h) are still true
+  in the code. They are listed under "Known problems", "Confirmed by the
+  audit of 19 November 2026".
+- **Documents.** Several documents were out of date; they were corrected on
+  19 November 2026 (documents only, no code changed).
+
+**Next task: waiting for the founder's choice.**
+
+**Note on old commit numbers.** The history before commit `daaee71` was
+squashed on 18 November 2026: `daaee71` has no parent, and everything
+before it (sessions 1 to 10) exists on `main` only as that one commit.
+Older commit numbers quoted in this file and in the other documents (for
+example in "Sessions so far") can therefore no longer be found in the
+repository. They are kept as written, as a record; do not try to look them
+up.
+
+**Known issue: Node.js 20 in the pinned GitHub actions.** GitHub's CI log
+(run 133) warns that Node.js 20 is deprecated and that `actions/checkout@v4`,
+`actions/upload-artifact@v4` and `astral-sh/setup-uv@v6` are being forced to
+run on Node.js 24. The workflows still pass. The fix (newer versions of the
+actions) is a change to the workflow files, not made here. See the audit
+report, sections 1 and 7.
+
+---
+
+**Last updated:** 19 November 2026, by the **documents repair session**
+(documents only; no code, test, migration, setting or workflow changed).
+Before that, 18 November 2026, by the **off-server backup and disaster
 recovery session** (D-094): the audit's six backup findings verified in the
 code and all true (dumps on the same server, unauthenticated AES-256-CBC,
 the passphrase beside the database passwords, no file backup, failures
@@ -138,9 +191,11 @@ before going live, and the retention job of F-08 (D-083)). The ninth session bui
 D-071); a back-end-only continuation in parallel added the seller
 performance figures and the weekly seller message (D-073), merged in this
 session.
-**Branch:** `claude/project-scaffold`. `main` holds the initial commit only
-and nothing has been merged into it.
-**Latest commit:** see `git log -1`; the handoff (`docs/HANDOFF.md`) names it.
+**Branch:** `claude/project-scaffold` was the working branch until
+19 November 2026, when pull request #1 merged it into `main` (`main` is
+commit `10a72b1`). Every session now starts from the latest `main` on its own
+new branch (`AGENTS.md`, section 4).
+**Latest commit:** see `git log -1 origin/main`.
 **Read this after** `AGENTS.md` and `MARKX_MASTER_BLUEPRINT.md`.
 `docs/HANDOFF.md` holds the last session's report in plain words, the
 decisions waiting on the founder, and a ready-to-paste brief for the next
@@ -210,6 +265,8 @@ creates); Telegram *linking* is built and switched off (D-093), deployment. Noth
 
 ## Sessions so far
 
+Many commit numbers below are from before the squash of 18 November 2026 and can no longer be found; see "Note on old commit numbers" at the top of this file.
+
 | Session | Commits | What it added |
 | --- | --- | --- |
 | 1 | `617a276` to `6f36391` | Blueprint, schema, sign-in, permissions, delivery zones, addresses, catalogue, documents. 454 tests |
@@ -240,16 +297,16 @@ Phases are the blueprint's P1 to P16 (section L.1).
 
 | Phase | Name | State |
 | --- | --- | --- |
-| P1 | Project foundation | **Mostly done.** API skeleton, database pipeline, core helpers, **the web shell, the CI pipeline (`.github/workflows/ci.yml`) and the typed link between API and web** are done. **Containers for a laptop** (`apps/api/Dockerfile`, `infra/compose/compose.yaml`; API, worker, PostgreSQL; D-058) are done and built in CI; the web app is not in the laptop Compose file. **The production stack is prepared and rehearsed, not deployed** (D-091): the web image, `infra/production/` with the reverse proxy, `deploy.sh`, and a rehearsal in CI. The page-weight check runs in CI (D-084). The three technical reports are **not done** |
+| P1 | Project foundation | **Mostly done.** API skeleton, database pipeline, core helpers, **the web shell, the CI pipeline (`.github/workflows/ci.yml`) and the typed link between API and web** are done. **Containers for a laptop** (`apps/api/Dockerfile`, `infra/compose/compose.yaml`; API, worker, PostgreSQL; D-058) are done and built in CI; the web app is not in the laptop Compose file (`infra/compose/compose.yaml`); the production Compose file (`infra/production/compose.yaml`) does have a `web` service. **The production stack is prepared and rehearsed, not deployed** (D-091): the web image, `infra/production/` with the reverse proxy, `deploy.sh`, and a rehearsal in CI. The page-weight check runs in CI (D-084). The three technical reports are **not done** |
 | P2 (deployment parts) | | See P2 below: the nightly schedule now exists **on the server** (the backup service, D-091); the **off-server copy** does not (F-16) |
 | P2 | Database and backend foundation | **Mostly done.** Schema, three database roles, error format, request IDs, structured logs, **the worker process with the scheduler and the outbox dispatcher** are done and tested. **Encrypted backups, a scripted restore and a restore drill run in CI** (D-063); **the watch and reconciliation jobs, alerts with Telegram delivery when configured, and a worker health check** (D-064). **Not done:** error tracking (needs an account), the nightly schedule and the off-server copy (deployment), P2 criteria 3 to 5 (they need staging) |
 | P3 | Authentication and roles | **Mostly done on the API side.** Phone-code sign-in, sessions, staff sign-in, Telegram signature check and the permission tables are done and tested. Turnstile is built (D-085, untested against Cloudflare); the SMS side is built up to the provider (D-089) but **no SMS provider is chosen**, so no real code can be sent |
-| P4 | Customer storefront | **Mostly done for Release 1's buyer journey** (D-055): home, search with filters, product page with the offers table, shop page, sign-in, cart, checkout, orders, tracking. Pictures on the product card and page, reviews and report links (session ten, D-072, D-074). **Not done:** the category page as its own screen (search by category stands in), account settings and saved addresses screens, Telegram Mini App shell, server actions so changes work without script, automated browser tests in CI |
+| P4 | Customer storefront | **Mostly done for Release 1's buyer journey** (D-055): home, search with filters, product page with the offers table, shop page, sign-in, cart, checkout, orders, tracking. Pictures on the product card and page, reviews and report links (session ten, D-072, D-074). **Not done:** the category page as its own screen (search by category stands in), account settings and saved addresses screens, Telegram Mini App shell, server actions so changes work without script. (Corrected 19 November 2026: automated browser tests do run in CI, the browser journeys on every code push, D-084; journeys run 22 passed on `main`.) |
 | P5 | Product catalogue | **Mostly done on the API side.** Categories, typed attributes, brands, products, variants, translations, staff create/approve/merge/archive, aliases, the restricted-goods list and seller product proposals are done and tested. **The image pipeline** (D-062): upload, metadata removal, WebP in two sizes within the D.26 budgets, rendered by the worker, moderation; criterion 3 is met by automated tests on a laptop. Pictures on the product card and page are shown (D-074). The S3 and R2 bucket adapter exists (D-090, tested against MinIO). **Not done:** seed data, a real bucket and its CDN (F-01, F-15); merging a product that has offers is still refused (see D-026) |
 | P6 | Seller onboarding and dashboard | **Done on the API side.** Application, private document upload, staff review queue, verification levels with the checks behind the badge, owner and manager members, store page, payout account, dashboard counts. The web screens (session ten, D-075): application, documents, team, store settings, legal details, payout account, overview. Documents can live in a private S3 or R2 bucket (D-090). **Not done:** share cards and QR code, ownership transfer, closing a shop on the web, the real private bucket itself (F-01) |
 | P7 | Seller listings and inventory | **Done on the API side.** Offers, price history, inventory and movements, quick edit, product proposals, the ranked offers list, the check-in, the stale-offer job **now run by the worker**, and a staff takedown that holds (D-032). The web screens: offers with quick edit (session six), add an offer and the shop's own photos (session ten). **Not done:** the seller Telegram bot, product proposals from a seller on the web |
-| P8 | Search and product discovery | **Mostly done on the API side.** Search documents kept fresh through the outbox with an hourly rebuild (D-051); normalisation, letter merging and skeleton keys; prefix, sound and trigram matching; filters and sorting; suggestions and "did you mean"; the product-request form; the query log, the zero-result report and the synonym tool (D-052). **Throttled per address** (D-059). **Not done:** the two completion criteria (a golden set of 100 real queries, and timings at real size), "total cost to the door" as a sort, rating and delivery-speed filters, edge caching and pages readable by search engines (they need the web app) |
-| P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Not done:** the web screens, the legal disclosure wording (a founder input), and guest checkout as such: a visitor's cart survives signing in, but the order is placed by a signed-in account (see D-036) |
+| P8 | Search and product discovery | **Mostly done on the API side.** Search documents kept fresh through the outbox with an hourly rebuild (D-051); normalisation, letter merging and skeleton keys; prefix, sound and trigram matching; filters and sorting; suggestions and "did you mean"; the product-request form; the query log, the zero-result report and the synonym tool (D-052). **Throttled per address** (D-059). **Not done:** the two completion criteria (a golden set of 100 real queries, and timings at real size), "total cost to the door" as a sort, a delivery-speed filter (the rating filter `min_rating` exists, D-080), edge caching and pages readable by search engines (they need the web app) |
+| P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Not done:** the legal disclosure wording (a founder input), and guest checkout as such: a visitor's cart survives signing in, but the order is placed by a signed-in account (see D-036) |
 | P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. The next-best offer after a decline or an expiry (D-049). Problems on a delivered order: `delivered -> disputed` by the buyer in the window, `disputed -> completed | refunded` by staff, Release 1 form with no money moved (D-050). Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`, `tests/api/test_disputes.py`). **Photos on a problem report** (D-062) and **reviews of completed items with the seller's reply** (D-066) exist on the API. The web screens for both, and the problem's messages and evidence photos, exist (session ten). **Not done:** photos on reviews, the bot. Criteria 3 and 5 need the bot and real buyers |
 | P11 | Admin operations | **Mostly done on the API side.** The orders desk, problem cases and decisions, seller review, search tools (earlier sessions); **the audit-log viewer, switches and risk limits, staff accounts, the dispatch board, the business dashboard, picture moderation and the operations status** (D-062, D-064, D-065). **Review moderation (AD-12) and the reports queue (AD-16)** too (D-066, D-067). **Data exports for an accountant** (D-068) and **seller performance figures with the weekly message** (D-073). Session nine built their admin screens (D-070 to D-072). The seller's performance screen exists (session ten, D-075). **Not done:** the runbooks, seller statements (Release 2) |
 | P12–P16 | Everything else | **Not started** (tables exist; no behaviour) |
@@ -1001,13 +1058,18 @@ Be careful with these. They were written and never exercised.
   on real data volumes. Alerts are generated, but no person receives them
   until the alert group exists (F-18).
 
-- Models for refunds, payouts, reviews, reports and analytics: the tables
-  exist and are constrained; **no service, route or test uses them**.
+- The analytics model (`analytics_events`): the table exists and is
+  constrained; **no service, route or test uses it**. (Corrected
+  19 November 2026: there is **no** `refunds`, `payouts` or provider-webhook
+  table in the models or migrations; reviews and reports are used, D-066,
+  D-067.)
   `product_requests` are written and never read by a route yet.
 - `fee_charges.reversal_ledger_transaction_id` and `reversed_at`: unused.
   Release 1 never charges a fee on a refunded part, so nothing is reversed
   (D-050).
-- `refunds`, `payouts`, provider webhooks: tables only (Release 2).
+- Refunds, payouts, provider webhooks: **not built, and no table exists**
+  (Release 2). (Corrected 19 November 2026; earlier versions said "tables
+  only".)
 - `stores.logo_key`, `order_items.image_key`: columns with no behaviour.
   (Earlier versions of this list named `offer_price_tiers` and
   `seller_metrics_daily`; neither table exists in the schema. D-073.)
@@ -1113,6 +1175,51 @@ Be careful with these. They were written and never exercised.
   (D-074 here).
 
 ## Known problems
+
+### Confirmed by the audit of 19 November 2026 (findings a to h)
+
+The read-only audit of 19 November 2026 checked the eight earlier findings
+against the code on `main` (`10a72b1`) and found **all eight still true**.
+Each is a known defect; the proof (files and lines) is in the report,
+[section 5](reports/2026-11-19-markx-readonly-audit-report.md). None was fixed: fixing any of them is a code change.
+
+- **(a) Commission is zero, and the commission cap is stored but never
+  applied.** No route or migration writes `commission_rules`; `cap_applied`
+  is always false (D-086, D-088). See [the report, section 5, row a](reports/2026-11-19-markx-readonly-audit-report.md).
+- **(b) The "not your own store" check exists only in seller
+  verification.** Staff who belong to a store can still decide disputes,
+  review moderation, listing takedowns and reports about that store. See
+  [the report, section 5, row b](reports/2026-11-19-markx-readonly-audit-report.md).
+- **(c) Out-for-delivery and failed-delivery orders never expire.** No
+  deadline job moves `out_for_delivery` or `delivery_failed`; only paid
+  parts in `delivery_failed` raise an alert. See
+  [the report, section 5, row c](reports/2026-11-19-markx-readonly-audit-report.md).
+- **(d) A competitor's stock can be held by ordering and cancelling.**
+  Limited (open pay-at-door orders, an order-value cap, checkouts per hour)
+  but not removed: there is no cancellation limit or cool-down. See
+  [the report, section 5, row d](reports/2026-11-19-markx-readonly-audit-report.md).
+- **(e) About 22 parts of the website freeze with no message when the
+  connection drops, and there are no proper error pages.** Browser API calls
+  have no error handling, and no `error.tsx` or `global-error.tsx` exists.
+  See [the report, section 5, row e](reports/2026-11-19-markx-readonly-audit-report.md).
+- **(f) Certificates do not renew automatically, and rollback breaks when an
+  image prefix is set.** No renewal job exists; `deploy.sh rollback` checks
+  fixed image names. See [the report, section 5, row f](reports/2026-11-19-markx-readonly-audit-report.md).
+- **(g) The picomatch warning is allowed until 31 December 2026, and the
+  website's security policy allows inline scripts.** See
+  [the report, section 5, row g](reports/2026-11-19-markx-readonly-audit-report.md).
+- **(h) The backup design has eight weaknesses (h1 to h8):** the server's
+  storage key can delete every backup; no object lock; recovery drills put
+  the recovery private key on the server; restore runs with full database
+  admin rights; a failed upload can be reused by its name alone; all alerts
+  run on the server they watch; `MARKX_ENCRYPTION_KEY` and
+  `MARKX_SECRET_KEY` have no recovery copy off the server (only a written
+  instruction for the first); the server holds the key that signs backups.
+  See [the report, section 5, rows h1 to h8](reports/2026-11-19-markx-readonly-audit-report.md).
+- **Node.js 20 in the pinned GitHub actions** (known issue, not a finding):
+  see "State on 19 November 2026" at the top of this file.
+
+### Recorded before 19 November 2026
 
 - **Seller notifications are a launch blocker (D-092, N-1).** Everything is
   built and tested against fakes, but no outside channel is connected: no
@@ -1240,7 +1347,10 @@ Be careful with these. They were written and never exercised.
 - **A staff authenticator code works once** (replay protection, working as
   designed): two staff sign-ins inside the same 30 seconds refuse the
   second. The journeys retry once with the next code.
-- No failing test and no known defect in the tested code. The 801 tests of
+- (Session five's note, kept as a record:) no failing test and no known
+  defect in the tested code at that time. This is no longer true: see the
+  known defects in this section, including the commission cap (D-086) and
+  the eight findings confirmed by the audit of 19 November 2026. The 801 tests of
   session four were reproduced unchanged at the start of session five before
   any code was written. One defect in session four's code was found and
   fixed (a cancelled shipment without its tracking event).
@@ -1278,8 +1388,8 @@ Be careful with these. They were written and never exercised.
   transaction too; today's callers do not.
 - **Product cards carry a picture but no rating yet** (D-074). The rating
   is on the product page (D-072); putting it on the card changes
-  `ProductCardOut` on both sides again (D-061). Search does not rank or
-  filter by rating yet.
+  `ProductCardOut` on both sides again (D-061). Search filters by rating
+  (`min_rating`, D-080) but does not rank by rating yet.
 - **Commit `1920e55` says D-073 in its title**; after the merge with the
   parallel back-end session, which had taken D-073 for the performance
   page, its decision is **D-074**. History was not rewritten.
@@ -2140,11 +2250,12 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0012` | `20261117_1158_seller_weekly_reports.py` | `seller_weekly_reports`: one row per store and week, starting on a Monday (D-073) |
 | `0013` | `20261118_0700_paid_orders_never_end_undelivered.py` | `ck_seller_orders_paid_order_not_ended_undelivered`: a part with a recorded payment never ends declined, expired, cancelled or returned (D-086). Checks existing rows; deletes nothing |
 | `0014` | `20261118_0800_payment_recorded_at_handover.py` | `trg_seller_orders_payment_at_handover`: a direct payment is recorded only while the part is delivered, completed or disputed; checks only the moment of recording, so existing records are kept and still move on (D-087) |
+| `0015` | `20261118_1014_sms_delivery_records.py` | `sms_messages`: one delivery record per SMS, with its CHECKs (purpose and reference agree, a failure has its error code, a 32-byte keyed hash of the number, no text or code column) and three indexes (D-089). A new table only; nothing existing changed |
 | `0016` | `20261118_1645_notification_deliveries_and_order_reminders.py` | `notification_deliveries`: one row per notification and outside channel (unique), its status and reason, never text or a number; `seller_order_reminders`: a reminder sent once per seller order and kind (D-092). Two new tables only |
 | `0017` | `20261118_1752_telegram_account_linking.py` | `telegram_link_tokens` (keyed hash of a one-time token, account, session, expiry, status and failure reason; one pending per account; CHECKs pairing status, end time and reason) and `telegram_updates` (handled update ids); `users.telegram_linked_at` (set exactly when `telegram_id` is, by a CHECK; existing links given their `updated_at`) and `users.telegram_unlinked_at` (D-093) |
-| `0015` | `20261118_1014_sms_delivery_records.py` | `sms_messages`: one delivery record per SMS, with its CHECKs (purpose and reference agree, a failure has its error code, a 32-byte keyed hash of the number, no text or code column) and three indexes (D-089). A new table only; nothing existing changed |
+| `0018` | `20261118_1916_backup_runs.py` | `backup_runs`: one row per backup, drill or verification run (its status, destination identity without credentials, sizes, an error code), read by the worker's watch for the backup alerts; the application role may only read it (D-094). A new table only. (Row added 19 November 2026; it was missing.) |
 
-The schema has 74 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`, `telegram_link_tokens`, `telegram_updates`). P9 and P10 needed no new table and no migration at
+The schema has 75 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`, `telegram_link_tokens`, `telegram_updates`, `backup_runs`). Counted on 19 November 2026: 75 `__tablename__` in `apps/api/markx`; 18 migration files. P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
@@ -2168,8 +2279,12 @@ These are written reminders; nothing in the code fires them.
 
 ## The exact next task
 
-Two sessions may work in parallel: one owns `apps/web`, the other the back
-end. Work in this order within each. Finish and push each step first.
+**Next task: waiting for the founder's choice.**
+
+The lists below are kept as a record of the open work that earlier sessions
+named. They are **not** a chosen order and none of them is the next task
+until the founder chooses. When the founder chooses, each item's notes
+still apply.
 
 **Notifications (D-092): the launch blocker.**
 
@@ -2261,8 +2376,10 @@ end. Work in this order within each. Finish and push each step first.
 1. When the founder confirms or changes an F- item (D-083): record it as a
    `D-` entry, change the code if the answer differs, and remove its
    `PROVISIONAL` marker and its line in `test_provisional_decisions.py`.
-   F-01 then needs the private store adapter (one class behind
-   `PrivateStorage`), once the founder has created the account.
+   F-01 then needs only the founder's choice and the account: the S3/R2
+   adapter already exists (D-090, `S3ObjectStore` in
+   `markx/core/storage.py`); set the `MARKX_STORAGE_*` values once the
+   private bucket is created. (Corrected 19 November 2026.)
 2. Photos on reviews (C-18), following the problem-photo pipeline (D-062).
 3. Ratings in search ranking (D.8; the rating filter exists, D-080), and
    the seller rating in the product page's offer ranking, as one change
