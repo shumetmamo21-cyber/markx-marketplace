@@ -1,0 +1,112 @@
+# MarkX on a laptop: PostgreSQL 17, MinIO, migrations, the API and the worker
+# (D-058, D-090).
+# Nothing here is deployed or paid for; every port listens on 127.0.0.1 only,
+# and every password is a laptop-only default that the API refuses to accept
+# on staging or production.
+#
+#   docker compose -f infra/compose/compose.yaml up --build
+#
+# Then http://127.0.0.1:8000/api/v1/healthz answers, and the web app
+# (apps/web, `npm run dev`) talks to the API at its default address.
+#
+# Files go to MinIO's two buckets, markx-private and markx-public, as a
+# server keeps them in S3 or R2 (D-090). MinIO is a laptop and test stand-in
+# only: staging and production refuse it.
+name: markx
+
+x-api-environment: &api-environment
+  MARKX_ENV: local
+  MARKX_DATABASE_URL: postgresql+psycopg://markx_app:markx_app_dev-only@postgres:5432/markx
+  MARKX_MIGRATION_DATABASE_URL: postgresql+psycopg://markx_migrator:markx_migrator_dev-only@postgres:5432/markx
+  MARKX_PUBLIC_ORIGIN: http://localhost:3000
+  MARKX_COOKIE_SECURE: "false"
+  MARKX_FILE_STORAGE_PROVIDER: minio
+  MARKX_STORAGE_ENDPOINT_URL: http://minio:9000
+  MARKX_STORAGE_ACCESS_KEY_ID: markx-dev-only
+  MARKX_STORAGE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+  MARKX_STORAGE_PRIVATE_BUCKET: markx-private
+  MARKX_STORAGE_PUBLIC_BUCKET: markx-public
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres_dev_only
+      POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres:/markx-bootstrap:ro
+      - ./initdb.sh:/docker-entrypoint-initdb.d/10-markx.sh:ro
+    ports:
+      - 127.0.0.1:${MARKX_PG_PORT:-5432}:5432
+    healthcheck:
+      # Ready only once the MarkX database exists, not merely the server.
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "markx"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  # The S3-compatible stand-in for the two buckets (D-090). MinIO no longer
+  # publishes its own images on Docker Hub; this is Bitnami's last build of
+  # MinIO 2025.7.23, pinned by digest. Both buckets are private: on a laptop
+  # the API itself serves the rendered pictures (/api/v1/media).
+  minio:
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
+    environment:
+      MINIO_ROOT_USER: markx-dev-only
+      MINIO_ROOT_PASSWORD: markx-minio-dev-only-password
+      MINIO_DEFAULT_BUCKETS: markx-private,markx-public
+    volumes:
+      - minio-data:/bitnami/minio/data
+    ports:
+      - 127.0.0.1:${MARKX_MINIO_PORT:-9000}:9000
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  migrate:
+    build: ../../apps/api
+    image: markx-api:local
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: markx-api:local
+    environment: *api-environment
+    volumes:
+      - storage:/var/lib/markx/storage
+    ports:
+      - 127.0.0.1:${MARKX_API_PORT:-8000}:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    image: markx-api:local
+    command: ["python", "-m", "markx.worker"]
+    environment: *api-environment
+    volumes:
+      - storage:/var/lib/markx/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    # The worker serves no HTTP; the image's API check does not apply.
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres-data:
+  minio-data:
+  storage:

@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Blueprint I.3, defined once. Highland green means protected or verified and
+   nothing else; green, yellow and red are never used together as a flag. */
+@theme {
+  --color-ink: #0e1b2a;
+  --color-paper: #faf7f2;
+  --color-adey: #f5b700;
+  --color-highland: #11694e;
+  --color-clay: #b93a26;
+  --color-slate: #5b6675;
+  --color-line: #e6e0d6;
+  --color-card: #ffffff;
+
+  /* System fonts only (I.2): nothing is downloaded. Android carries Noto Sans Ethiopic. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Ethiopic",
+    "Nyala", "Abyssinica SIL", sans-serif;
+
+  --radius-card: 12px;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  :lang(am) body {
+    line-height: 1.6;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}
+
+@utility price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* The tibeb line: a thin woven-border motif, used sparingly as a divider. */
+@utility tibeb {
+  height: 4px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--color-ink) 0 6px,
+    var(--color-adey) 6px 10px,
+    var(--color-ink) 10px 16px,
+    var(--color-paper) 16px 18px
+  );
+}

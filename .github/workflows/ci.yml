@@ -1,0 +1,296 @@
+# The checks every change must pass (blueprint P1; docs/SETUP.md). Runs on
+# GitHub's free hosted runners; nothing here is deployed or paid for.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (lint, types, migrations, tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # A throwaway database inside the runner; the same development-only
+          # password as docs/SETUP.md. Not a secret.
+          POSTGRES_PASSWORD: postgres_dev_only
+          POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      # D-090: the object storage tests run against a real MinIO, never
+      # against Amazon or Cloudflare. The same pinned image as Compose; the
+      # tests make and remove their own buckets.
+      minio:
+        image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
+        env:
+          MINIO_ROOT_USER: markx-dev-only
+          MINIO_ROOT_PASSWORD: markx-minio-dev-only-password
+          # D-094: the recovery drill's file stores and its backup destination.
+          MINIO_DEFAULT_BUCKETS: markx-private,markx-public,markx-backups
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -fsS http://127.0.0.1:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: postgres_dev_only
+      MARKX_TEST_MINIO_ENDPOINT: http://127.0.0.1:9000
+      MARKX_TEST_MINIO_ACCESS_KEY: markx-dev-only
+      MARKX_TEST_MINIO_SECRET_KEY: markx-minio-dev-only-password
+      # A missing MinIO fails the run here instead of skipping its tests.
+      MARKX_TEST_MINIO_REQUIRED: "1"
+      # D-094: the backup tests need PostgreSQL 17's client tools; the runner's
+      # own are older, so the server's image runs them. Missing tools fail the
+      # run instead of skipping the tests.
+      MARKX_TEST_PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_dump
+      MARKX_TEST_PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_restore
+      MARKX_TEST_PSQL: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 psql
+      MARKX_TEST_BACKUP_REQUIRED: "1"
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install the locked dependencies
+        run: uv sync --locked
+      - name: Create the MarkX roles and database
+        run: ../../infra/postgres/bootstrap.sh markx
+      - name: Lint
+        run: uv run ruff check .
+      - name: Formatting
+        run: uv run ruff format --check .
+      - name: Strict type checks
+        run: uv run mypy markx
+      - name: Migrations apply and match the models
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+      - name: Tests (one session; they share one test database)
+        run: uv run pytest -q -p no:cacheprovider
+      # D-061: the back end's own description must match the API exactly, so
+      # every API change is visible in review; the web app's copy may lag
+      # behind additions (another session regenerates it) but never changes.
+      - name: The API description in apps/api is current
+        run: uv run python -m scripts.check_openapi_copy --exact openapi.json
+      - name: The web app's copy of the API description is still true
+        run: uv run python -m scripts.check_openapi_copy ../web/src/lib/api/openapi.json
+      # D-094: the recovery drill on the demo data, end to end: a backup set
+      # (database and files) encrypted and uploaded to a MinIO backup bucket,
+      # verified, restored into a NEW database and NEW buckets, compared, and
+      # seven injected faults each refused. Keys are made for this run only.
+      # Nothing here reaches a real provider.
+      - name: Backup, off-server copy and recovery drill (MinIO stand-in)
+        env:
+          MARKX_FILE_STORAGE_PROVIDER: minio
+          MARKX_STORAGE_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_STORAGE_ACCESS_KEY_ID: markx-dev-only
+          MARKX_STORAGE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+          MARKX_STORAGE_PRIVATE_BUCKET: markx-private
+          MARKX_STORAGE_PUBLIC_BUCKET: markx-public
+          MARKX_RELEASE: ${{ github.sha }}
+          MARKX_BACKUP_DATABASE: markx
+          MARKX_BACKUP_PG_DUMP_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_dump
+          MARKX_BACKUP_PG_RESTORE_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_restore
+          MARKX_BACKUP_PSQL_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 psql
+          MARKX_BACKUP_DESTINATION: minio
+          MARKX_BACKUP_DESTINATION_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_BACKUP_DESTINATION_BUCKET: markx-backups
+          MARKX_BACKUP_DESTINATION_PREFIX: markx/ci
+          MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID: markx-dev-only
+          MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+          MARKX_BACKUP_SOURCE_PROVIDER: minio
+          MARKX_BACKUP_SOURCE_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_BACKUP_SOURCE_PRIVATE_BUCKET: markx-private
+          MARKX_BACKUP_SOURCE_PUBLIC_BUCKET: markx-public
+          MARKX_BACKUP_SOURCE_ACCESS_KEY_ID: markx-dev-only
+          MARKX_BACKUP_SOURCE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+        run: |
+          uv run python -m scripts.seed_demo > /dev/null
+          keys="$RUNNER_TEMP/backup-keys"
+          uv run python -m markx.backup keygen --out "$keys" > /dev/null
+          export MARKX_BACKUP_PUBLIC_KEY_FILE="$keys/backup-public.key" MARKX_BACKUP_SIGNING_KEY_FILE="$keys/signing.key"
+          export MARKX_BACKUP_WORK_DIR="$RUNNER_TEMP/backup-work"
+          uv run python -m markx.backup drill --seed-sample-files \
+            --recovery-key "$keys/recovery.key" --signer "$keys/signer-public.key" \
+            --report "$RUNNER_TEMP/restore-drill-report.json" | tee "$RUNNER_TEMP/restore-drill.txt"
+          grep -q "DRILL PASSED" "$RUNNER_TEMP/restore-drill.txt"
+          rm -rf "$keys"
+      - name: Keep the restore drill's report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-drill
+          path: |
+            ${{ runner.temp }}/restore-drill-report.json
+            ${{ runner.temp }}/restore-drill.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+  web:
+    name: Web app (lint, types, unit tests, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install the locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Generated API types match the API description
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/lib/api/schema.d.ts
+      - name: Lint
+        run: npm run lint
+      - name: Strict type checks
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+
+  # D-084: the secret scan and the dependency audits the blueprint's pipeline
+  # asks for on every change. Findings are reviewed, never silently ignored:
+  # see .gitleaks.toml and .github/security/npm-audit-allowlist.json.
+  security:
+    name: Security (secret scan, dependency audits)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history, so a secret removed later is still found
+      - name: Secret scan of every commit (Gitleaks)
+        env:
+          GITLEAKS_VERSION: 8.28.0
+        run: |
+          name="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "$base/$name"
+          curl -sSfLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " $name\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum --check --strict -
+          tar -xzf "$name" gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --verbose --exit-code 1 .
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Python dependency audit (pip-audit, development tools included)
+        working-directory: apps/api
+        run: |
+          uv sync --locked
+          uv run pip-audit --progress-spinner off
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: npm dependency audit (development dependencies included)
+        run: |
+          (cd apps/web && npm ci --no-audit --no-fund)
+          node .github/scripts/npm-audit-gate.mjs apps/web
+
+  containers:
+    name: Containers (API and web images build, Compose files are valid)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: The Compose file is valid
+        run: |
+          docker compose -f infra/compose/compose.yaml config --quiet
+          MARKX_UID=1001 MARKX_GID=1001 MARKX_HOST_STORAGE=/tmp/storage \
+            docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml config --quiet
+      - name: The API and worker image builds
+        run: docker build -t markx-api:ci apps/api
+      - name: The image runs as an unprivileged user and holds no dev tools
+        run: |
+          test "$(docker run --rm markx-api:ci id -un)" = markx
+          ! docker run --rm markx-api:ci python -c "import pytest"
+      # SEC-3 (D-084): forwarded headers are read by the app, from the
+      # configured proxies only, never by uvicorn's own default.
+      - name: The image does not let uvicorn trust forwarded headers itself
+        run: |
+          docker image inspect markx-api:ci --format '{{json .Config.Cmd}}' | grep -q -- '--no-proxy-headers'
+      - name: The worker and the migrations load in the image
+        run: |
+          docker run --rm markx-api:ci python -c "import markx.worker.runner, markx.main"
+          docker run --rm markx-api:ci alembic --help > /dev/null
+      # D-094: the backup service's image: the API's code plus PostgreSQL 17's
+      # client tools, unprivileged, its commands loading.
+      - name: The backup image builds, runs unprivileged and holds PostgreSQL 17's tools
+        run: |
+          docker build --target backup -t markx-backup:ci apps/api
+          [[ "$(docker run --rm markx-backup:ci id -u)" != 0 ]]
+          docker run --rm markx-backup:ci pg_dump --version | grep -q "PostgreSQL) 17\."
+          docker run --rm markx-backup:ci pg_restore --version | grep -q "PostgreSQL) 17\."
+          docker run --rm markx-backup:ci python -m markx.backup --help > /dev/null
+      # D-091: the production Compose file with the example settings, and the
+      # web image (standalone build, unprivileged, no development tools).
+      - name: The production Compose file is valid with the example settings
+        run: |
+          dir="$RUNNER_TEMP/markx-config"; mkdir -p "$dir"
+          for f in infra/production/env/*.env.example; do cp "$f" "$dir/$(basename "$f" .example)"; done
+          sed -i "s|^MARKX_CONFIG_DIR=.*|MARKX_CONFIG_DIR=$dir|" "$dir/compose.env"
+          MARKX_RELEASE=ci docker compose -f infra/production/compose.yaml --env-file "$dir/compose.env" config --quiet
+      - name: The web image builds
+        run: docker build -t markx-web:ci --build-arg MARKX_MEDIA_ORIGIN=https://media.example.invalid apps/web
+      - name: The web image runs as an unprivileged user, without sources or development tools
+        run: |
+          test "$(docker run --rm --entrypoint id markx-web:ci -un)" = node
+          docker run --rm --entrypoint sh markx-web:ci -c 'test ! -e /app/src && test ! -e /app/node_modules/vitest && test -f /app/server.js'
+      - name: The web image refuses to start as production without its settings
+        run: |
+          set +e
+          docker run --rm -e MARKX_ENV=production markx-web:ci > out.txt 2>&1
+          status=$?
+          set -e
+          cat out.txt
+          test "$status" = 2
+          grep -q "MARKX_TURNSTILE_SITE_KEY must be set" out.txt
+
+  # D-091: the production Compose file, deploy.sh and the proxy, rehearsed on
+  # the runner with throwaway settings and MinIO. Nothing is deployed and no
+  # outside service, domain or certificate authority is contacted.
+  production-rehearsal:
+    name: Production stack rehearsal (Compose, proxy, deploy, rollback)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rehearse a deployment
+        run: sudo -E infra/production/rehearsal/rehearse.sh

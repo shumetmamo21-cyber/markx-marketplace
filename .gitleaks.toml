@@ -1,0 +1,33 @@
+# Secret scanning for MarkX (blueprint Q pipeline; D-084). CI runs Gitleaks
+# with this file over the whole Git history, and fails on any finding.
+#
+# Every default rule applies. The only exceptions are values that are
+# deliberately in the repository and labelled as not secret: the laptop-only
+# defaults, which the API refuses to start with on staging or production
+# (markx/core/config.py), and test fixtures. Never add a real value here;
+# if Gitleaks finds a real secret, revoke it first, then remove it.
+title = "MarkX"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Development and test values, labelled as such in the value or on the line"
+regexTarget = "line"
+regexes = [
+  '''dev[-_]only''',
+  '''(?i)test[-_]only''',
+  '''not-a-real-secret''',
+  # The development encryption key: base64 of "dev-only-encryption-key-32bytes!".
+  '''ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=''',
+  # The tests' well-formed Fernet key (D-091): base64 of "test-only-not-a-real-key-32bytes".
+  '''dGVzdC1vbmx5LW5vdC1hLXJlYWwta2V5LTMyYnl0ZXM=''',
+]
+
+[[allowlists]]
+description = "Public Turnstile site keys (sent to every visitor's browser by design; never a secret key)"
+regexTarget = "match"
+regexes = [
+  # The founder's localhost-only test widget "MarkX" (D-085), documented in docs/SETUP.md.
+  '''0x4AAAAAAGGYs5bV6hfwiNJC''',
+]

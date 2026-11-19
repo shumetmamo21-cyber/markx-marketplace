@@ -1,0 +1,46 @@
+# The LOCAL REHEARSAL of the production Compose file (D-091), added on top of
+# ../compose.yaml by rehearse.sh. Never for a real server.
+#
+# What differs from production, and why:
+# - MARKX_ENV=local (in the rehearsal's compose.env): staging and production
+#   need real Turnstile keys, a real SMS provider and real S3 or R2 buckets,
+#   none of which exist (F-01, F-11, F-15), so the API would refuse to start.
+#   The rehearsal proves that refusal separately.
+# - MinIO stands in for the buckets, on the internal backend network,
+#   including the backup destination (a real server refuses MinIO there).
+# - A self-signed certificate for markx.example.invalid; ports 18080/18443
+#   on 127.0.0.1 only.
+# - Only when MARKX_BUILD_CA is set (a builder behind a TLS-inspecting
+#   proxy): compose.build-ca.yaml hands that certificate to the builds.
+# Everything else (images, networks, users, limits, health checks, the
+# proxy, the migration step, the backups) is the production file unchanged.
+services:
+  minio:
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
+    environment:
+      MINIO_ROOT_USER: markx-dev-only
+      MINIO_ROOT_PASSWORD: markx-minio-dev-only-password
+      # markx-backups: the backup destination's stand-in (D-094).
+      MINIO_DEFAULT_BUCKETS: markx-private,markx-public,markx-backups
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  api:
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  worker:
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  backup:
+    depends_on:
+      minio:
+        condition: service_healthy

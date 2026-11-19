@@ -1,0 +1,10 @@
+# SYNTHETIC: written by an engineer to test the evaluator against the test
+# shelf (tests/api/test_search.py). These are NOT real customer queries and say
+# nothing about how well search works for real buyers.
+query,expected,kind,source
+ሳምሰንግ,samsung-galaxy-a16,amharic,synthetic test case
+samsang,samsung-galaxy-a16,latin_amharic,synthetic test case
+"Samsung Galaxy A16",samsung-galaxy-a16|samsung-galaxy-a16-5g,english,synthetic test case
+ቴክኖ,tecno-spark-20,amharic,synthetic test case
+iphone 15,apple-iphone-15,english,synthetic test case
+laptop,samsung-galaxy-a16,english,synthetic test case

@@ -1,0 +1,207 @@
+# The browser journeys (apps/web/e2e/*.mjs) and the page-weight check, in
+# Chromium, against the Compose environment (infra/compose) with a fresh demo
+# database, on GitHub's free hosted runners. Nothing here is deployed or paid
+# for. Any failing journey fails the run (D-081, D-084).
+#
+# It runs on every push that changes code or infrastructure; a push that
+# changes only documents does not start it. It can also be started from the
+# Actions tab once this file is on the default branch.
+name: Browser journeys
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "apps/**"
+      - "infra/**"
+      - ".github/workflows/journeys.yml"
+
+permissions:
+  contents: read
+
+# A newer push to the same branch supersedes a run in progress.
+concurrency:
+  group: journeys-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    name: Browser journeys and page weight (Compose, demo data, Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # The runner's tools (seed, single worker passes) reach the Compose
+      # database on 127.0.0.1:5432 and the Compose MinIO on 127.0.0.1:9000
+      # with the laptop-only defaults, so the pictures the worker renders go
+      # to the same buckets the API serves them from (D-090), and they share
+      # the development folder with the API container (compose.ci.yaml).
+      MARKX_ENV: local
+      MARKX_FILE_STORAGE_PROVIDER: minio
+      MARKX_STORAGE_ENDPOINT_URL: http://127.0.0.1:9000
+      MARKX_STORAGE_ACCESS_KEY_ID: markx-dev-only
+      MARKX_STORAGE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+      MARKX_STORAGE_PRIVATE_BUCKET: markx-private
+      MARKX_STORAGE_PUBLIC_BUCKET: markx-public
+      COMPOSE: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Shared picture folder
+        run: |
+          mkdir -p "$RUNNER_TEMP/storage"
+          {
+            echo "MARKX_HOST_STORAGE=$RUNNER_TEMP/storage"
+            echo "MARKX_STORAGE_DIR=$RUNNER_TEMP/storage"
+            echo "MARKX_UID=$(id -u)"
+            echo "MARKX_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
+
+      - name: Start PostgreSQL, MinIO, the migrations and the API from Compose
+        run: $COMPOSE up -d --build --wait api
+
+      - name: The demo data
+        working-directory: apps/api
+        run: |
+          uv sync --locked
+          uv run python -m scripts.seed_demo | tee "$RUNNER_TEMP/seed.log"
+          secret=$(sed -n 's/.*Staff authenticator secret: *\([A-Z2-7=]*\).*/\1/p' "$RUNNER_TEMP/seed.log" | head -1)
+          test -n "$secret"
+          echo "::add-mask::$secret"
+          echo "MARKX_DEMO_TOTP_SECRET=$secret" >> "$GITHUB_ENV"
+
+      # The journeys sign the same demo phones in many times in one hour,
+      # often seconds apart; the API's limits against attackers (five codes a
+      # phone, twenty an address, one code a minute per phone, D-089) are not
+      # what they test, so this throwaway database allows more.
+      - name: Room for every journey's sign-ins
+        working-directory: apps/api
+        run: |
+          uv run python - <<'PY'
+          from markx.core import settings_store
+          from markx.core.db import session_scope
+          with session_scope() as db:
+              settings_store.set_setting(db, "auth.otp_per_phone_per_hour", 30)
+              settings_store.set_setting(db, "auth.otp_per_ip_per_hour", 200)
+              settings_store.set_setting(db, "auth.otp_resend_cooldown_seconds", 0)
+          PY
+
+      - name: Build and start the web app
+        working-directory: apps/web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run start > "$RUNNER_TEMP/web.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/en > /dev/null && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/web.log"; exit 1
+
+      # Playwright is one of the web app's development dependencies (locked
+      # in package-lock.json); only its Chromium is downloaded here.
+      - name: Chromium for Playwright
+        working-directory: apps/web
+        run: |
+          npx playwright install --with-deps chromium
+          mkdir -p "$RUNNER_TEMP/shots"
+
+      - name: Page weight
+        working-directory: apps/web
+        run: node e2e/page-weight.mjs
+
+      # One journey per step, so a failure names its journey.
+      - name: Seller dashboard
+        working-directory: apps/web
+        run: node e2e/seller-dashboard.mjs "$RUNNER_TEMP/shots"
+      - name: Buyer journey
+        working-directory: apps/web
+        run: node e2e/buyer-journey.mjs "$RUNNER_TEMP/shots"
+      - name: Staff decide a problem
+        working-directory: apps/web
+        run: node e2e/staff-journey.mjs "$RUNNER_TEMP/shots"
+      - name: Admin screens
+        working-directory: apps/web
+        run: node e2e/admin-queues.mjs "$RUNNER_TEMP/shots"
+      - name: Reviews, reports, pictures and problem evidence
+        working-directory: apps/web
+        run: node e2e/shop-screens.mjs "$RUNNER_TEMP/shots"
+      - name: Setup, trust actions, account, proposals and closing
+        working-directory: apps/web
+        run: node e2e/setup-and-account.mjs "$RUNNER_TEMP/shots"
+
+      # D-089: the resend cooldown, end to end. It is switched back on (60
+      # seconds, the default) for this step only, then off again for the next.
+      - name: Resend cooldown on the sign-in page
+        working-directory: apps/web
+        run: |
+          cooldown() {
+            (cd ../api && uv run python -c "from markx.core import settings_store
+          from markx.core.db import session_scope
+          with session_scope() as db:
+              settings_store.set_setting(db, 'auth.otp_resend_cooldown_seconds', $1)")
+          }
+          cooldown 60
+          node e2e/sign-in-cooldown.mjs
+          cooldown 0
+
+      # D-093: connecting Telegram. First as every server starts (switched
+      # off: nothing offered), then with the API recreated with TEST-ONLY
+      # values, the journey itself playing Telegram by calling the webhook
+      # with the secret. No bot exists and nothing reaches Telegram. The API
+      # is then recreated with linking off again.
+      - name: Telegram connection, switched off (the default)
+        working-directory: apps/web
+        run: node e2e/telegram-connection.mjs off "$RUNNER_TEMP/shots"
+      - name: Telegram connection, switched on with test-only values (Telegram played by the journey)
+        env:
+          MARKX_TELEGRAM_LINKING_ENABLED: "true"
+          MARKX_TELEGRAM_BOT_USERNAME: markx_test_only_bot
+          MARKX_TELEGRAM_WEBHOOK_SECRET: test-only-journey-webhook-secret-0123456789abcdef
+        run: |
+          $COMPOSE up -d --wait api
+          cd apps/web && node e2e/telegram-connection.mjs on "$RUNNER_TEMP/shots"
+      - name: Telegram linking off again
+        if: always()
+        run: $COMPOSE up -d --wait api
+
+      # D-085: the same build, served again with a Turnstile site key. The
+      # journey answers every request to challenges.cloudflare.com itself, so
+      # nothing reaches Cloudflare; the value is a placeholder, not a key.
+      - name: Turnstile widget on the sign-in page (Cloudflare replaced by a stand-in)
+        working-directory: apps/web
+        env:
+          MARKX_TURNSTILE_SITE_KEY: test-only-site-key
+        run: |
+          pkill -f "next start" || true
+          pkill -f next-server || true
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:3000/en || break; sleep 1; done
+          nohup npm run start > "$RUNNER_TEMP/web-turnstile.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/en > /dev/null && break; sleep 1; done
+          node e2e/turnstile-widget.mjs
+
+      - name: Server logs
+        if: always()
+        run: $COMPOSE logs --no-color api > "$RUNNER_TEMP/api.log" 2>&1 || true
+
+      - name: Keep the screenshots and server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journeys
+          path: |
+            ${{ runner.temp }}/shots
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
+            ${{ runner.temp }}/web-turnstile.log
+          retention-days: 7
+
+      - name: Stop Compose
+        if: always()
+        run: $COMPOSE down --volumes

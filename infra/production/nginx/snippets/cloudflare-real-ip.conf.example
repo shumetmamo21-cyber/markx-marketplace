@@ -1,0 +1,19 @@
+# NOT ENABLED. Only if the founder puts Cloudflare in front of the server
+# (blueprint F.13, M.2: Proposed) does every request arrive from one of
+# Cloudflare's addresses. Then:
+#
+# 1. Copy this file to cloudflare-real-ip.conf in the same folder.
+# 2. Replace the two example lines with Cloudflare's CURRENT ranges, from
+#    https://www.cloudflare.com/ips-v4 and https://www.cloudflare.com/ips-v6
+#    (they change; re-check them at every review). Do not copy ranges from
+#    anywhere else.
+# 3. Uncomment the include line in templates/markx.conf.template.
+# 4. Allow ports 80 and 443 on the server's firewall from those ranges only.
+#
+# Without step 4, anyone who finds the server's own address can bypass
+# Cloudflare and send any CF-Connecting-IP they like.
+#
+# set_real_ip_from 192.0.2.0/24;     # example only (a documentation range)
+# set_real_ip_from 2001:db8::/32;    # example only (a documentation range)
+real_ip_header CF-Connecting-IP;
+real_ip_recursive off;

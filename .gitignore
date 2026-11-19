@@ -1,0 +1,37 @@
+# Secrets and local environment — never commit real values
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+apps/web/next-env.d.ts
+
+# Local runtime data (uploaded files, fake SMS inbox)
+var/
+
+# Test and build output
+coverage/
+dist/
+build/
+playwright-report/
+test-results/
+
+# Editor and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

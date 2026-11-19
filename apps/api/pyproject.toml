@@ -1,0 +1,67 @@
+[project]
+name = "markx-api"
+version = "0.1.0"
+description = "MarkX marketplace API and background worker"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "alembic",
+    "psycopg[binary]",
+    "pydantic",
+    "pydantic-settings",
+    "argon2-cffi",
+    "pyotp",
+    "cryptography",
+    "pillow",
+    "python-multipart",
+    "boto3>=1.44.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx2",
+    "ruff",
+    "mypy",
+    "pip-audit",
+    "boto3-stubs[s3]>=1.44.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Any warning fails the suite, so deprecated API usage is fixed when it appears.
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "S", "T20", "RUF", "PT", "DTZ"]
+ignore = [
+    "E501",    # line length is the formatter's job
+    "S101",    # assert is how pytest works, and services use it for invariants
+    "RUF001",  # Amharic text legitimately contains characters ruff calls ambiguous
+    "RUF002",
+    "RUF003",
+    "B008",    # FastAPI declares dependencies as argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests build SQL from table names they control and run psql to rebuild the
+# test database; neither takes outside input.
+"tests/**" = ["S105", "S106", "S603", "S607", "S608", "DTZ"]
+"markx/core/config.py" = ["S105"]  # development-only defaults, refused on real servers
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/versions/"]
+
+[[tool.mypy.overrides]]
+module = ["pyotp.*"]
+ignore_missing_imports = true
