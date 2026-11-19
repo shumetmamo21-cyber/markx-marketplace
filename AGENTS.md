@@ -11,14 +11,15 @@ completely before you change anything.
    (consolidated edition 2.0, 16 November 2026), committed byte for byte.
    Read all of it. Section Q is addressed to you.
 2. **`docs/DEVELOPMENT_STATUS.md`** — what is built, what is tested, what is
-   not, known problems, and the exact next task. Start work from there.
+   not, and known problems. Next task: waiting for the founder's choice.
 3. **`docs/DECISIONS.md`** — engineering decisions, including every place the
    implementation departs from the blueprint and why.
 4. **`docs/ARCHITECTURE.md`** — how the code is organised.
 5. **`docs/SETUP.md`** — how to run and test the project.
 6. **`docs/HANDOFF.md`** — the previous session's report and the brief it left
-   for you: the next milestone, the commands, the traps already paid for, and
-   the decisions that are the founder's to make, not yours.
+   for you: the commands, the traps already paid for, and the decisions that
+   are the founder's to make, not yours. Next task: waiting for the founder's
+   choice.
 
 Then inspect the existing code and the Git history before writing anything.
 Do not assume a document is current if the code says otherwise; if they
@@ -110,10 +111,27 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
   or route docstring unless the web app changes in the same commit, and
   never give a new schema a name an existing one already has.
 
-## 4. The working branch
+## 4. Branches
 
-Work on **`claude/project-scaffold`**. Do not push to `main` without the
-founder's instruction. Do not open a pull request unless asked.
+Every session starts from the latest **`main`** and works on **its own new
+branch**. Never merge into `main` without the founder's written approval.
+Do not push to `main` without the founder's instruction. Do not open a pull
+request unless asked.
+
+`claude/project-scaffold` was the working branch until 19 November 2026,
+when it was merged into `main` through pull request #1. It is kept as it
+is; do not work on it.
+
+## 4a. How the founder works (D-095)
+
+- The founder works only from the Claude mobile app. Claude Code writes the
+  code and pushes its own branches.
+- A separate Claude Project is the founder's architect and planning hub.
+  Prompts come from there.
+- Reports to the founder are in plain English, without code, and are also
+  given as one Markdown file to download.
+- At the end of every session, update `docs/DEVELOPMENT_STATUS.md`,
+  `docs/DECISIONS.md` and `docs/HANDOFF.md` before reporting.
 
 ## 5. Running the checks
 
@@ -137,4 +155,6 @@ explains the one command that creates them.
 State what changed, how to see it, which tests ran with their commands and
 results, what is not verified, and what needs the founder's decision. Then
 update `docs/DEVELOPMENT_STATUS.md` so the next agent can continue without
-your conversation history.
+your conversation history. Section 4a adds the founder's rule: update
+`docs/DEVELOPMENT_STATUS.md`, `docs/DECISIONS.md` and `docs/HANDOFF.md`
+before giving the report.

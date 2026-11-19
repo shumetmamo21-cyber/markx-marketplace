@@ -1036,7 +1036,7 @@ was implemented):
 | Seller verification for used goods (F-04) | Every `used` offer needs Level 2, in every category | `USED_GOODS_MIN_LEVEL` in `markx/offers/service.py` |
 | A rejected applicant (F-05) | Needs a fresh invitation | invitation use in `markx/sellers/service.py` (D-019) |
 | Ownership transfer (F-02) | Not built: no route transfers a store | to be built once decided |
-| Document storage (F-01) | Local disk on a laptop only; refuses staging and production | `get_private_storage` in `markx/core/storage.py`: one new adapter class |
+| Document storage (F-01) | Local disk on a laptop only; refuses staging and production | `get_private_storage` in `markx/core/storage.py`: one new adapter class (note of 19 November 2026: that adapter now exists, the S3 and R2 store of D-090; F-01 itself is still open) |
 | Fulfilment hold (D-043) | A part still `confirmed` or `ready` 14 days after confirmation is cancelled and its stock freed; a part out for delivery is never touched. **Confirmed by the founder on 17 November 2026 as the provisional pilot policy** | the setting `orders.fulfilment_hold_days`, or the job `cancel_overdue_fulfilment` |
 | Merged products' offers (F-06), lifting a takedown (F-07) | As their F- entries say | as their F- entries say |
 
@@ -3222,6 +3222,31 @@ reads one file into memory (MarkX stores pictures of at most 20 MB); the
 weekly copy to the founder's drive (blueprint F.13) is the founder's choice
 of destination and is not automated (a second destination can be a second
 `backup` service with another `backup.env`).
+
+## D-095 How the founder works with Claude: the planning Project, the mobile app, branches and reports
+
+**The founder's decisions** (19 November 2026). **Decided.** They concern
+how work is asked for, done and reported; they change no code and no
+product rule.
+
+(a) A separate Claude Project is the architect and planning hub, and
+ChatGPT no longer writes prompts.
+
+(b) The founder works only from the Claude mobile app. Claude Code pushes
+its own branches, and `main` changes only on a merge the founder approves.
+
+(c) Each task comes as one prompt in plain words.
+
+(d) Every report is also given as one Markdown file to download.
+
+**Where it is applied:** `AGENTS.md` section 4 (every session starts from
+the latest `main` and works on its own new branch; never merge into `main`
+without the founder's written approval) and section 4a (the founder's
+working rules, including updating `docs/DEVELOPMENT_STATUS.md`,
+`docs/DECISIONS.md` and `docs/HANDOFF.md` at the end of every session
+before reporting); `CLAUDE.md`. Until this decision every session worked on
+`claude/project-scaffold`, which was merged into `main` through pull
+request #1 on 19 November 2026.
 
 ## Decisions that need the founder
 

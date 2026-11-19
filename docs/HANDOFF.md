@@ -4,7 +4,8 @@
 kept current at each pushed milestone; Parts A.00 and A.0 were added by the
 two back-end-only sessions that followed, Part A.000 by the ninth session
 and Part A.0000 by the tenth (both the web app's owner), and Parts A.00000
-to A.0000000 by the deployment, Telegram and backup sessions.
+to A.0000000 by the deployment, Telegram and backup sessions. Part
+A.00000000 was added on 19 November 2026 by the documents-repair session.
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -13,6 +14,40 @@ to A.0000000 by the deployment, Telegram and backup sessions.
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.00000000 — Documents repaired, audit saved (19 November 2026, D-095)
+
+Documents only: no code, test, migration, setting or workflow changed;
+nothing was deployed; no outside service but GitHub was used. In plain
+words, for the founder:
+
+- **Where things stand.** All the sessions' work was merged into `main` on
+  19 November 2026 through pull request #1 (merge commit `10a72b1`). CI run
+  133 and Browser journeys run 22 passed on that commit. Each session now
+  starts from the latest `main` on its own new branch, and nothing is merged
+  into `main` without your written approval (`AGENTS.md` section 4, D-095).
+- **The history is complete.** `main` holds all 125 commits (the 123 of
+  pull request #1, the initial commit and the merge commit). Nothing was
+  squashed: the state report's "51 commits" and "`daaee71` has no parent"
+  are what a shortened (50-commit) download shows. Old commit numbers in
+  these documents, such as `7c492c6`, `eab7c21` and `497fcf5`, are all in
+  `main`'s history. Details and proof: `docs/DEVELOPMENT_STATUS.md`, "State
+  on 19 November 2026".
+- **Two reports are now in the repository:** the read-only state report
+  (`docs/reports/2026-11-19-markx-readonly-audit-report.md`, copied
+  unchanged) and the 22-section independent audit
+  (`docs/reports/2026-11-19-independent-audit.md`, recovered word for word
+  from the audit session's record).
+- **The documents were corrected** where they disagreed with the code (the
+  state report's section 2); the eight confirmed defects (a to h) and the
+  audit's other findings are listed as known problems in
+  `docs/DEVELOPMENT_STATUS.md`. None of them is fixed: each needs a code
+  change.
+- **Your four decisions of 19 November 2026** are recorded as D-095 in
+  `docs/DECISIONS.md`.
+- **Next task: waiting for the founder's choice.**
 
 ---
 
@@ -84,8 +119,8 @@ runbooks (`docs/DEPLOYMENT.md`, `docs/runbooks/`). **Nothing was deployed and
 no account, server, domain or certificate was created.** MarkX is not
 production-ready: it cannot start on a real server until the founder
 decides F-01, F-11 and F-15, and it has no off-server backups (F-16) and no
-backups of stored files (F-14). The next engineering task is in
-`docs/DEVELOPMENT_STATUS.md`, "The exact next task".
+backups of stored files (F-14). Next task: waiting for the founder's
+choice.
 
 ---
 
@@ -363,8 +398,8 @@ checked end to end, then removed. **No real search query exists yet; the
 | Repository | `shumetmamo21-cyber/markx-marketplace` |
 | Working branch | `claude/project-scaffold` |
 | Latest head | see `git log -1 origin/claude/project-scaffold`; the commits of this session are listed in A.2 |
-| `main` | `617a276`, the initial commit. **Untouched.** |
-| Other branches | `claude/markx-engineering-p10-daa24c`, `claude/markx-seller-management-oag1a4`, `claude/markx-third-session-cq58yj`: kept, not touched |
+| `main` | `617a276`, the initial commit. **Untouched.** (Correction, 19 November 2026: since then, pull request #1 was merged; `main` is now `10a72b1`.) |
+| Other branches | `claude/markx-engineering-p10-daa24c`, `claude/markx-seller-management-oag1a4`, `claude/markx-third-session-cq58yj`: kept, not touched. (Correction, 19 November 2026: `claude/markx-engineering-p10-daa24c` is no longer on GitHub; who removed it and when is UNKNOWN.) |
 | Pull request | #1 exists for this branch (not opened in this session). Nothing was merged |
 
 ## A.2 What this session did, in order (each step pushed)
@@ -517,14 +552,16 @@ a back-end-only session follows the same brief with step 5b.
 
 You continue MarkX from its existing state. Do not rebuild anything.
 
-**1. Repository and branch.** `shumetmamo21-cyber/markx-marketplace`,
-branch **`claude/project-scaffold`**. Never touch `main` or delete a
-branch. Verify the head: `git fetch origin claude/project-scaffold && git
-log -5 FETCH_HEAD`.
+**1. Repository and branch.** `shumetmamo21-cyber/markx-marketplace`.
+Start from the latest **`main`** and work on your own new branch (`AGENTS.md`
+section 4; `claude/project-scaffold` was merged into `main` on 19 November
+2026 and is no longer worked on). Never merge into `main` without the
+founder's written approval, and never delete a branch. Verify the head:
+`git fetch origin main && git log -5 FETCH_HEAD`.
 
 **2. Read first:** `AGENTS.md`, `MARKX_MASTER_BLUEPRINT.md` (sections I and
 F.1 for the screens; C.3 and C.4 for who may do what), this file,
-`docs/DEVELOPMENT_STATUS.md` ("The exact next task"), `docs/DECISIONS.md`
+`docs/DEVELOPMENT_STATUS.md` (start with "State on 19 November 2026"), `docs/DECISIONS.md`
 (D-001 to D-083; D-043, D-050, D-053, D-076 and parts of D-062 to D-067 are
 provisional; F-01 to F-08 have PROVISIONAL answers in D-083 that the founder
 must confirm before going live), `docs/ARCHITECTURE.md`, `docs/SETUP.md`, and `apps/web/AGENTS.md`.
@@ -563,16 +600,19 @@ a new shop from its application to its first offer, and `node
 e2e/setup-and-account.mjs` staff setup, trust actions, the buyer's account,
 proposals and closing; `staff-journey.mjs` takes the secret too. Each signs a demo phone
 in once per run; the API allows five codes per phone per clock hour. The
-same six journeys run on GitHub, against a fresh demo database, on a push
-whose commit message contains `[journeys]` (D-081); that job raises the
-limit on its throwaway database. Push with it after changing a screen they
-cover.
+same journeys run on GitHub, against a fresh demo database, on every push
+that changes `apps/` or `infra/` (D-084; the `[journeys]` commit tag of
+D-081 is no longer needed); that job raises the limit on its throwaway
+database.
 
-**5. Task (the web app's owner):** first pick up any API additions made
+**5. Task.** Next task: waiting for the founder's choice. The open work is
+listed in `docs/DEVELOPMENT_STATUS.md` ("Open work for the founder to choose
+from"); do only what the founder chose. **When the founder's choice is web
+work (the web app's owner):** first pick up any API additions made
 since the tenth session: `cd apps/api && uv run python -m
 scripts.export_openapi ../web/src/lib/api/openapi.json`, then `cd ../web &&
 npm run gen:api` (D-061; it was current at the tenth session's last commit).
-Then the list in "The exact next task" in `docs/DEVELOPMENT_STATUS.md`.
+Then the work the founder chose.
 **Every route a person uses has its screen** (D-070 to D-078) except
 Telegram sign-in and linking, which wait for the bot. Check it again by
 comparing `apps/api/openapi.json` with the `/api/v1/...` paths in
@@ -587,8 +627,8 @@ boundary; the web app only shows what it returns and sends the member's
 choices. Every text in both message files; client components receive only
 the message sections they use. Test at 360 pixels.
 
-**5b. Task (a back-end-only session):** the back-end list in "The exact
-next task". Do not modify `apps/web`; add routes and schemas only, never
+**5b. A back-end-only session:** next task: waiting for the founder's
+choice; do only the back-end work the founder chose. Do not modify `apps/web`; add routes and schemas only, never
 change an existing one (D-061), and keep `apps/api/openapi.json` current
 (`uv run python -m scripts.export_openapi openapi.json`).
 
@@ -606,6 +646,11 @@ printed.
 ---
 
 # Part C — The project on one page
+
+**Note, 19 November 2026:** this page was written on 17 November 2026 and
+its numbers are from then. Today the schema has 75 tables and migrations
+run from `0001` to `0018`; for the current state see
+`docs/DEVELOPMENT_STATUS.md`, "State on 19 November 2026".
 
 | Blueprint phase | State |
 | --- | --- |
