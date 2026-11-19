@@ -1554,6 +1554,32 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Backup trust hardening** (D-096), on 19 November 2026, branch
+`claude/markx-backup-trust-hardening-4mmhxz` (commits `ffbfc39`, `2b4e179`,
+`f9b8c99`), PostgreSQL `postgres:17.12` and MinIO
+(`bitnamilegacy/minio:2025.7.23-debian-12-r5`) in Docker on the session's
+machine, the least-privilege MinIO users made by
+`infra/backup/minio-least-privilege.sh`. **No real provider, bucket or key
+was used; nothing left this machine.**
+
+```text
+# API, the whole suite (MinIO, the backup tests and their MinIO users required)
+$ MARKX_TEST_MINIO_MC="docker exec -i markx-minio mc" uv run pytest -q -p no:cacheprovider
+  ->  1789 passed in 798.56s (0:13:18)
+$ uv run ruff check .            ->  All checks passed!
+$ uv run ruff format --check .   ->  235 files already formatted
+$ uv run mypy markx              ->  Success: no issues found in 144 source files
+# The two CI drill steps, run locally with CI's exact commands and settings:
+#   rehearsal (no-delete key, read-only source key)    ->  DRILL PASSED, 7 of 7 faults refused
+#   off-server (read-only key, PostgreSQL --network none) ->  DRILL PASSED, 7 of 7 faults refused
+# The recovery container: NetworkMode=none, only "lo", "Network is unreachable".
+# The exact-grants test fails with prepare_for_owner_restore removed, passes with it.
+```
+
+GitHub: see `docs/reports/2026-11-19-backup-trust-hardening.md` for the run
+numbers on the pull request.
+
+
 **Off-server backup and disaster recovery** (D-094), on 18 November 2026,
 commits `c7d0d82` to `3922579` (on `866a184`), PostgreSQL 17 and MinIO
 (`bitnamilegacy/minio:2025.7.23`) in Docker on the session's machine,
