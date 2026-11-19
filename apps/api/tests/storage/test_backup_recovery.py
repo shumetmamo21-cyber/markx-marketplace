@@ -12,6 +12,15 @@ server's own image: `docker run --rm -i --network host -e PGHOST -e PGPORT
 -e PGUSER -e PGPASSWORD postgres:17 pg_dump`). Without them these tests are
 skipped, unless MARKX_TEST_BACKUP_REQUIRED=1 (CI), which fails instead.
 Nothing here reaches Amazon or Cloudflare; no customer data is used.
+
+**Least privilege (BK-17).** The backup is taken with the server's own kind
+of key, which can add, read and list the backup bucket but delete nothing;
+the stored files are read with a read-only key; a restore reads the backup
+bucket with a read-only key. The MinIO users come from
+infra/backup/minio-least-privilege.sh: run it first, or give the MinIO
+client command as MARKX_TEST_MINIO_MC (e.g. `docker exec -i markx-minio mc`)
+and the tests run it. Without them a laptop falls back to MinIO's root key
+(the tests that prove a key's limits are then skipped); CI requires them.
 """
 
 from __future__ import annotations
@@ -63,6 +72,7 @@ from tests.storage.conftest import _scratch_buckets
 from tests.unit.test_images import phone_jpeg
 
 DATABASE = "markx_test"
+SCRIPT = REPO_ROOT / "infra" / "backup" / "minio-least-privilege.sh"
 BOOTSTRAP = REPO_ROOT / "infra" / "postgres" / "bootstrap.sh"
 REQUIRED = os.environ.get("MARKX_TEST_BACKUP_REQUIRED") == "1"
 
@@ -111,6 +121,69 @@ def keys() -> crypto.GeneratedKeys:
     return crypto.generate_keys()
 
 
+# -- least-privilege MinIO users (BK-17; infra/backup/minio-least-privilege.sh) ---------------
+
+
+@dataclass(frozen=True)
+class Credentials:
+    access_key: str
+    secret_key: str
+
+
+@dataclass(frozen=True)
+class Users:
+    """Which key each part of the backup uses. `restricted` is False when
+    only MinIO's root key exists (a laptop without the users)."""
+
+    writer: Credentials  # the server's backup key: no delete
+    reader: Credentials  # a recovery machine's key: read and list only
+    retention: Credentials  # the retention job's key, off the server
+    source: Credentials  # reads the file buckets only
+    restore_target: Credentials  # makes the drill's own buckets
+    restricted: bool
+
+
+def _user(name: str) -> Credentials:
+    return Credentials(f"markx-{name}-dev-only", f"markx-{name}-dev-only-secret")
+
+
+def _exists(minio: ObjectStorageSettings, who: Credentials) -> bool:
+    from botocore.exceptions import ClientError
+
+    client = make_s3_client(replace(minio, access_key_id=who.access_key,
+                                    secret_access_key=who.secret_key))  # fmt: skip
+    try:
+        client.list_objects_v2(Bucket="markx-test-backups-probe", MaxKeys=1)
+    except ClientError as exc:
+        return exc.response.get("Error", {}).get("Code") != "InvalidAccessKeyId"
+    finally:
+        client.close()
+    return True
+
+
+@pytest.fixture(scope="session")
+def users(minio: ObjectStorageSettings) -> Users:
+    mc = os.environ.get("MARKX_TEST_MINIO_MC")
+    if mc:
+        subprocess.run([str(SCRIPT)], env={**os.environ, "MC": mc}, check=True,
+                       capture_output=True, timeout=120)  # fmt: skip
+    restricted = Users(_user("backup-writer"), _user("backup-reader"),
+                       _user("backup-retention"), _user("source-reader"),
+                       _user("restore-target"), True)  # fmt: skip
+    if _exists(minio, restricted.writer):
+        return restricted
+    if REQUIRED:
+        pytest.fail(
+            "the least-privilege MinIO users are required (infra/backup/minio-least-privilege.sh)"
+        )
+    root = Credentials(minio.access_key_id, minio.secret_access_key)
+    return Users(root, root, root, root, root, False)
+
+
+def _as(minio: ObjectStorageSettings, who: Credentials) -> ObjectStorageSettings:
+    return replace(minio, access_key_id=who.access_key, secret_access_key=who.secret_key)
+
+
 def _bucket(minio: ObjectStorageSettings, label: str) -> str:
     import secrets
 
@@ -136,6 +209,7 @@ def _destination(minio: ObjectStorageSettings, bucket: str, **overrides: Any) ->
 def _config(
     minio: ObjectStorageSettings, tools: Tools, work: Path, **overrides: Any
 ) -> BackupConfig:
+    """`minio` carries the key the stored files are read with."""
     settings: dict[str, Any] = {
         "env": "test", "release": "test-release", "database": DATABASE,
         "pg_dump_command": tools.pg_dump, "pg_restore_command": tools.pg_restore,
@@ -161,10 +235,17 @@ def _ctx(config: BackupConfig, minio: ObjectStorageSettings, destination: Any,
 @dataclass
 class Setup:
     ctx: BackupContext
+    # The server's backup key (no delete): what the backup itself uses.
     destination: S3Destination
     minio: ObjectStorageSettings
     keys: crypto.GeneratedKeys
     tools: Tools
+    # The same bucket with a recovery machine's read-only key: what a restore uses.
+    reader: S3Destination
+    # The same bucket with the retention job's key.
+    retention: S3Destination
+    users: Users
+    bucket: str
 
     @property
     def ring(self) -> dict[str, crypto.RecoveryKey]:
@@ -177,10 +258,18 @@ class Setup:
 
 @pytest.fixture
 def setup(on_minio: ObjectStorageSettings, tools: Tools, keys: crypto.GeneratedKeys,
-          backup_bucket: str, tmp_path: Path) -> Setup:  # fmt: skip
-    destination = _destination(on_minio, backup_bucket)
-    config = _config(on_minio, tools, tmp_path / "work")
-    return Setup(_ctx(config, on_minio, destination, keys), destination, on_minio, keys, tools)
+          backup_bucket: str, tmp_path: Path, users: Users) -> Setup:  # fmt: skip
+    """The API keeps its files in MinIO with its own (root) key; the backup
+    reads them with the read-only source key and writes with the server's
+    no-delete key; restores read with the read-only backup key."""
+    source = _as(on_minio, users.source)
+    destination = _destination(_as(on_minio, users.writer), backup_bucket)
+    config = _config(source, tools, tmp_path / "work")
+    ctx = _ctx(config, source, destination, keys)
+    return Setup(ctx, destination, on_minio, keys, tools,
+                 _destination(_as(on_minio, users.reader), backup_bucket),
+                 _destination(_as(on_minio, users.retention), backup_bucket),
+                 users, backup_bucket)  # fmt: skip
 
 
 @pytest.fixture
@@ -204,8 +293,9 @@ def _targets(
 
 
 def _restore(s: Setup, backup_id: str, target: str, files: FileTargets | None, **kw: Any) -> Any:
+    """A restore as a recovery machine does it: the backup bucket's read-only key."""
     return restore_set(
-        destination=s.destination, backup_id=backup_id, signers=s.signers, keys=s.ring,
+        destination=s.reader, backup_id=backup_id, signers=s.signers, keys=s.ring,
         server=SUPERUSER, target_db=target, confirm=kw.pop("confirm", target), files=files,
         bootstrap_script=BOOTSTRAP, psql_command=s.tools.psql,
         pg_restore_command=s.tools.pg_restore, **kw,
@@ -728,8 +818,13 @@ def test_the_wrong_recovery_key_restores_nothing(
 
 
 def test_the_recovery_drill_restores_compares_injects_failures_and_cleans_up(
-    setup: Setup, db: DbSession
+    setup: Setup, db: DbSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The drill's own throwaway buckets are made with a key for just that (BK-17).
+    monkeypatch.setenv("MARKX_RESTORE_TARGET_ACCESS_KEY_ID", setup.users.restore_target.access_key)
+    monkeypatch.setenv(
+        "MARKX_RESTORE_TARGET_SECRET_ACCESS_KEY", setup.users.restore_target.secret_key
+    )
     _marketplace(db)
     before = _listing(setup.minio)
     result = run_drill(setup.ctx, superuser=SUPERUSER, keys=setup.ring, signers=setup.signers,

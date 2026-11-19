@@ -64,8 +64,8 @@ def minio() -> Iterator[ObjectStorageSettings]:
         region="us-east-1",
         access_key_id=ACCESS_KEY,
         secret_access_key=SECRET_KEY,
-        private_bucket=f"markx-test-{_RUN}-private",
-        public_bucket=f"markx-test-{_RUN}-public",
+        private_bucket=f"markx-test-files-{_RUN}-private",
+        public_bucket=f"markx-test-files-{_RUN}-public",
     )
     client = make_s3_client(settings)
     buckets = [settings.private_bucket, settings.public_bucket]

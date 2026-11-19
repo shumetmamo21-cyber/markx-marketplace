@@ -32,9 +32,10 @@ ALIAS=markxlp
 # The backup buckets: CI's markx-backups and the tests' markx-test-backups-*.
 BACKUP_BUCKETS='"arn:aws:s3:::markx-backups", "arn:aws:s3:::markx-test-backups-*"'
 BACKUP_OBJECTS='"arn:aws:s3:::markx-backups/*", "arn:aws:s3:::markx-test-backups-*/*"'
-# The file buckets: CI's and the tests' (markx-test-<run>-private and -public).
-SOURCE_BUCKETS='"arn:aws:s3:::markx-private", "arn:aws:s3:::markx-public", "arn:aws:s3:::markx-test-*-private", "arn:aws:s3:::markx-test-*-public"'
-SOURCE_OBJECTS='"arn:aws:s3:::markx-private/*", "arn:aws:s3:::markx-public/*", "arn:aws:s3:::markx-test-*-private/*", "arn:aws:s3:::markx-test-*-public/*"'
+# The file buckets: CI's and the tests' (markx-test-files-<run>-private and -public).
+# (MinIO matches a wildcard at the end of a bucket name only.)
+SOURCE_BUCKETS='"arn:aws:s3:::markx-private", "arn:aws:s3:::markx-public", "arn:aws:s3:::markx-test-files-*"'
+SOURCE_OBJECTS='"arn:aws:s3:::markx-private/*", "arn:aws:s3:::markx-public/*", "arn:aws:s3:::markx-test-files-*/*"'
 
 $MC alias set "$ALIAS" "$URL" "$ROOT_USER" "$ROOT_PASSWORD" >/dev/null
 

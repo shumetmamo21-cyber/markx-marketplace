@@ -286,6 +286,30 @@ def create_database(
         raise RestoreFailed("bootstrap_failed")
 
 
+def prepare_for_owner_restore(owner: PgServer, name: str) -> None:
+    """Before a restore as the owner role, in the new, empty database: clear
+    the default privileges bootstrap.sh gave the owner's new tables.
+    Otherwise every table the restore creates would first get bootstrap's
+    grants (markx_app may update and delete everywhere) and the archive's own
+    grants would only add to them, so history tables such as the audit log
+    would lose their protection. The archive restores the source's default
+    privileges itself, at its end."""
+    try:
+        with owner.connect(name, autocommit=True) as conn:
+            conn.execute(
+                "alter default privileges for role markx_migrator in schema public "
+                "revoke all on tables from markx_app, markx_readonly"
+            )
+            conn.execute(
+                "alter default privileges for role markx_migrator in schema public "
+                "revoke all on sequences from markx_app, markx_readonly"
+            )
+    except psycopg.Error:
+        raise RestoreFailed(
+            "owner_login_failed: could not log in as markx_migrator (MARKX_RESTORE_OWNER_PASSWORD)"
+        ) from None
+
+
 def drop_database(server: PgServer, name: str) -> None:
     """Drop ONE database by name. Only ever called on a database this process
     itself created moments before (a failed restore, a drill)."""

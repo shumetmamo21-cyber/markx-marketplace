@@ -66,6 +66,7 @@ from markx.backup.database import (
     create_database,
     database_exists,
     drop_database,
+    prepare_for_owner_restore,
 )
 from markx.backup.database import restore as pg_restore
 from markx.backup.destination import Destination, DestinationError, ObjectMissing
@@ -579,6 +580,7 @@ def restore_set(
         )
         created = True
         owner = server.as_role("markx_migrator")
+        prepare_for_owner_restore(owner, target_db)
         pg_restore(
             server=owner, target=target_db, plaintext=_plaintext(verified.dump_path, keys),
             pg_restore_command=pg_restore_command, evidence_dir=scratch,

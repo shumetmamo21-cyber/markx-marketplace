@@ -407,11 +407,14 @@ dump="$(find "$backups/sets" -name database.dump.mxb 2>/dev/null | head -1)"
 [[ -n "$dump" && "$(stat -c %u "$dump")" == 999 && "$(stat -c %a "$dump")" == 600 ]] \
   && head -c 8 "$dump" | grep -q "MARKXBK" \
   && pass "the local copy is MXB2 ciphertext, owner 999, mode 600" || fail "local backup copy: $dump"
+# D-096 (BK-7): the drill logs in as the owner and application roles with
+# their passwords, and never resets one; the MARKX_DB_*_PASSWORD values,
+# which would, are refused on a server whose roles exist. (A real drill runs
+# on a separate recovery machine, BK-2; this one rehearses the code path.)
 if compose run --rm --no-deps -T \
     -v "$work/recovery.key:/run/recovery/recovery.key:ro" -v "$work/signer-public.key:/run/recovery/signer-public.key:ro" \
     -e PGUSER=postgres -e PGPASSWORD="$superuser_pw" \
-    -e MARKX_DB_MIGRATOR_PASSWORD="$migrator_pw" -e MARKX_DB_APP_PASSWORD="$app_pw" \
-    -e MARKX_DB_READONLY_PASSWORD="$readonly_pw" backup \
+    -e MARKX_RESTORE_OWNER_PASSWORD="$migrator_pw" -e MARKX_RESTORE_APP_PASSWORD="$app_pw" backup \
     python -m markx.backup drill --recovery-key /run/recovery/recovery.key --signer /run/recovery/signer-public.key \
     > "$work/drill.txt" 2>&1 && grep -q "DRILL PASSED" "$work/drill.txt" && grep -q "migration version: $before" "$work/drill.txt"; then
   pass "the recovery drill restores database and files into new targets, verified, and refuses every injected fault"

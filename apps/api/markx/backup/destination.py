@@ -408,7 +408,11 @@ class S3Destination:
 
     def _checked_lock(self, min_days: int) -> LockRule:
         """Refuse a bucket whose objects anyone could delete (BK-1). COMPLIANCE
-        only: a GOVERNANCE lock can be lifted by a key with the bypass right."""
+        only: a GOVERNANCE lock can be lifted by a key with the bypass right.
+        PROVISIONAL (D-096): requiring a lock, its mode and its minimum period
+        are for the founder to confirm with F-16. Whether Cloudflare R2's own
+        "bucket locks" answer this S3 call, and how, is NOT VERIFIED: if they
+        do not, an R2 bucket is refused here. Test it once F-16 is decided."""
         rule = self.lock_rule()
         if rule is None:
             raise DestinationError("object_lock_missing")

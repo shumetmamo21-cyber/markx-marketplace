@@ -324,10 +324,13 @@ def _keep_locked(ctx: BackupContext, blob: str, record: LedgerEntry, now: dateti
     needed = now + timedelta(days=ctx.config.object_lock_min_days)
     if record.locked_until is not None and datetime.fromisoformat(record.locked_until) >= needed:
         return
-    until = ctx.destination.extend_lock(
-        manifest_mod.blob_key(blob), now + timedelta(days=lock.days)
-    )
-    if until is None or until < needed:
+    # Whole seconds, rounded up: providers keep a lock date to the second or
+    # millisecond. The bucket's own period, so a blob is lengthened again only
+    # once that period minus the minimum has passed.
+    target = now + timedelta(days=max(lock.days, ctx.config.object_lock_min_days))
+    target = target.replace(microsecond=0) + timedelta(seconds=1)
+    until = ctx.destination.extend_lock(manifest_mod.blob_key(blob), target)
+    if until is None or until < needed - timedelta(seconds=1):
         raise VerificationFailed("object_not_locked", manifest_mod.blob_key(blob))
     record.locked_until = until.isoformat()
 

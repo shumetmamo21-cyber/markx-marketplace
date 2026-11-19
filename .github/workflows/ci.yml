@@ -20,7 +20,8 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:17
+        # BK-17: a pinned PostgreSQL 17 release, the production image's own.
+        image: postgres:17.12
         env:
           # A throwaway database inside the runner; the same development-only
           # password as docs/SETUP.md. Not a secret.
@@ -61,10 +62,11 @@ jobs:
       MARKX_TEST_MINIO_REQUIRED: "1"
       # D-094: the backup tests need PostgreSQL 17's client tools; the runner's
       # own are older, so the server's image runs them. Missing tools fail the
-      # run instead of skipping the tests.
-      MARKX_TEST_PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_dump
-      MARKX_TEST_PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_restore
-      MARKX_TEST_PSQL: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 psql
+      # run instead of skipping the tests. BK-17: pinned to 17.12.
+      MARKX_TEST_PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_dump
+      MARKX_TEST_PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_restore
+      MARKX_TEST_PSQL: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 psql
+      # Also requires the least-privilege MinIO users (made in a step below).
       MARKX_TEST_BACKUP_REQUIRED: "1"
     defaults:
       run:
@@ -80,6 +82,11 @@ jobs:
         run: uv sync --locked
       - name: Create the MarkX roles and database
         run: ../../infra/postgres/bootstrap.sh markx
+      # BK-17: the backup tests and the drills use least-privilege MinIO
+      # users, never the root key: the server's backup key cannot delete, the
+      # recovery machine's key and the file stores' key only read.
+      - name: Least-privilege MinIO users for the backup (development values only)
+        run: MC="docker exec -i ${{ job.services.minio.id }} mc" ../../infra/backup/minio-least-privilege.sh
       - name: Lint
         run: uv run ruff check .
       - name: Formatting
@@ -103,7 +110,9 @@ jobs:
       # (database and files) encrypted and uploaded to a MinIO backup bucket,
       # verified, restored into a NEW database and NEW buckets, compared, and
       # seven injected faults each refused. Keys are made for this run only.
-      # Nothing here reaches a real provider.
+      # Nothing here reaches a real provider. D-096 (BK-17): the backup uses
+      # the server's kind of key (no delete) and a read-only key for the
+      # files; the drill's own buckets are made with a key for just that.
       - name: Backup, off-server copy and recovery drill (MinIO stand-in)
         env:
           MARKX_FILE_STORAGE_PROVIDER: minio
@@ -114,21 +123,23 @@ jobs:
           MARKX_STORAGE_PUBLIC_BUCKET: markx-public
           MARKX_RELEASE: ${{ github.sha }}
           MARKX_BACKUP_DATABASE: markx
-          MARKX_BACKUP_PG_DUMP_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_dump
-          MARKX_BACKUP_PG_RESTORE_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 pg_restore
-          MARKX_BACKUP_PSQL_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17 psql
+          MARKX_BACKUP_PG_DUMP_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_dump
+          MARKX_BACKUP_PG_RESTORE_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_restore
+          MARKX_BACKUP_PSQL_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 psql
           MARKX_BACKUP_DESTINATION: minio
           MARKX_BACKUP_DESTINATION_ENDPOINT_URL: http://127.0.0.1:9000
           MARKX_BACKUP_DESTINATION_BUCKET: markx-backups
           MARKX_BACKUP_DESTINATION_PREFIX: markx/ci
-          MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID: markx-dev-only
-          MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+          MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID: markx-backup-writer-dev-only
+          MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY: markx-backup-writer-dev-only-secret
           MARKX_BACKUP_SOURCE_PROVIDER: minio
           MARKX_BACKUP_SOURCE_ENDPOINT_URL: http://127.0.0.1:9000
           MARKX_BACKUP_SOURCE_PRIVATE_BUCKET: markx-private
           MARKX_BACKUP_SOURCE_PUBLIC_BUCKET: markx-public
-          MARKX_BACKUP_SOURCE_ACCESS_KEY_ID: markx-dev-only
-          MARKX_BACKUP_SOURCE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
+          MARKX_BACKUP_SOURCE_ACCESS_KEY_ID: markx-source-reader-dev-only
+          MARKX_BACKUP_SOURCE_SECRET_ACCESS_KEY: markx-source-reader-dev-only-secret
+          MARKX_RESTORE_TARGET_ACCESS_KEY_ID: markx-restore-target-dev-only
+          MARKX_RESTORE_TARGET_SECRET_ACCESS_KEY: markx-restore-target-dev-only-secret
         run: |
           uv run python -m scripts.seed_demo > /dev/null
           keys="$RUNNER_TEMP/backup-keys"
@@ -139,7 +150,33 @@ jobs:
             --recovery-key "$keys/recovery.key" --signer "$keys/signer-public.key" \
             --report "$RUNNER_TEMP/restore-drill-report.json" | tee "$RUNNER_TEMP/restore-drill.txt"
           grep -q "DRILL PASSED" "$RUNNER_TEMP/restore-drill.txt"
-          rm -rf "$keys"
+      # D-096 (BK-2, BK-6): the monthly drill as the runbook has it, on a
+      # separate recovery machine: this runner plays it. No backup is taken;
+      # the newest set is read with the bucket's READ-ONLY key and restored
+      # into a throwaway PostgreSQL 17.12 container with no network at all,
+      # as the owner role, never the superuser. The server's signing key is
+      # not used: only the recovery key and the signer's public key.
+      - name: Off-server recovery drill (read-only key, throwaway PostgreSQL without network)
+        env:
+          MARKX_BACKUP_DESTINATION: minio
+          MARKX_BACKUP_DESTINATION_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_BACKUP_DESTINATION_BUCKET: markx-backups
+          MARKX_BACKUP_DESTINATION_PREFIX: markx/ci
+          MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID: markx-backup-reader-dev-only
+          MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY: markx-backup-reader-dev-only-secret
+          MARKX_RECOVERY_SOCKET_DIR: ${{ runner.temp }}/recovery-socket
+        run: |
+          keys="$RUNNER_TEMP/backup-keys"
+          eval "$(../../infra/backup/recovery-host.sh start)"
+          uv run python -m markx.backup drill --from-destination \
+            --recovery-key "$keys/recovery.key" --signer "$keys/signer-public.key" \
+            --report "$RUNNER_TEMP/offsite-drill-report.json" | tee "$RUNNER_TEMP/offsite-drill.txt"
+          ../../infra/backup/recovery-host.sh stop
+          grep -q "DRILL PASSED" "$RUNNER_TEMP/offsite-drill.txt"
+          grep -q "as the owner role (not a superuser)" "$RUNNER_TEMP/offsite-drill.txt"
+      - name: Remove the run's backup keys
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/backup-keys"
       - name: Keep the restore drill's report
         if: always()
         uses: actions/upload-artifact@v4
@@ -148,6 +185,8 @@ jobs:
           path: |
             ${{ runner.temp }}/restore-drill-report.json
             ${{ runner.temp }}/restore-drill.txt
+            ${{ runner.temp }}/offsite-drill-report.json
+            ${{ runner.temp }}/offsite-drill.txt
           if-no-files-found: warn
           retention-days: 30
 
