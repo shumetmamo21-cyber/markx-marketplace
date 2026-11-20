@@ -3,14 +3,21 @@
 # database, on GitHub's free hosted runners. Nothing here is deployed or paid
 # for. Any failing journey fails the run (D-081, D-084).
 #
-# It runs on every push that changes code or infrastructure; a push that
-# changes only documents does not start it. It can also be started from the
-# Actions tab once this file is on the default branch.
+# D-097: it runs on every pull request that changes code or infrastructure
+# (each push to it), on every push to main that does, and by hand from the
+# Actions tab on any branch. A change to documents only does not start it.
+# A push to a branch without a pull request does not start it either.
 name: Browser journeys
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/**"
+      - "infra/**"
+      - ".github/workflows/journeys.yml"
   push:
+    branches: [main]
     paths:
       - "apps/**"
       - "infra/**"
@@ -19,10 +26,14 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch supersedes a run in progress.
+# D-097: runs of one pull request share a group by its NUMBER (never by
+# branch name: a fork's branch may also be called main), so a newer push
+# cancels the older run of that pull request. A run on main has a group of
+# its own, so a newer run never cancels it, running or waiting. Started by
+# hand on another branch, a newer run of that branch supersedes the older.
 concurrency:
-  group: journeys-${{ github.ref }}
-  cancel-in-progress: true
+  group: journeys-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && format('main-{0}', github.run_id) || github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
 
 jobs:
   journeys:

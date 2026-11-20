@@ -17,7 +17,7 @@ domain.
 | Web app (`apps/web`) | Built (D-055): the storefront and the buyer's journey with reviews, report links and pictures (D-072, D-074), the account with its Telegram connection section (D-093), the category page and search suggestions (D-077), the whole seller dashboard from the application to closing (D-075, D-077), and a screen for every admin route (D-070, D-071, D-077). Not built: Telegram sign-in (needs the bot) |
 | Worker (`python -m markx.worker`) | Built: scheduled jobs and the outbox dispatcher, which carries notifications to Telegram and SMS with a delivery record per channel (D-092). **No real channel is connected**: no bot, no SMS provider, notification SMS off |
 | File storage | Built (D-090): one interface; local folders, MinIO, Amazon S3 and Cloudflare R2 by configuration. Tested against MinIO only; **no bucket or account exists** (F-01) |
-| Containers, CI | Built: a Compose file for a laptop with PostgreSQL and MinIO (D-058, D-090) and CI on every push |
+| Containers, CI | Built: a Compose file for a laptop with PostgreSQL and MinIO (D-058, D-090) and CI once per change: on each pull request, each push to `main` and by hand (D-097) |
 | Production stack (D-091) | **Prepared, never deployed**: production images for the API and the web app, a production Compose file (`infra/production/`) with the nginx reverse proxy, PostgreSQL, the worker, nightly encrypted dumps and a one-time migration step, `deploy.sh`, and a local rehearsal that CI runs. **No server, domain, certificate or bucket exists**; see `docs/DEPLOYMENT.md` |
 
 ## Repository layout

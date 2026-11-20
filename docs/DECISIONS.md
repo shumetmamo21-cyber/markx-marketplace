@@ -3393,6 +3393,129 @@ fixtures in `apps/api/tests/storage/test_backup_recovery.py`;
 `docs/runbooks/backup-and-restore.md`; `docs/DEPLOYMENT.md`;
 `infra/production/env/backup.env.example`.
 
+## D-097 Checks run once per change, documents-only changes skip the heavy jobs, a narrower secret-scan allow-list
+
+**Engineering decision, 20 November 2026.** CI configuration, the
+secret-scan settings, `.gitignore` and documents only: **no product code
+changed, nothing was deployed, no account was created, no money was spent.**
+
+**The problem.** `ci.yml` ran on `push` (every branch) and on
+`pull_request`. A push to a branch with an open pull request therefore
+started the full CI twice (pull request #4: runs 144 and 145 on `adf128a`,
+146 and 147 on `3085cc7`, 148 and 149 on `f7df3ec`). The concurrency group
+was `ci-${{ github.ref }}`, which is `refs/heads/<branch>` for the push and
+`refs/pull/<n>/merge` for the pull request: two different groups, so
+neither run could cancel the other.
+
+**What changed, and why.**
+
+- **One run per change (`ci.yml`).** CI runs on pushes to `main`, on pull
+  requests and by hand (`workflow_dispatch`). A push to a branch without a
+  pull request no longer runs it: open a pull request or start it by hand.
+- **Grouped by pull request number.** Runs of one pull request share the
+  group `ci-pr-<number>` with `cancel-in-progress`, so a newer push cancels
+  the older run of that pull request. Every other run (main, by hand) has a
+  group of its own (`ci-run-<run id>`) and is never cancelled. **Not by
+  branch name**: on a public repository a fork's pull request may come from
+  a branch also called `main`, and a branch-named group would let it cancel
+  main's runs.
+- **Documents-only changes skip the heavy jobs.** A new first job, "What
+  changed (documents only?)", compares the change with its base (a pull
+  request: its base commit; a push to main: the commit before the push;
+  `git diff --no-renames`, so a file moved into `docs/` also counts where it
+  left). A change is documents only when every changed file ends in `.md`
+  and is outside `apps/`, `infra/` and `.github/`. Then API, Web app,
+  Containers and the Production stack rehearsal are skipped. Anything it
+  cannot decide (started by hand, a new branch, a base it cannot find, an
+  empty comparison) counts as code: every job runs. **The Security job
+  (Gitleaks, pip-audit, npm audit) always runs**, documents included,
+  because a document can leak a secret as easily as code.
+- **Documents a test or check reads.** Searched before writing the rule:
+  no test, script, Dockerfile or workflow reads the text of any `.md` file
+  (they are only named in comments and messages, e.g.
+  `docs/runbooks/rollback.md` in `deploy.sh`; `test_provisional_decisions.py`
+  reads code under `markx/`, not `docs/DECISIONS.md`). The one reader is
+  Gitleaks, which always runs. The `.md` files inside `apps/`
+  (`apps/web/AGENTS.md`, `apps/api/migrations/README.md`) are inside the
+  images' build folders, so they count as code. The rule keeps a list,
+  `read_by_checks`, for any document a check reads in future.
+- **A single "CI result" job** runs last, always. It passes only when "What
+  changed" and Security passed and each heavy job passed (code change) or
+  was skipped (documents-only change). A failure, a cancellation, or a
+  heavy job skipped on a code change fails it. A documents-only pull request
+  therefore shows a passing result instead of waiting.
+- **A code change still runs every job it ran before**: API (with both
+  recovery drills), Web app, Security, Containers and the Production stack
+  rehearsal. Nothing in those jobs changed.
+- **Browser journeys (`journeys.yml`)** run on pull requests and on pushes
+  to `main` that touch `apps/`, `infra/` or the workflow (the same file
+  filters as before), and by hand on any branch. A pull request's runs
+  share the group `journeys-pr-<number>` (by number, never by branch name),
+  so a newer push cancels the older run of that pull request: one run per
+  push. A run on main has its own group (`journeys-main-<run id>`), so a
+  newer run never cancels it, running or waiting; started by hand on
+  another branch, a newer run of that branch supersedes the older. A push
+  to a branch without a pull request does not start them.
+- **Changed before merging, at the founder's request (20 November 2026).**
+  The first version of this pull request ran the journeys only on `main`
+  and by hand. The founder withdrew that instruction: a pull request that
+  changes the screens could then be merged before they ran. They start by
+  themselves on such pull requests again, as described above.
+- **W-1, the secret-scan allow-list (`.gitleaks.toml`).** The independent
+  audit (section 9: "Gitleaks line-level allowlist can hide real secrets")
+  found that `regexTarget = "line"` ignored a whole line containing
+  `dev-only`, `test-only` or `not-a-real-secret`, so a real key with a
+  "dev-only" comment beside it was never reported. The allow-lists now test
+  each pattern against the value Gitleaks found (`regexTarget = "secret"`),
+  and the three exact values (the development encryption key, the tests'
+  Fernet key, the public Turnstile test site key) are anchored with `^...$`.
+  Proved in a throwaway repository: a random key on a line commented
+  `# dev-only` was hidden by the old file and is reported by the new one;
+  `markx-dev-only-token-...` and the development key are still allowed.
+  Over the whole history (every branch and pull request) the new file finds
+  nothing.
+- **`.gitignore`** ignores `*.pem` and `*.key` (TLS, backup and signing
+  keys). No tracked file matched either pattern.
+
+**The whole-history secret scan (20 November 2026).** Every branch and
+every pull request's commits fetched (8 branches, pull requests #1 to #4;
+140 commits, 4 of them merges). Gitleaks 8.28.0 and TruffleHog 3.90.0 from
+their GitHub releases, checksums verified.
+
+- Gitleaks, default rules only, config kept outside the repository: 7
+  findings, all `generic-api-key`, all one of two labelled values: base64
+  of `test-only-not-a-real-key-32bytes` (the tests' Fernet key, 6) and of
+  `dev-only-encryption-key-32bytes!` (the development key in
+  `markx/core/config.py`, which staging and production refuse, 1). **Not
+  secrets.**
+- Gitleaks with the repository's `.gitleaks.toml`, old and new: no leaks.
+  Gitleaks reported 135 commits scanned where Git has 136 non-merge
+  commits; two of them only delete lines and cannot add a secret. Which
+  one Gitleaks did not count: UNKNOWN.
+- TruffleHog (`--no-verification`, so no candidate value was sent to any
+  provider): 0 verified, 2 unverified, both the test URL
+  `https://user:pass@...example` in tests that check such addresses are
+  refused. **Not secrets.**
+
+**Not verified.** Whether `main` has branch protection with required
+checks: UNKNOWN (no tool here reads it). Either way: GitHub counts a skipped
+job as passed, and "CI result" gives one name to require. The
+documents-only path ran locally against real commits; it runs on GitHub
+only once a documents-only pull request or push to main exists.
+
+**On GitHub (pull request #5, `ec64a85`):** the branch push started no
+run; opening the pull request started one, CI 151, which passed every job
+(What changed found code, so all ran, the production rehearsal included);
+Browser journeys 28, started by hand on the branch, passed. The next
+commit (`65d1669`, documents) started one run again, CI 152, which passed
+every job. The commit that makes the journeys start on pull requests
+again, and main's checks after the merge, are reported in the session
+report, not here, so recording them does not start more runs.
+
+**Where:** `.github/workflows/ci.yml`, `.github/workflows/journeys.yml`,
+`.gitleaks.toml`, `.gitignore`; `docs/SETUP.md` and `docs/ARCHITECTURE.md`
+(the journeys and CI triggers).
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
