@@ -39,6 +39,7 @@ from markx.notifications.models import (
     SmsStatus,
 )
 from markx.offers.models import Inventory, InventoryReservation, ReservationStatus
+from markx.orders import stalled
 from markx.orders.models import Order, OrderItem, OrderStatusEvent, SellerOrder, SellerOrderStatus
 from markx.payments.models import FeeCharge, LedgerEntry
 from markx.trust.models import (
@@ -284,6 +285,44 @@ def paid_orders_waiting(db: Session, now: datetime) -> list[Finding]:
             ),
             "paid part(s) have waited a day after a failed handover; they cannot go back "
             "to the shop until staff settle the buyer's money",
+        ),
+    )
+    findings = []
+    for key, condition, words in rules:
+        count, codes = _codes(db, condition)
+        if count:
+            findings.append(
+                Finding(
+                    key=key,
+                    severity="warning",
+                    summary=f"{count} {words} ({', '.join(codes)}).",
+                    details={"count": count, "order_codes": codes},
+                )
+            )
+    return findings
+
+
+def stalled_deliveries(db: Session, now: datetime) -> list[Finding]:
+    """Parts on the road, or after a failed handover, past their time limit
+    with nobody moving them on (M6, D-099; `orders.stalled`).
+
+    The system never ends such a part or releases its stock: the goods are
+    with a rider, the buyer or somewhere unknown. Staff follow it up with the
+    shop by order code. A paid part after a failed handover is left out: it is
+    reported a day after the failure by `paid_orders_waiting` (D-086)."""
+    rules: Sequence[tuple[str, Any, str]] = (
+        (
+            "orders.stalled_on_the_road",
+            stalled.stalled_on_the_road(db, now),
+            "part(s) have been out for delivery past their time limit and their promised "
+            "delivery time, with no handover and no failure recorded: follow them up with "
+            "the shop. Their stock stays held",
+        ),
+        (
+            "orders.stalled_after_failed_handover",
+            and_(stalled.stalled_after_failed_handover(db, now), SellerOrder.paid_at.is_(None)),
+            "part(s) have waited past their time limit after a failed handover, neither "
+            "sent again nor returned: follow them up with the shop. Their stock stays held",
         ),
     )
     findings = []
@@ -826,6 +865,7 @@ WATCH: tuple[Check, ...] = (
     outbox_problems,
     stuck_orders,
     paid_orders_waiting,
+    stalled_deliveries,
     overdue_problems,
     sms_budget,
     sms_failures,

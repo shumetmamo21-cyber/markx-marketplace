@@ -8,8 +8,9 @@ to A.0000000 by the deployment, Telegram and backup sessions. Part
 A.00000000 was added on 19 November 2026 by the documents-repair session,
 Part A.000000000 the same day by the backup trust hardening session, and
 Part A.0000000000 on 20 November 2026 by the checks and secret-scan
-session (D-097), and Part A.00000000000 the same day by the staff conflict
-and phone digits session (D-098).
+session (D-097), Part A.00000000000 the same day by the staff conflict
+and phone digits session (D-098), and Part A.000000000000 the same day by
+the order life-cycle hardening session (D-099).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -21,11 +22,68 @@ the checks actually printed.
 
 ---
 
+# Part A.000000000000 — Order life-cycle hardening (20 November 2026, D-099)
+
+On branch `claude/order-lifecycle-hardening-1djdof`, from `main` at
+`c70b338` (pull request #6, D-098, merged), with the complete history.
+One pull request into `main`, **not merged**: the founder says "merge
+approved" first. Product code, one migration, tests and documents.
+**Nothing deployed; no account; no money spent; no commission rule
+created.** In plain words:
+
+- **Deliveries that nobody finishes no longer wait for ever (M6).** An
+  order out for delivery for more than two days (never before its promised
+  delivery time), or waiting three days after a failed delivery with no
+  retry and no return, is now reported to staff by its order code. It stops
+  taking one of the buyer's three open-order places. It keeps its stock:
+  the system never ends it and never puts its goods back on sale, because
+  nobody knows where the goods are. The shop still finishes or returns it.
+- **A rival can no longer hold a shop's whole stock with one account
+  (H2).** Before the shop answers, one buyer's orders can hold at most 5 of
+  one item and 10 items of one shop. A buyer who cancels 3 orders in a day
+  waits until the first of those is a day old before ordering again. Other
+  buyers are never limited by one buyer's orders.
+- **The commission cap now works.** A capped rule can no longer charge
+  more than its cap. Commission stays at zero; no rule was created.
+- **A test proves sign-in limits hold in any digits** (from the pull
+  request #6 review).
+- **Seven PROVISIONAL values** (P-099-1 to P-099-7, listed in D-099) and a
+  new question, F-22: should staff get a button to close a stalled
+  delivery or release its stock?
+- **Next task: waiting for the founder's choice.**
+
+**For the next engineer:**
+
+- A fee is calculated only in `markx/payments/fees.py`
+  (`seller_order_fee`); order lines carry `commission_rule_id` and
+  `commission_cap_santim` copied at placement (`commission_rate`, which
+  replaced `commission_bps`).
+- "Stalled" is defined once, in `markx/orders/stalled.py`; the buyer's
+  open-order count and the watch check `stalled_deliveries` both use it.
+  Status events are append-only: tests move the clock forward (`now=`),
+  never the events back.
+- `place_order` refuses `unconfirmed_offer_limit`, `unconfirmed_store_limit`
+  and `cancellation_cooldown` under the buyer's cart lock. A new refusal
+  code needs words in `apps/web/messages/en.json` and `am.json`, or the web
+  shows the generic message.
+- The browser journeys all use the demo buyer 0911000950 and cancel
+  leftover orders first. On a fresh database they cancel nothing; on a
+  laptop database reused across many failed runs, the cool-down can refuse
+  their checkout. Reseed, or raise `orders.cancellations_before_cooldown`
+  on that laptop.
+- Never run two pytest runs at once: this session did, by mistake, and the
+  second dropped `markx_test` under the first.
+
+**Tests:** see "Tests executed", 20 November 2026 (D-099), in
+`docs/DEVELOPMENT_STATUS.md`.
+
+---
+
 # Part A.00000000000 — Staff conflict of interest, phone digits (20 November 2026, D-098)
 
 On branch `claude/staff-conflict-phone-fixes-qkiixq`, from `main` at
-`d01fef7` (pull request #5 merged), with one pull request into `main`
-that is **not merged**: the founder says "merge approved" first. Product
+`d01fef7` (pull request #5 merged), with one pull request into `main`,
+pull request #6, **merged on 20 November 2026 as `c70b338`**. Product
 code, tests and documents. **Nothing deployed; no account; no money
 spent.** In plain words:
 

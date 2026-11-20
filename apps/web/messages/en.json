@@ -305,6 +305,9 @@
   },
   "apiErrors": {
     "too_many_open_orders": "You already have the most open orders allowed. Wait until one is delivered or cancel one.",
+    "unconfirmed_offer_limit": "You have ordered as many of this item as MarkX allows before the shop answers. Wait for the shop to confirm, then order more.",
+    "unconfirmed_store_limit": "You have ordered as many items from this shop as MarkX allows before it answers. Wait for the shop to confirm, then order more.",
+    "cancellation_cooldown": "You cancelled several orders recently, so new orders are paused for a while. Please try again later.",
     "order_too_large": "This order is larger than MarkX accepts in one go. Split it into smaller orders.",
     "account_not_active": "Your account cannot place orders right now. Please contact MarkX.",
     "cart_empty": "Your cart is empty.",
