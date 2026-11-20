@@ -17,7 +17,7 @@ export type { ResilienceText };
 
 const Context = createContext<ResilienceText | null>(null);
 
-export function ResilienceProvider({ text, children }: { text: ResilienceText; children: ReactNode }) {
+export function ResilienceProvider({ text, children }: { text: ResilienceText; children?: ReactNode }) {
   return <Context.Provider value={text}>{children}</Context.Provider>;
 }
 

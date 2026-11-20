@@ -34,7 +34,7 @@ function thrown(): Error {
 
 function render(lang: Locale, Page: ComponentType<{ error: unknown; retry: () => void }>): string {
   const page = createElement(Page, { error: thrown(), retry: vi.fn() });
-  return renderToStaticMarkup(createElement(ResilienceProvider, { text: resilienceText(lang, MESSAGES[lang]), children: page }));
+  return renderToStaticMarkup(createElement(ResilienceProvider, { text: resilienceText(lang, MESSAGES[lang]) }, page));
 }
 
 const SECTIONS = [
@@ -102,7 +102,7 @@ describe("the whole-site error page", () => {
 
 describe("the problem notice", () => {
   const notice = (lang: Locale, props: Parameters<typeof ProblemNotice>[0]) =>
-    renderToStaticMarkup(createElement(ResilienceProvider, { text: resilienceText(lang, MESSAGES[lang]), children: createElement(ProblemNotice, props) }));
+    renderToStaticMarkup(createElement(ResilienceProvider, { text: resilienceText(lang, MESSAGES[lang]) }, createElement(ProblemNotice, props)));
 
   it("says the connection dropped, in the page's language, with try again", () => {
     for (const lang of LOCALES) {
