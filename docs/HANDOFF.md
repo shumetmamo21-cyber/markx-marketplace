@@ -8,7 +8,8 @@ to A.0000000 by the deployment, Telegram and backup sessions. Part
 A.00000000 was added on 19 November 2026 by the documents-repair session,
 Part A.000000000 the same day by the backup trust hardening session, and
 Part A.0000000000 on 20 November 2026 by the checks and secret-scan
-session (D-097).
+session (D-097), and Part A.00000000000 the same day by the staff conflict
+and phone digits session (D-098).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -20,11 +21,57 @@ the checks actually printed.
 
 ---
 
+# Part A.00000000000 — Staff conflict of interest, phone digits (20 November 2026, D-098)
+
+On branch `claude/staff-conflict-phone-fixes-qkiixq`, from `main` at
+`d01fef7` (pull request #5 merged), with one pull request into `main`
+that is **not merged**: the founder says "merge approved" first. Product
+code, tests and documents. **Nothing deployed; no account; no money
+spent.** In plain words:
+
+- **Staff can no longer judge their own case (H1).** A member of staff who
+  works in a shop cannot take staff decisions about that shop: its
+  problems with orders, its reviews, its listings and photos, reports
+  about it, sending its orders out, new handover codes, its product
+  proposals, and (as before) its verification. A member of staff who
+  bought something cannot handle their own order, and nobody moderates
+  their own review or closes their own report. They are told another
+  staff member must handle it, and the attempt is written in the audit
+  log. 19 staff actions are covered (D-098 lists them).
+- **There is no override (PROVISIONAL).** If no other staff member can
+  act, the case waits. Your question F-21: is that acceptable, or should
+  someone be able to unblock it?
+- **Also PROVISIONAL:** whoever filed a report cannot close it.
+- **Phone numbers typed with other digits now work (B-3).** Some phone
+  keyboards type Arabic or "wide" digits. They used to cause a server
+  error; they are now read as the normal digits, everywhere a phone number
+  is entered. Ethiopic numerals (፩ ፪ ፫), which have no zero and are not
+  used for phone numbers, get the normal "Enter an Ethiopian mobile
+  number" message.
+- **The documents no longer say pull request #5 (or #4) is not merged.**
+- **Next task: waiting for the founder's choice.**
+
+**For the next engineer:**
+
+- A new staff action that decides or changes something about a store, an
+  order, an offer, a review or a report must call
+  `markx.trust.conflict.refuse_conflict` as soon as it has found the thing,
+  and needs a test in `tests/api/test_staff_conflict.py` (insider refused
+  and recorded, outsider allowed).
+- Every phone number goes through `markx.core.phone.normalize_phone`;
+  never match a phone with `\d` (it matches every script's digits).
+- The refusal's audit row is written in its own transaction on purpose:
+  the request rolls back, the record must not.
+
+---
+
 # Part A.0000000000 — Checks once per change, secret scan (20 November 2026, D-097)
 
 On branch `claude/markx-checks-secret-scan-ik3o3z`, from `main` at
-`773bbb6` (pull request #4 merged), with one pull request into `main` that
-is **not merged**: the founder says "merge approved" first. CI settings,
+`773bbb6` (pull request #4 merged), with one pull request into `main`,
+**pull request #5, merged on 20 November 2026 as `d01fef7`** at the
+founder's written approval (CI 153 and Browser journeys 29 passed on
+`45f4f35`; CI 154 and Browser journeys 30 passed on `main` at `d01fef7`). CI settings,
 `.gitleaks.toml`, `.gitignore` and documents only. **No product code
 changed; nothing deployed; no account; no money spent.** In plain words:
 
@@ -56,10 +103,11 @@ Containers, Production stack rehearsal, CI result. **Browser journeys 28**,
 started by hand on the branch: **passed** (page weight and every journey).
 Before D-097 the same kind of change started two CI runs (pull request #4:
 144 and 145). The commit that recorded these results (`65d1669`) started
-CI 152, again one run, which passed all seven jobs. The last commit makes
-the journeys start on pull requests again; its runs, the merge and main's
-checks after it are in the session report, not here, so recording them
-does not start more runs.
+CI 152, again one run, which passed all seven jobs. The last commit
+(`45f4f35`) makes the journeys start on pull requests again: CI 153 and
+Browser journeys 29 passed on it. (Added on 20 November 2026 by D-098:)
+the pull request was merged as `d01fef7`, and CI 154 and Browser journeys
+30 passed on `main` there.
 
 **For the next engineer:**
 
@@ -80,8 +128,8 @@ does not start more runs.
 # Part A.000000000 — Backup trust hardening (19 November 2026, D-096)
 
 On branch `claude/markx-backup-trust-hardening-4mmhxz`, from `main` at
-`c4a1843`, with one pull request into `main` that is **not merged**: the
-founder says "merge approved" first. Built and tested with PostgreSQL 17.12
+`c4a1843`, with one pull request into `main`, **pull request #4, merged
+on 20 November 2026 as `773bbb6`**. Built and tested with PostgreSQL 17.12
 and MinIO only; **no money spent, no account created, nothing deployed, no
 real storage used.** In plain words, for the founder:
 
