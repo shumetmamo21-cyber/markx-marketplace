@@ -3606,6 +3606,13 @@ team is no longer refused. With the check switched off, 22 of 23 tests
 (these and the existing `test_a_staff_member_cannot_decide_about_their_own_store`)
 fail; the one that passes is the "left the team" test, as it should.
 
+**One existing test changed, not weakened.** Three tests in
+`tests/db/test_dispute_contention.py` decided disputes with
+`Actor(type="staff", user_id=<the buyer's id>)` ("any real user id will do
+here"): the buyer deciding their own dispute, which D-098 now refuses. They
+now act as the bazaar's own member of staff (`_staff`); every assertion is
+unchanged, and all four tests in the file pass.
+
 ### B-3: phone numbers with non-English digits
 
 **The problem.** `markx/core/phone.py` checked the last eight digits with
