@@ -38,8 +38,11 @@ changed; nothing deployed; no account; no money spent.** In plain words:
   production rehearsal) but still runs the secret scan, and the pull
   request still shows one passing "CI result". Any code change runs every
   job, production rehearsal included.
-- **Browser journeys** run when code reaches main, or by hand on any
-  branch. They no longer start by themselves on pull requests.
+- **Browser journeys** run on every pull request that changes code (one
+  run per push; a newer push cancels the older run), when code reaches
+  main, and by hand on any branch. (The first version ran them only on
+  main; you reversed that before merging, so a change to the screens is
+  always tested before it can be merged.)
 - **The secret scan's exceptions are narrower (W-1)** and `.gitignore`
   ignores key and certificate files.
 - **Next task: waiting for the founder's choice.**
@@ -52,16 +55,19 @@ so every job ran), Security, API (tests, both recovery drills), Web app,
 Containers, Production stack rehearsal, CI result. **Browser journeys 28**,
 started by hand on the branch: **passed** (page weight and every journey).
 Before D-097 the same kind of change started two CI runs (pull request #4:
-144 and 145). The commit that recorded these results started CI 152, again
-one run; its result is in the session report, not here, so recording it
-does not start yet another run.
+144 and 145). The commit that recorded these results (`65d1669`) started
+CI 152, again one run, which passed all seven jobs. The last commit makes
+the journeys start on pull requests again; its runs, the merge and main's
+checks after it are in the session report, not here, so recording them
+does not start more runs.
 
 **For the next engineer:**
 
 - A push to a branch with no pull request runs no CI. Open the pull
   request, or start CI by hand (Actions, CI, Run workflow).
-- Before merging a change to the screens, start Browser journeys by hand
-  on the branch.
+- Browser journeys start by themselves on a pull request that changes
+  `apps/`, `infra/` or `journeys.yml`; a documents-only pull request does
+  not start them (and so shows no journeys check at all).
 - If a check ever starts reading a document's text, add that file to
   `read_by_checks` in `ci.yml`'s "What changed" step, or a documents-only
   change to it will skip the tests.

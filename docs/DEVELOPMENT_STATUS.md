@@ -25,9 +25,11 @@ product code changed; nothing deployed; no account; no money.** Details:
   stack rehearsal; Security always runs; the new "CI result" job passes.
   No test or check reads a document's text (searched); a code change runs
   every job as before.
-- **Browser journeys**: pushes to `main` (same file filters) and by hand;
-  a run on main is never cancelled. They no longer run on every push to a
-  pull request's branch: start them by hand there.
+- **Browser journeys**: pull requests and pushes to `main` that change
+  code (same file filters as before), and by hand. A newer push cancels the
+  older run of the same pull request (grouped by its number); a run on
+  main is never cancelled. (The first version ran them only on `main`; the
+  founder reversed that before merging.)
 - **W-1 fixed:** the Gitleaks allow-list ignores only the labelled value
   itself, no longer a whole line. **`.gitignore`** ignores `*.pem`, `*.key`.
 
@@ -1105,8 +1107,8 @@ build, and a check that the generated API types are current). First runs:
 gate) runs with the others, the containers job also checks the CI Compose
 override and that the image starts uvicorn with `--no-proxy-headers`, and
 `journeys.yml` runs the page-weight check and all six journeys on **every
-push to `main` that changes `apps/`, `infra/` or the workflow, and by hand
-on any branch (D-097)**, against PostgreSQL,
+pull request and every push to `main` that changes `apps/`, `infra/` or the
+workflow, and by hand on any branch (D-097)**, against PostgreSQL,
 the migrations and the API from Compose. The history below describes D-081.
 
 `.github/workflows/journeys.yml` (D-081) runs the six browser journeys in
@@ -1147,7 +1149,8 @@ What it changed, in plain words:
 - **CI.** A `security` job (Gitleaks over all history, pip-audit, an npm
   audit gate), journeys on every code push against Compose, and the
   page-weight check. Details and the reasoning: D-084. Since D-097 the
-  journeys run on pushes to `main` and by hand.
+  journeys run on pull requests and pushes to `main` that change code, and
+  by hand.
 
 ### The search evaluator (P8 criteria; D-054)
 
@@ -1601,7 +1604,7 @@ old .gitleaks.toml -> not reported;  new .gitleaks.toml -> reported (generic-api
 labelled values (markx-dev-only-token-..., the development key) -> allowed by both
 # Workflows
 actionlint 1.7.7 (with shellcheck 0.11.0) ci.yml               ->  clean
-actionlint journeys.yml                                         ->  2 SC2034 warnings, both in unchanged lines (also before)
+actionlint journeys.yml (also with pull_request added)         ->  2 SC2034 warnings, both in unchanged lines (also before)
 # "What changed", run locally on real commits and test commits
 pull request, docs only (3085cc7)            -> code=false     pull request #4 as a whole  -> code=true
 push to main, docs only (f7df3ec)            -> code=false     new branch / by hand / bad base -> code=true
@@ -1614,8 +1617,10 @@ docs only, heavy skipped -> pass; docs only, security failed -> FAIL; "What chan
 
 GitHub, pull request #5 on `ec64a85`: CI 151 (one run, `pull_request`)
 passed all seven jobs, the production rehearsal included; Browser journeys
-28 (by hand) passed. The branch push alone started no run. Details:
-`docs/HANDOFF.md`, Part A.0000000000.
+28 (by hand) passed. The branch push alone started no run. On `65d1669`:
+CI 152 (one run) passed all seven jobs. The commit that makes the journeys
+start on pull requests again: its results, and main's after the merge, are
+in the session report. Details: `docs/HANDOFF.md`, Part A.0000000000.
 
 **Backup trust hardening** (D-096), on 19 November 2026, branch
 `claude/markx-backup-trust-hardening-4mmhxz` (commits `ffbfc39`, `2b4e179`,

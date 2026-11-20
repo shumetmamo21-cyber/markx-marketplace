@@ -3447,15 +3447,20 @@ neither run could cancel the other.
 - **A code change still runs every job it ran before**: API (with both
   recovery drills), Web app, Security, Containers and the Production stack
   rehearsal. Nothing in those jobs changed.
-- **Browser journeys (`journeys.yml`)** run on pushes to `main` that touch
-  `apps/`, `infra/` or the workflow (the same file filters as before), and
-  by hand on any branch. A run on main has its own group
-  (`journeys-main-<run id>`), so a newer run never cancels it, running or
-  waiting; on other branches a newer run of the same branch supersedes the
-  older. **Trade-off, at the founder's request:** they no longer run by
-  themselves on every push to a pull request's branch; start them by hand
-  on the branch (Actions, Browser journeys, Run workflow) before merging a
-  change to the screens.
+- **Browser journeys (`journeys.yml`)** run on pull requests and on pushes
+  to `main` that touch `apps/`, `infra/` or the workflow (the same file
+  filters as before), and by hand on any branch. A pull request's runs
+  share the group `journeys-pr-<number>` (by number, never by branch name),
+  so a newer push cancels the older run of that pull request: one run per
+  push. A run on main has its own group (`journeys-main-<run id>`), so a
+  newer run never cancels it, running or waiting; started by hand on
+  another branch, a newer run of that branch supersedes the older. A push
+  to a branch without a pull request does not start them.
+- **Changed before merging, at the founder's request (20 November 2026).**
+  The first version of this pull request ran the journeys only on `main`
+  and by hand. The founder withdrew that instruction: a pull request that
+  changes the screens could then be merged before they ran. They start by
+  themselves on such pull requests again, as described above.
 - **W-1, the secret-scan allow-list (`.gitleaks.toml`).** The independent
   audit (section 9: "Gitleaks line-level allowlist can hide real secrets")
   found that `regexTarget = "line"` ignored a whole line containing
@@ -3501,7 +3506,11 @@ only once a documents-only pull request or push to main exists.
 **On GitHub (pull request #5, `ec64a85`):** the branch push started no
 run; opening the pull request started one, CI 151, which passed every job
 (What changed found code, so all ran, the production rehearsal included);
-Browser journeys 28, started by hand on the branch, passed.
+Browser journeys 28, started by hand on the branch, passed. The next
+commit (`65d1669`, documents) started one run again, CI 152, which passed
+every job. The commit that makes the journeys start on pull requests
+again, and main's checks after the merge, are reported in the session
+report, not here, so recording them does not start more runs.
 
 **Where:** `.github/workflows/ci.yml`, `.github/workflows/journeys.yml`,
 `.gitleaks.toml`, `.gitignore`; `docs/SETUP.md` and `docs/ARCHITECTURE.md`
