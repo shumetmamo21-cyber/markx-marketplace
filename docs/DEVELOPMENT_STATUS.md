@@ -1,10 +1,37 @@
 # Development status
 
-**Last updated:** 19 November 2026, by the **backup trust hardening
-session** (D-096), on branch `claude/markx-backup-trust-hardening-4mmhxz`
-(not merged; the founder approves a merge). See "Backup trust hardening"
-just below. Before it, the documents-repair session (D-095) changed
-documents only.
+**Last updated:** 20 November 2026, by the **checks and secret-scan
+session** (D-097), on branch `claude/markx-checks-secret-scan-ik3o3z`
+(not merged; the founder approves a merge). See "Checks once per change"
+just below. Before it, the backup trust hardening session (D-096, pull
+request #4) was merged into `main` on 20 November 2026.
+
+## Checks once per change, secret scan (20 November 2026, D-097)
+
+CI settings, the secret-scan settings, `.gitignore` and documents only. **No
+product code changed; nothing deployed; no account; no money.** Details:
+`docs/DECISIONS.md`, D-097.
+
+- **Whole-history secret scan: nothing real found.** Every branch and pull
+  request (#1 to #4). Gitleaks 8.28.0 with default rules only: 7 findings,
+  all the two labelled development/test encryption keys. Gitleaks with
+  `.gitleaks.toml`: none. TruffleHog 3.90.0 (no verification): 2, both the
+  test address `https://user:pass@...example`.
+- **CI runs once per change.** Pull requests, pushes to `main`, by hand.
+  Grouped by pull request number; a newer push cancels the older run of
+  the same pull request; main's runs are never cancelled.
+- **Documents-only changes** (every changed file a `.md` outside `apps/`,
+  `infra/`, `.github/`) skip API, Web app, Containers and the Production
+  stack rehearsal; Security always runs; the new "CI result" job passes.
+  No test or check reads a document's text (searched); a code change runs
+  every job as before.
+- **Browser journeys**: pushes to `main` (same file filters) and by hand;
+  a run on main is never cancelled. They no longer run on every push to a
+  pull request's branch: start them by hand there.
+- **W-1 fixed:** the Gitleaks allow-list ignores only the labelled value
+  itself, no longer a whole line. **`.gitignore`** ignores `*.pem`, `*.key`.
+
+**Test results:** see "Tests executed", 20 November 2026 (D-097).
 
 ## Backup trust hardening (19 November 2026, D-096)
 
@@ -180,7 +207,7 @@ point into
   - L4: OTP, session, SMS and notification rows are kept for ever; data
     requests are stored but never processed;
   - the Gitleaks allowlist matches whole lines, which could hide a real
-    secret;
+    secret (**fixed by D-097**, W-1: only the labelled value is ignored);
   - secrets are passed as environment variables, and one `secret_key`
     serves every purpose with no rotation overlap;
   - the Low findings L1 to L9 of audit §9;
@@ -1078,7 +1105,8 @@ build, and a check that the generated API types are current). First runs:
 gate) runs with the others, the containers job also checks the CI Compose
 override and that the image starts uvicorn with `--no-proxy-headers`, and
 `journeys.yml` runs the page-weight check and all six journeys on **every
-push that changes `apps/`, `infra/` or the workflow**, against PostgreSQL,
+push to `main` that changes `apps/`, `infra/` or the workflow, and by hand
+on any branch (D-097)**, against PostgreSQL,
 the migrations and the API from Compose. The history below describes D-081.
 
 `.github/workflows/journeys.yml` (D-081) runs the six browser journeys in
@@ -1118,7 +1146,8 @@ What it changed, in plain words:
 - **SEC-6 (low), fixed.** Anti-forgery exemptions by exact path; none today.
 - **CI.** A `security` job (Gitleaks over all history, pip-audit, an npm
   audit gate), journeys on every code push against Compose, and the
-  page-weight check. Details and the reasoning: D-084.
+  page-weight check. Details and the reasoning: D-084. Since D-097 the
+  journeys run on pushes to `main` and by hand.
 
 ### The search evaluator (P8 criteria; D-054)
 
@@ -1553,6 +1582,37 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Checks once per change, secret scan** (D-097), on 20 November 2026,
+branch `claude/markx-checks-secret-scan-ik3o3z`, from `main` at `773bbb6`
+with the complete history (not shallow), every branch and every pull
+request's commits fetched. Tools from their GitHub releases, checksums
+verified. **No product code changed, so the API and web suites were not
+re-run locally; GitHub runs them on the pull request.**
+
+```text
+# Secret scan, every branch and pull request (git log --all; 140 commits, 4 merges)
+gitleaks 8.28.0, default rules only (config outside the repo)  ->  7 findings, all labelled dev/test keys
+gitleaks 8.28.0, the repository's .gitleaks.toml (old and new) ->  no leaks found
+gitleaks dir (working tree), the new .gitleaks.toml            ->  no leaks found
+trufflehog 3.90.0 git --no-verification                        ->  0 verified, 2 unverified (test URLs user:pass@...example)
+# W-1, a throwaway repository: a random key on a line commented "# dev-only"
+old .gitleaks.toml -> not reported;  new .gitleaks.toml -> reported (generic-api-key)
+labelled values (markx-dev-only-token-..., the development key) -> allowed by both
+# Workflows
+actionlint 1.7.7 (with shellcheck 0.11.0) ci.yml               ->  clean
+actionlint journeys.yml                                         ->  2 SC2034 warnings, both in unchanged lines (also before)
+# "What changed", run locally on real commits and test commits
+pull request, docs only (3085cc7)            -> code=false     pull request #4 as a whole  -> code=true
+push to main, docs only (f7df3ec)            -> code=false     new branch / by hand / bad base -> code=true
+apps/.../README.md renamed into docs/        -> code=true      apps/web/AGENTS.md          -> code=true
+README.md + AGENTS.md + docs/runbooks/*.md   -> code=false     docs/notes.txt, .gitignore  -> code=true
+# "CI result", every case
+code, all passed -> pass; code, one failed / cancelled / skipped -> FAIL
+docs only, heavy skipped -> pass; docs only, security failed -> FAIL; "What changed" failed -> FAIL
+```
+
+GitHub results: see `docs/HANDOFF.md`, Part A.0000000000.
 
 **Backup trust hardening** (D-096), on 19 November 2026, branch
 `claude/markx-backup-trust-hardening-4mmhxz` (commits `ffbfc39`, `2b4e179`,

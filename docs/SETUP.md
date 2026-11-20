@@ -709,10 +709,11 @@ replaced by a stand-in; start the web app with
 `node e2e/page-weight.mjs` checks the page weight of five pages against the
 ceilings of D-084 and exits 1 when one is over (production build only).
 
-On GitHub the page-weight check and the same journeys run on every push that
-changes code (`apps/`, `infra/` or the workflow), against PostgreSQL, the
-migrations and the API started from Compose with a fresh demo database
-(`infra/compose/compose.ci.yaml` shares the picture folder with the runner),
-or from the Actions tab once the workflow is on the default branch. A failing
+On GitHub the page-weight check and the same journeys run on every push to
+`main` that changes code (`apps/`, `infra/` or the workflow), against
+PostgreSQL, the migrations and the API started from Compose with a fresh
+demo database (`infra/compose/compose.ci.yaml` shares the picture folder
+with the runner), or by hand from the Actions tab on any branch, a pull
+request's branch included (D-097). A failing
 journey fails the run, which keeps its screenshots and server logs for a
 week (D-081, D-084).

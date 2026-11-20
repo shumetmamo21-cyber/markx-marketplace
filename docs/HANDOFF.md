@@ -6,7 +6,9 @@ two back-end-only sessions that followed, Part A.000 by the ninth session
 and Part A.0000 by the tenth (both the web app's owner), and Parts A.00000
 to A.0000000 by the deployment, Telegram and backup sessions. Part
 A.00000000 was added on 19 November 2026 by the documents-repair session,
-and Part A.000000000 the same day by the backup trust hardening session.
+Part A.000000000 the same day by the backup trust hardening session, and
+Part A.0000000000 on 20 November 2026 by the checks and secret-scan
+session (D-097).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -15,6 +17,45 @@ and Part A.000000000 the same day by the backup trust hardening session.
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000000000 — Checks once per change, secret scan (20 November 2026, D-097)
+
+On branch `claude/markx-checks-secret-scan-ik3o3z`, from `main` at
+`773bbb6` (pull request #4 merged), with one pull request into `main` that
+is **not merged**: the founder says "merge approved" first. CI settings,
+`.gitleaks.toml`, `.gitignore` and documents only. **No product code
+changed; nothing deployed; no account; no money spent.** In plain words:
+
+- **No secret was ever committed.** The whole history, every branch and
+  pull request, was scanned with two tools. They found only values labelled
+  as development or test values, and two made-up test web addresses.
+- **Each change now starts one CI run, not two.** CI runs on pull
+  requests, on main, and by hand. A newer push to a pull request cancels
+  its older run; main's runs are never cancelled.
+- **A change to documents only** skips the long jobs (tests, images,
+  production rehearsal) but still runs the secret scan, and the pull
+  request still shows one passing "CI result". Any code change runs every
+  job, production rehearsal included.
+- **Browser journeys** run when code reaches main, or by hand on any
+  branch. They no longer start by themselves on pull requests.
+- **The secret scan's exceptions are narrower (W-1)** and `.gitignore`
+  ignores key and certificate files.
+- **Next task: waiting for the founder's choice.**
+
+**For the next engineer:**
+
+- A push to a branch with no pull request runs no CI. Open the pull
+  request, or start CI by hand (Actions, CI, Run workflow).
+- Before merging a change to the screens, start Browser journeys by hand
+  on the branch.
+- If a check ever starts reading a document's text, add that file to
+  `read_by_checks` in `ci.yml`'s "What changed" step, or a documents-only
+  change to it will skip the tests.
+- The allow-list in `.gitleaks.toml` is tested against the secret value
+  only: a new labelled test value must carry `dev-only`, `test-only` or
+  `not-a-real-secret` in the value itself.
 
 ---
 
