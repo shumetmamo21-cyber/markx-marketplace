@@ -14,15 +14,25 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from markx.accounts.models import User
 from markx.audit.service import Actor
 from markx.core.db import get_engine, session_scope
 from markx.core.errors import AppError
+from markx.core.phone import normalize_phone
 from markx.orders import service
 from markx.orders.models import SellerOrder
 from markx.payments.models import FeeCharge
 from markx.trust.models import CaseDecision, DisputeCase, DisputeMessage
-from tests.bazaar import Bazaar, assert_stock_is_consistent, stock
+from tests.bazaar import ADMIN, Bazaar, assert_stock_is_consistent, stock
 from tests.db.test_fulfilment_contention import Parcel, _assert_every_move_is_an_arrow, _race
+
+
+def _staff(db: Session) -> Actor:
+    """The bazaar's own member of staff. Not the buyer: staff never decide on
+    an order they placed (D-098)."""
+    user_id = db.scalar(select(User.id).where(User.phone == normalize_phone(ADMIN)))
+    assert user_id is not None
+    return Actor(type="staff", user_id=user_id)
 
 
 @pytest.fixture
@@ -91,7 +101,7 @@ def test_two_decisions_and_a_reply_race_on_one_case(bazaar: Bazaar, db: Session)
             session, parcel.buyer_user(session), parcel.order_id, parcel.so_id,
             problem_type="wrong_item", description="A different colour.",
         )  # fmt: skip
-    staff = Actor(type="staff", user_id=parcel.buyer_user_id)  # any real user id will do here
+    staff = _staff(db)
 
     def task(index: int) -> Any:
         with session_scope() as session:
@@ -156,7 +166,7 @@ def test_a_decision_reads_the_clock_only_once_it_holds_the_order(
             problem_type="wrong_item", description="A different colour.",
         )  # fmt: skip
     db.rollback()
-    staff = Actor(type="staff", user_id=parcel.buyer_user_id)
+    staff = _staff(db)
     real_now = service._now
     held_when_read: list[bool] = []
 

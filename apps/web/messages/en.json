@@ -418,6 +418,8 @@
     "verification_requirements_unmet": "That level needs checks that are not complete yet.",
     "level_invalid": "Choose a level from 0 to 3.",
     "conflict_of_interest": "You belong to this shop, so another staff member must decide.",
+    "conflict_own_order": "You placed this order, so another staff member must handle it.",
+    "conflict_own_submission": "You wrote this yourself, so another staff member must handle it.",
     "not_awaiting_review": "This application is not waiting for a decision.",
     "open_orders_remain": "Finish, decline or cancel the shop's open orders before closing it.",
     "zone_code_taken": "That zone code is taken.",

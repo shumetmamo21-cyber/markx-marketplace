@@ -40,6 +40,7 @@ from markx.core.ethiopic import detect_script, normalize_text
 from markx.core.slugs import slugify
 from markx.offers.models import Offer
 from markx.search import service as search
+from markx.trust import conflict
 
 MAX_CATEGORY_DEPTH = 3
 MAX_VARIANTS_PER_PRODUCT = 60
@@ -655,8 +656,17 @@ def _change_status(
     return product
 
 
+def _refuse_own_proposal(db: Session, actor: Actor, product: Product, action: str) -> None:
+    """D-098: staff never decide on a product their own store proposed or owns."""
+    conflict.refuse_conflict(
+        db, actor, action=action, target_type="product", target_id=product.id,
+        seller_ids=[product.proposed_by_seller_id, product.owner_seller_id],
+    )  # fmt: skip
+
+
 def approve_product(db: Session, actor: Actor, product_id: uuid.UUID) -> Product:
     product = get_product(db, product_id)
+    _refuse_own_proposal(db, actor, product, "product.approve")
     if product.status not in (ProductStatus.DRAFT, ProductStatus.PENDING_REVIEW):
         raise Conflict("product_not_approvable", "Only a draft or a proposal can be approved.")
     return _change_status(db, actor, product, ProductStatus.APPROVED, "product.approve")
@@ -667,6 +677,7 @@ def archive_product(
 ) -> Product:
     """Take a product out of the catalogue. Also how a proposal is rejected."""
     product = get_product(db, product_id)
+    _refuse_own_proposal(db, actor, product, "product.archive")
     if product.status == ProductStatus.MERGED:
         raise Conflict("product_not_editable", "This product was merged into another.")
     if product.status == ProductStatus.ARCHIVED:
@@ -693,6 +704,8 @@ def merge_product(db: Session, actor: Actor, source_id: uuid.UUID, into_id: uuid
     source, target = locked.get(source_id), locked.get(into_id)
     if source is None or target is None:
         raise NotFound("product_not_found", "That product was not found.")
+    _refuse_own_proposal(db, actor, source, "product.merge")
+    _refuse_own_proposal(db, actor, target, "product.merge")
     if source.status == ProductStatus.MERGED:
         raise Conflict("product_already_merged", "That product was already merged.")
     if target.status != ProductStatus.APPROVED:

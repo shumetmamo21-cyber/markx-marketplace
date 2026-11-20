@@ -65,6 +65,7 @@ from markx.notifications.models import Outbox
 from markx.offers.models import Offer, OfferStatus
 from markx.orders.models import Order, SellerOrder
 from markx.sellers.models import Seller, SellerMember, SellerStatus
+from markx.trust import conflict
 from markx.trust.models import CaseStatus, DisputeCase, ProblemPhoto
 
 TOPIC_RENDER = "images.render"
@@ -214,6 +215,10 @@ def remove_image(db: Session, actor: Actor, image_id: uuid.UUID, *, reason: str)
     image = db.scalar(select(ProductImage).where(ProductImage.id == image_id).with_for_update())
     if image is None:
         raise NotFound("image_not_found", "That picture was not found.")
+    conflict.refuse_conflict(
+        db, actor, action="product_image.remove", target_type="product_image",
+        target_id=image.id, seller_ids=[image.seller_id],
+    )  # fmt: skip
     if image.status == ImageStatus.REMOVED:
         raise Conflict("image_already_removed", "That picture was already removed.")
     before = image.status

@@ -3509,12 +3509,157 @@ run; opening the pull request started one, CI 151, which passed every job
 Browser journeys 28, started by hand on the branch, passed. The next
 commit (`65d1669`, documents) started one run again, CI 152, which passed
 every job. The commit that makes the journeys start on pull requests
-again, and main's checks after the merge, are reported in the session
-report, not here, so recording them does not start more runs.
+again (`45f4f35`): CI 153 and Browser journeys 29 passed. (Added by D-098:)
+merged into `main` on 20 November 2026 as `d01fef7`; CI 154 and Browser
+journeys 30 passed on `main` there.
 
 **Where:** `.github/workflows/ci.yml`, `.github/workflows/journeys.yml`,
 `.gitleaks.toml`, `.gitignore`; `docs/SETUP.md` and `docs/ARCHITECTURE.md`
 (the journeys and CI triggers).
+
+## D-098 One staff conflict-of-interest check for every staff decision (H1); phone numbers in any digits (B-3)
+
+**Engineering decision, 20 November 2026.** Follows the blueprint (C.5:
+nobody decides their own case; P.1: one stored form of a phone number).
+Product code, tests and documents. **Nothing deployed, no account created,
+no money spent.** Branch `claude/staff-conflict-phone-fixes-qkiixq`, from
+`main` at `d01fef7`.
+
+### H1: staff conflict of interest
+
+**The problem (independent audit, §8, §9, §11; earlier finding b).** The
+check `_refuse_own_seller` (`sellers/service.py`) was used only by seller
+verification. A member of staff who belonged to a store could still decide
+its disputes, hide or publish its reviews, take its offers down or restore
+them, close reports about it, dispatch its orders and reissue its handover
+codes; a member of staff who placed an order could do the same to their own
+order (reissuing one's own handover code resets the lock after wrong
+codes). A refused attempt was not recorded anywhere.
+
+**What changed.** One shared check, `refuse_conflict` in
+`markx/trust/conflict.py`. Each staff action calls it as soon as it has
+found the thing it acts on and before it changes anything. It refuses:
+
+- an active member of any store concerned (`conflict_of_interest`, the
+  existing code and message: "You belong to this seller, so another staff
+  member must decide.");
+- the buyer of the order concerned (`conflict_own_order`: "You placed this
+  order, so another staff member must handle it.");
+- the author of the review or report concerned (`conflict_own_submission`:
+  "You wrote this yourself, so another staff member must handle it.").
+
+Each refusal is HTTP 403 and is written to the audit log as
+`staff.conflict_refused` (the actor, the thing, `after.attempted` the
+action, `after.reason` `own_store`, `own_order` or `own_submission`, and
+the store). The row is written in its own short transaction
+(`session_scope`, as `notifications/delivery.py` does), because the
+request itself fails and rolls back. The web app shows the two new codes
+in English and Amharic (`apps/web/messages/*.json`; the Amharic wording,
+like the rest, awaits a native editor). `_refuse_own_seller` now calls the
+shared check, so seller verification behaves as before and its refusals are
+recorded too.
+
+**Every staff action covered** (19):
+
+| Action (route under `/admin`) | Store checked | Also refused |
+| --- | --- | --- |
+| Seller: request documents, approve, reject, verification level, recheck, suspend, reinstate (`/sellers/{id}/...`) | the seller | (already checked before D-098; now recorded) |
+| Seller document review (`/sellers/{id}/documents/{doc}/review`) | the seller | (already checked; now recorded) |
+| Offer takedown, restore (`/offers/{id}/remove`, `/restore`) | the offer's seller | |
+| Staff dispatch (`/orders/seller-orders/{id}/dispatch`) | the seller order's seller | the order's buyer |
+| Reissue handover code (`.../reissue-code`) | the seller order's seller | the order's buyer |
+| Resolve a problem (dispute) (`.../resolve-problem`) | the seller order's seller | the order's buyer |
+| Moderate a review, publish or hide (`/reviews/{id}/moderate`) | the reviewed seller | the review's author |
+| Resolve a report, one or all on its target (`/reports/{id}/resolve`) | the store of the reported offer, store or review; for a product, the store that proposed it | every reporter of the reports closed, and the author of a reported review (P-098-2) |
+| **Not in the audit's list:** remove a picture (`/catalog/images/{id}/remove`) | the store whose real photo it is (none for a catalogue picture) | |
+| **Not in the audit's list:** approve, archive (reject), merge a product (`/catalog/products/{id}/...`) | the store that proposed or owns it (both products of a merge) | |
+
+**Searched and not covered, with the reason.** Every mutating route behind
+`require_staff` was listed from the routers. The rest decide nothing about
+a particular store, order, offer or review: categories, attributes,
+brands, creating catalogue products and pictures, restricted terms,
+delivery zones and rates, search synonyms, settings, staff accounts
+(`/admin/staff`), exports (reading), opening a seller's document (reading,
+a five-minute link), and seller invitations (an invitation names a phone
+number, not a store; approving the application it leads to is checked).
+Editing the text, variants or aliases of a product a store proposed is not
+checked either: it is editing, not a decision, and the approval is checked.
+Whether the founder wants those checked too: a question, not decided here.
+
+**PROVISIONAL, for the founder to confirm.**
+
+- **P-098-1. No override.** When no other member of staff can act (for
+  example only one person holds the role), the case waits. There is no
+  "act anyway" path, by instruction. The question is F-21 below
+  (`markx/trust/conflict.py`).
+- **P-098-2. Whoever filed a report may not close it**, nor a report about
+  their own review, so a member of staff cannot report a rival store and
+  then action the report (`markx/reports/service.py`). The safest default;
+  the founder may prefer to allow it.
+
+**Proof.** `tests/api/test_staff_conflict.py`, 22 tests: for each action
+above the insider (a store member, or the order's buyer, or the author) is
+refused with the right code and message, the attempt is in the audit log
+with its reason, nothing changed, and an unrelated member of staff is then
+allowed; a refusal asked twice is recorded twice; someone removed from the
+team is no longer refused. With the check switched off, 22 of 23 tests
+(these and the existing `test_a_staff_member_cannot_decide_about_their_own_store`)
+fail; the one that passes is the "left the team" test, as it should.
+
+**One existing test changed, not weakened.** Three tests in
+`tests/db/test_dispute_contention.py` decided disputes with
+`Actor(type="staff", user_id=<the buyer's id>)` ("any real user id will do
+here"): the buyer deciding their own dispute, which D-098 now refuses. They
+now act as the bazaar's own member of staff (`_staff`); every assertion is
+unchanged, and all four tests in the file pass.
+
+### B-3: phone numbers with non-English digits
+
+**The problem.** `markx/core/phone.py` checked the last eight digits with
+`\d`, which in Python matches a decimal digit of any script, while every
+phone column's database check accepts only `0` to `9`. A number such as
+`09١١٢٣٤٥٦٧` (the first two digits plain, the rest Arabic-Indic) passed the
+check and the database refused it: a server error (500), at sign-in,
+addresses, applications, team members, product requests and the rider's
+phone. A number typed entirely in another script was refused with the
+ordinary message, which is not helpful either.
+
+**Choice: convert, not refuse** (the friendlier option). Before the number
+is read, every decimal digit (Unicode category Nd: Arabic-Indic, Persian,
+Devanagari, Bengali, full-width and the rest) becomes the ASCII digit it
+stands for; the pattern now says `[0-9]`, so nothing else can reach the
+database. Characters that are not decimal digits are refused as before with
+"Enter an Ethiopian mobile number" (422): the Ethiopic numerals ፩ to ፱ (no
+zero; not used for phone numbers), superscripts, letters. Every place that
+reads a phone number goes through `normalize_phone` (searched): code
+sign-in, staff sign-in, staff accounts, seller invitations, addresses
+(`phone`, `phone2`), seller applications and contact phone, team members,
+product requests, the rider's phone (seller and staff dispatch), the SMS
+sender (`to_e164`, `phone_reference`) and the development SMS inbox. The
+last raised an unhandled error for any bad number; it now answers 422. The
+web app does not check phone numbers itself (searched), so nothing changed
+there.
+
+**Proof.** `tests/unit/test_phone.py` (new cases; a test builds
+`0911234567` in every decimal-digit script Unicode has and checks the
+result against the database's own pattern); `tests/api/test_phone_digits.py`,
+45 tests, at every entry point above, in Arabic-Indic, Persian, full-width
+and the mixed form, each with an Ethiopic-numeral refusal. Run against the
+old `phone.py`, these tests fail with the database's check violations on
+`users`, `otp_challenges`, `shipments` and `product_requests`.
+
+### Documents
+
+The documents said pull request #5 was not merged, and called the D-096
+fixes "on the D-096 branch". Both are merged: #4 as `773bbb6`, #5 as
+`d01fef7` (20 November 2026; CI 154 and Browser journeys 30 passed on
+`main` at `d01fef7`). Corrected in `docs/DEVELOPMENT_STATUS.md` and
+`docs/HANDOFF.md`.
+
+**Where:** `apps/api/markx/trust/conflict.py` (new), the staff services in
+`sellers`, `offers`, `orders`, `reviews`, `reports`, `images`, `catalog`;
+`apps/api/markx/core/phone.py`, `apps/api/markx/main.py`;
+`apps/web/messages/en.json`, `am.json`; the tests named above.
 
 ## Decisions that need the founder
 
@@ -3525,7 +3670,8 @@ were decided on 18 November 2026: see D-087 and D-088. F-11 to F-13
 (D-089, SMS), F-14 and F-15 (D-090, file storage), F-16 to F-18 (D-091,
 deployment), F-19 and F-20 (D-094, backups) and N-1 (D-092, notification
 channels) are open and have no provisional answer: the code does the most cautious thing until the founder
-decides.** Treat this list as part of the launch
+decides. F-21 (D-098, staff conflict of interest) has a PROVISIONAL answer
+(P-098-1, no override) that the founder must confirm or change.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -3871,6 +4017,19 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 - **To decide:** the days and the minimum number of sets, with the legal
   retention of the personal data in them (the founder's own checks) and
   the storage cost; who runs retention and how often (P-096-5).
+- **Founder's approval required: yes.**
+
+### F-21 What happens when no other member of staff can act on a conflicted case (D-098)
+
+- **Today (PROVISIONAL P-098-1):** a member of staff is refused any staff
+  action on a store they belong to, an order they placed, or a review or
+  report they wrote, and there is no override. If nobody else can act, the
+  case waits (a dispute's decision date passes; a takedown or report stays
+  open).
+- **To decide:** whether that is acceptable for the pilot (for example by
+  making sure two people hold each staff role), or whether a second
+  person's approval, or the founder's, should be able to unblock it. No
+  override is built until the founder decides.
 - **Founder's approval required: yes.**
 
 ## Open questions carried over from session 1

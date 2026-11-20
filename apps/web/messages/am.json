@@ -418,6 +418,8 @@
     "verification_requirements_unmet": "ያ ደረጃ ገና ያልተጠናቀቁ ማረጋገጫዎችን ይፈልጋል።",
     "level_invalid": "ከ0 እስከ 3 ደረጃ ይምረጡ።",
     "conflict_of_interest": "የዚህ ሱቅ አባል ስለሆኑ ሌላ ሰራተኛ መወሰን አለበት።",
+    "conflict_own_order": "ይህን ትዕዛዝ ያዘዙት እርስዎ ስለሆኑ ሌላ ሰራተኛ ሊያስተናግደው ይገባል።",
+    "conflict_own_submission": "ይህን የጻፉት እርስዎ ስለሆኑ ሌላ ሰራተኛ ሊያስተናግደው ይገባል።",
     "not_awaiting_review": "ይህ ማመልከቻ ውሳኔ እየጠበቀ አይደለም።",
     "open_orders_remain": "ሱቁን ከመዝጋትዎ በፊት ክፍት ትዕዛዞቹን ይጨርሱ፣ አይቀበሉ ወይም ይሰርዙ።",
     "zone_code_taken": "ያ የዞን ኮድ ተይዟል።",

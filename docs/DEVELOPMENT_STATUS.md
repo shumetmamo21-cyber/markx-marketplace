@@ -1,10 +1,28 @@
 # Development status
 
-**Last updated:** 20 November 2026, by the **checks and secret-scan
-session** (D-097), on branch `claude/markx-checks-secret-scan-ik3o3z`
-(not merged; the founder approves a merge). See "Checks once per change"
-just below. Before it, the backup trust hardening session (D-096, pull
-request #4) was merged into `main` on 20 November 2026.
+**Last updated:** 20 November 2026, by the **staff conflict and phone
+digits session** (D-098), on branch
+`claude/staff-conflict-phone-fixes-qkiixq`, from `main` at `d01fef7`
+(not merged; the founder approves a merge). See "Staff conflict of
+interest, phone digits" just below. Before it, the checks and secret-scan
+session (D-097, pull request #5) was merged into `main` on 20 November
+2026 as `d01fef7` (CI 154 and Browser journeys 30 passed on it), and the
+backup trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## Staff conflict of interest, phone digits (20 November 2026, D-098)
+
+Product code, tests and documents. **Nothing deployed; no account; no
+money.** Details and the PROVISIONAL choices: `docs/DECISIONS.md`, D-098.
+
+| Finding | State | Proof (test) |
+| --- | --- | --- |
+| **H1** staff can decide about a store they belong to or an order they placed (audit §8, §9; earlier finding b) | **Fixed.** One shared check, `markx/trust/conflict.py`, in every staff action that decides or changes something about a store, an order, an offer, a review or a report (19 actions: the 8 seller-verification actions that had the check, and 11 that did not; listed in D-098). A refusal says another staff member must handle it and is written to the audit log (`staff.conflict_refused`) even though the request itself rolls back. No override (PROVISIONAL P-098-1) | `tests/api/test_staff_conflict.py` (22 tests): for each action the store's member, or the order's buyer, or the review's or report's author, is refused and recorded, nothing changes, and an unrelated staff member is then allowed. With the check switched off, 22 of 23 such tests fail (the one that passes checks that someone who left the team is allowed) |
+| **B-3** a phone number typed with non-English digits caused a server error | **Fixed, by converting** (the friendlier option): any decimal digit (Arabic-Indic, Persian, Devanagari, full-width...) is read as 0 to 9; anything else (Ethiopic numerals ፩ to ፱, superscripts) gets the usual "Enter an Ethiopian mobile number" (422). The development SMS inbox, which gave a server error for any bad number, now answers 422 too | `tests/unit/test_phone.py` (new cases, and every decimal-digit script Unicode knows is checked against the database's own pattern); `tests/api/test_phone_digits.py` (45 tests): code sign-in, staff sign-in, staff accounts, seller invitations, addresses (both numbers), seller applications and contact phone, team members, product requests, rider phone (seller and staff), development SMS inbox. With the old `phone.py` these tests fail with the database's check violation, the server error |
+
+**Also corrected:** the documents said pull request #5 (and, in places,
+#4) was not merged; both are merged.
+
+**Test results:** see "Tests executed", 20 November 2026 (D-098).
 
 ## Checks once per change, secret scan (20 November 2026, D-097)
 
@@ -157,17 +175,17 @@ needs a code change, none is fixed):
 | | Defect | Where it is shown |
 | --- | --- | --- |
 | a | Commission is zero; the per-order cap is stored but never applied | [state report §5 a](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| b | The "not your own store" check exists only in seller verification: staff who belong to a store can still decide its disputes, reviews, reports and takedowns | [state report §5 b](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| b | The "not your own store" check exists only in seller verification: staff who belong to a store can still decide its disputes, reviews, reports and takedowns (**fixed by D-098**, H1: one shared check in every such staff action) | [state report §5 b](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | c | Orders out for delivery or with a failed delivery never expire | [state report §5 c](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | d | A buyer can keep a competitor's stock held by ordering and cancelling (limited, not removed) | [state report §5 d](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | e | About 22 parts of the website freeze with no message when the connection drops; no proper error pages | [state report §5 e](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | f | Certificates do not renew automatically; rollback breaks when an image prefix is set | [state report §5 f](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | g | The picomatch audit warning is allowed until 31 December 2026; the web CSP allows inline scripts | [state report §5 g](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h1 | The server's storage key can delete every backup (**fixed on the D-096 branch**, BK-1) | [state report §5 h1](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h2 | Backups are not protected by object lock (**fixed on the D-096 branch**: required on staging and production, PROVISIONAL; real provider not verified) | [state report §5 h2](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h3 | Recovery drills put the recovery private key on the server (**fixed on the D-096 branch**, BK-2) | [state report §5 h3](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h4 | A restore runs with full database administrator rights (**fixed on the D-096 branch**, BK-6) | [state report §5 h4](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h5 | A failed upload can be reused just by its name (**fixed on the D-096 branch**, BK-3) | [state report §5 h5](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h1 | The server's storage key can delete every backup (**fixed by D-096**, BK-1; merged, pull request #4) | [state report §5 h1](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h2 | Backups are not protected by object lock (**fixed by D-096**, merged, pull request #4: required on staging and production, PROVISIONAL; real provider not verified) | [state report §5 h2](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h3 | Recovery drills put the recovery private key on the server (**fixed by D-096**, BK-2; merged, pull request #4) | [state report §5 h3](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h4 | A restore runs with full database administrator rights (**fixed by D-096**, BK-6; merged, pull request #4) | [state report §5 h4](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h5 | A failed upload can be reused just by its name (**fixed by D-096**, BK-3; merged, pull request #4) | [state report §5 h5](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | h6 | All alerts run on the server they watch | [state report §5 h6](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | h7 | `MARKX_ENCRYPTION_KEY` and `MARKX_SECRET_KEY` have no recovery copy off the server (partly covered by a written instruction) | [state report §5 h7](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | h8 | The server holds the key that signs backups | [state report §5 h8](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
@@ -181,8 +199,8 @@ point into
   - BK-5 also names the database role passwords and the TLS keys as having
     no escrow;
   - BK-7: a restore or drill on the production cluster can reset production
-    role passwords through bootstrap (**checked and fixed on the D-096
-    branch**);
+    role passwords through bootstrap (**checked and fixed by D-096**,
+    merged);
   - BK-8: "off-site" is decided by the provider label, not the endpoint;
   - BK-9: the backup uses the schema-owner role, with internet access;
   - BK-10: a restore depends on a content type sniffed from the first 16
@@ -195,7 +213,7 @@ point into
   - BK-15: the plaintext manifest shows row counts per table;
   - BK-16: unexpected restore errors leave no FAILED report;
   - BK-17: the CI drill uses root MinIO keys and a floating `postgres:17`
-    tag (**checked and fixed on the D-096 branch**);
+    tag (**checked and fixed by D-096**, merged);
   - BK-18: the recovery key is plain base64 with no passphrase or split.
 - Backend and security (audit §8 and §9):
   - M1: fake reviews through self-orders;
@@ -229,8 +247,8 @@ point into
   - there is no buyer cancellation-abuse scoring.
 - Website (audit §10): no automated accessibility check; the Amharic
   wording has not been reviewed by a native editor; the browser journeys
-  run against `next start`, not the production image behind nginx, and do
-  not run on pull requests.
+  run against `next start`, not the production image behind nginx (they
+  run on pull requests that change code since D-097, merged).
 - Infrastructure (audit §13):
   - a failed check after migrations leaves the system half up;
   - images are referenced by tag, not digest;
@@ -243,8 +261,8 @@ point into
   - no scheduled runs;
   - no migration downgrade or upgrade-from-previous-release test;
   - no load test;
-  - no test of BK-3 (**added on the D-096 branch**);
-  - the drill does not use least-privilege keys (**fixed on the D-096 branch**);
+  - no test of BK-3 (**added by D-096**, merged);
+  - the drill does not use least-privilege keys (**fixed by D-096**, merged);
   - branch protection on `main`: NOT VERIFIED by the audit.
 
 **Known issue: Node.js 20 in the pinned GitHub actions.** GitHub's runners
@@ -1585,6 +1603,37 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Staff conflict of interest, phone digits** (D-098), on 20 November
+2026, branch `claude/staff-conflict-phone-fixes-qkiixq`, from `main` at
+`d01fef7` with the complete history (not shallow). PostgreSQL 17.12 and
+MinIO in containers, with the CI job's settings (MinIO and the backup tools
+required, least-privilege MinIO users, `postgres:17.12` client tools).
+
+```text
+uv run pytest -q -p no:cacheprovider                     ->  1870 passed, 0 skipped, in 19 min 46 s
+uv run pytest tests/api/test_staff_conflict.py           ->  22 passed
+uv run pytest tests/api/test_phone_digits.py             ->  45 passed
+uv run pytest tests/unit/test_phone.py                   ->  45 passed
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  238 files already formatted
+uv run mypy markx                                        ->  no issues found in 145 source files
+uv run alembic upgrade head && uv run alembic check      ->  no new upgrade operations detected
+check_openapi_copy --exact openapi.json; web copy        ->  both match the API exactly
+apps/web: npm run lint; npm run typecheck; npm test      ->  passed; passed; 102 passed
+
+# The new tests catch the defects
+conflict check switched off  ->  22 of 23 conflict tests fail (the "left the team" test passes, as it should)
+old markx/core/phone.py      ->  phone-digit tests fail with the database's check violations (the server error)
+
+# Found by the first full run, fixed
+tests/db/test_dispute_contention.py: 3 tests decided disputes as the buyer
+  (Actor(user_id=<buyer>)); now refused by D-098. They act as the bazaar's
+  staff member; assertions unchanged; 4 passed.
+```
+
+The first full run, before that fix and without MinIO: 3 failed (those
+three), 1776 passed, 91 skipped (the MinIO tests). Browser journeys were
+not run locally; GitHub runs them on the pull request.
 
 **Checks once per change, secret scan** (D-097), on 20 November 2026,
 branch `claude/markx-checks-secret-scan-ik3o3z`, from `main` at `773bbb6`

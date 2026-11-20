@@ -63,3 +63,55 @@ def test_rejects_non_text() -> None:
 def test_mask_hides_the_middle() -> None:
     assert mask_phone("+251911234567") == "+2519••••4567"
     assert "1234" not in mask_phone("+251911234567")
+
+
+# -- digits from other scripts (B-3, D-098) ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("٠٩١١٢٣٤٥٦٧", "+251911234567"),  # Arabic-Indic
+        ("۰۹۱۱۲۳۴۵۶۷", "+251911234567"),  # Persian (extended Arabic-Indic)
+        ("０９１１ ２３４ ５６７", "+251911234567"),  # full-width, with spaces
+        ("०९११२३४५६७", "+251911234567"),  # Devanagari
+        ("+٢٥١٧١١٢٣٤٥٦٧", "+251711234567"),  # with the country code
+        ("09١١٢٣٤٥٦٧", "+251911234567"),  # mixed: this used to reach the database
+        ("+2519１２３４５６７８", "+251912345678"),  # mixed full-width
+    ],
+)
+def test_digits_from_other_scripts_are_read_as_0_to_9(raw: str, expected: str) -> None:
+    assert normalize_phone(raw) == expected
+    assert normalize_phone(raw).isascii()
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "፱፩፩፪፫፬፭፮፯",  # Ethiopic numerals: not decimal digits
+        "09፩፩፪፫፬፭፮፯",
+        "٠٩١١٢٣٤٥٦٧٨",  # too long, in another script
+        "٠٨١١٢٣٤٥٦٧",  # not a mobile prefix, in another script
+        "０９１１２３４５６",  # too short
+        "²⁹¹¹²³⁴⁵⁶⁷",  # superscripts are not decimal digits
+    ],
+)
+def test_other_characters_are_still_refused(raw: str) -> None:
+    with pytest.raises(InvalidPhoneNumber):
+        normalize_phone(raw)
+
+
+def test_whatever_is_accepted_is_what_the_database_accepts() -> None:
+    """The database allows only ^\\+251[79][0-9]{8}$ (ASCII digits)."""
+    import re
+    import unicodedata
+
+    from markx.accounts.models import PHONE_PATTERN
+
+    database = re.compile(PHONE_PATTERN, re.ASCII)
+    zero_digits = [chr(c) for c in range(0x110000) if unicodedata.category(chr(c)) == "Nd"
+                   and unicodedata.decimal(chr(c)) == 0]  # fmt: skip
+    for zero in zero_digits:
+        digits = {str(n): chr(ord(zero) + n) for n in range(10)}
+        typed = "".join(digits[d] for d in "0911234567")
+        assert database.fullmatch(normalize_phone(typed)), typed
