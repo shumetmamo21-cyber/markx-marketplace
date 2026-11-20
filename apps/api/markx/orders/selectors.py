@@ -27,6 +27,7 @@ from markx.delivery.selectors import active_rates_for_zone
 from markx.orders import service
 from markx.orders.models import Cart, Order, OrderItem, OrderStatusEvent, SellerOrder
 from markx.orders.status import AWAITING_HANDOVER, contact_visible, derive_order_status
+from markx.payments.fees import seller_order_fee
 from markx.payments.models import PaymentIntent
 from markx.sellers.models import Seller, Store
 from markx.trust.models import CaseStatus, DisputeCase, DisputeMessage
@@ -459,9 +460,8 @@ def _seller_order_out(
     problem: dict[str, Any] | None,
 ) -> dict[str, Any]:
     address: dict[str, Any] = order.address_snapshot
-    fee = Money.zero()
-    for item in items:
-        fee += Money(item.line_total_santim).portion_bps(item.commission_bps)
+    # The same calculation as at completion, each rule's cap included (D-099).
+    fee = seller_order_fee(service.fee_lines(items)).amount
     shows_contact = may_see_contact and contact_visible(
         seller_order.status, seller_order.confirmed_at is not None
     )

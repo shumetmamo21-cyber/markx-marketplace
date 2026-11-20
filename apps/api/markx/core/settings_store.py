@@ -170,6 +170,75 @@ _SPECS: tuple[SettingSpec, ...] = (
         100,
         10_000_000_000,
     ),
+    # Order life-cycle hardening (D-099). PROVISIONAL (P-099-1 to P-099-6,
+    # D-099): every value below is the engineer's safe default, a business
+    # choice THE FOUNDER MUST CONFIRM OR CHANGE BEFORE MARKX GOES LIVE.
+    #   M6: a part on the road or after a failed handover that nobody moves on
+    #   is reported to staff once its limit passes, and stops taking one of the
+    #   buyer's open-order places. It is never ended and its stock is never
+    #   released by the system (`orders.service.stalled_delivery`).
+    SettingSpec(
+        "orders.out_for_delivery_limit_hours",
+        48,
+        "int",
+        "PROVISIONAL (P-099-1), to be confirmed before going live: hours a part may stay out "
+        "for delivery (never less than its promised delivery time) before staff are asked to "
+        "follow it up; it then stops counting against the buyer's open orders. Its stock stays "
+        "held until the shop or staff settle it.",
+        1,
+        720,
+    ),
+    SettingSpec(
+        "orders.delivery_failed_limit_hours",
+        72,
+        "int",
+        "PROVISIONAL (P-099-2), to be confirmed before going live: hours a part may wait after "
+        "a failed handover, neither retried nor returned, before staff are asked to follow it "
+        "up; it then stops counting against the buyer's open orders. Its stock stays held "
+        "until the shop or staff settle it.",
+        1,
+        720,
+    ),
+    #   H2: how much of a shop's stock one buyer's unanswered orders may hold,
+    #   and a pause after repeated cancellations (`orders.service.place_order`).
+    SettingSpec(
+        "orders.max_unconfirmed_units_per_offer",
+        5,
+        "int",
+        "PROVISIONAL (P-099-3), to be confirmed before going live: units of one offer that "
+        "one buyer's orders may hold while the shop has not yet confirmed them.",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "orders.max_unconfirmed_units_per_seller",
+        10,
+        "int",
+        "PROVISIONAL (P-099-4), to be confirmed before going live: units of one shop's stock, "
+        "all its offers together, that one buyer's orders may hold while the shop has not yet "
+        "confirmed them.",
+        1,
+        200,
+    ),
+    SettingSpec(
+        "orders.cancellations_before_cooldown",
+        3,
+        "int",
+        "PROVISIONAL (P-099-5), to be confirmed before going live: orders a buyer may cancel "
+        "within the cool-down period below before new orders are refused for a while.",
+        1,
+        50,
+    ),
+    SettingSpec(
+        "orders.cancellation_cooldown_hours",
+        24,
+        "int",
+        "PROVISIONAL (P-099-6), to be confirmed before going live: the period in which "
+        "cancellations are counted; a buyer in a cool-down may order again once fewer than the "
+        "allowed number of cancellations fall within it.",
+        1,
+        720,
+    ),
     # Seller performance (blueprint S-26; D-069)
     SettingSpec(
         "sellers.weekly_report_enabled",

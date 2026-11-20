@@ -211,6 +211,15 @@ class OrderItem(UUIDPrimaryKey, Base):
             "line_total_santim = unit_price_santim * quantity", name="line_total_adds_up"
         ),
         CheckConstraint("commission_bps between 0 and 10000", name="commission_bps_range"),
+        CheckConstraint(
+            "commission_cap_santim is null or commission_cap_santim >= 0",
+            name="commission_cap_non_negative",
+        ),
+        # A cap is applied per rule (D-099), so a capped line names its rule.
+        CheckConstraint(
+            "commission_cap_santim is null or commission_rule_id is not null",
+            name="commission_cap_has_rule",
+        ),
         Index("ix_order_items_seller_order_id", "seller_order_id"),
         Index("ix_order_items_offer_id", "offer_id"),
     )
@@ -239,6 +248,13 @@ class OrderItem(UUIDPrimaryKey, Base):
     line_total_santim: Mapped[int] = mapped_column(BigInteger, nullable=False)
     # The fee rate in force when the order was placed; never recalculated (D.19).
     commission_bps: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # The rule that rate came from and its cap per order, copied with it (D-099):
+    # the fee on this part's lines of one rule never exceeds that cap. Empty
+    # when no rule applied, and on lines placed before D-099.
+    commission_rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("commission_rules.id", ondelete="RESTRICT")
+    )
+    commission_cap_santim: Mapped[int | None] = mapped_column(BigInteger)
     # Serial number or IMEI, recorded at dispatch for phones (D.6, D.22).
     serial_number: Mapped[str | None] = mapped_column(Text)
 

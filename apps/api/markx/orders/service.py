@@ -73,6 +73,7 @@ from markx.offers.models import (
     OfferStatus,
     ReservationStatus,
 )
+from markx.orders import stalled
 from markx.orders.deadlines import response_deadline
 from markx.orders.models import (
     MAX_QUANTITY_PER_LINE,
@@ -96,6 +97,7 @@ from markx.orders.status import (
     move_allowed,
 )
 from markx.payments import ledger
+from markx.payments.fees import FeeLine, seller_order_fee
 from markx.payments.models import (
     CommissionRule,
     FeeCharge,
@@ -512,10 +514,23 @@ def build_quote(
 # -- commission ----------------------------------------------------------------------
 
 
-def commission_bps(
+@dataclass(frozen=True, slots=True)
+class CommissionRate:
+    """What is copied onto an order line at placement (D-042, D-099): the
+    rate, the rule it came from and that rule's cap per order."""
+
+    bps: int
+    rule_id: uuid.UUID | None
+    cap_santim: int | None
+
+
+NO_COMMISSION = CommissionRate(bps=0, rule_id=None, cap_santim=None)
+
+
+def commission_rate(
     db: Session, *, payment_kind: str, seller: Seller, category_id: uuid.UUID, at: datetime
-) -> int:
-    """The fee rate in force for one order line (blueprint J.8): the most
+) -> CommissionRate:
+    """The fee rule in force for one order line (blueprint J.8): the most
     specific rule wins, seller, then plan, then category, then default.
 
     No rule means no fee. Direct orders carry none in year one (D.19), and
@@ -535,8 +550,23 @@ def commission_bps(
     for scope in _RULE_ORDER:
         for rule in in_force:
             if rule.scope == scope and _rule_applies(rule, seller, category_id):
-                return rule.rate_bps
-    return 0
+                return CommissionRate(
+                    bps=rule.rate_bps, rule_id=rule.id, cap_santim=rule.cap_santim
+                )
+    return NO_COMMISSION
+
+
+def fee_lines(items: Iterable[OrderItem]) -> list[FeeLine]:
+    """An order's lines as the fee calculation reads them (`payments.fees`)."""
+    return [
+        FeeLine(
+            line_total_santim=item.line_total_santim,
+            commission_bps=item.commission_bps,
+            commission_rule_id=item.commission_rule_id,
+            commission_cap_santim=item.commission_cap_santim,
+        )
+        for item in items
+    ]
 
 
 def _rule_applies(rule: CommissionRule, seller: Seller, category_id: uuid.UUID) -> bool:
@@ -675,16 +705,111 @@ def _suggest_next_best(db: Session, seller_order: SellerOrder, order: Order) -> 
         )  # fmt: skip
 
 
-def open_order_count(db: Session, user_id: uuid.UUID) -> int:
-    """How many of this buyer's orders still have a part in progress."""
+def open_order_count(db: Session, user_id: uuid.UUID, *, now: datetime | None = None) -> int:
+    """How many of this buyer's orders still have a part in progress.
+
+    A part stalled on the road or after a failed handover past its limit does
+    not count (M6, D-099): only the shop can move it on, and staff are told.
+    It keeps its status and its stock (`orders.stalled`)."""
+    now = now or _now()
     return int(
         db.scalar(
             select(func.count(func.distinct(SellerOrder.order_id)))
             .join(Order, Order.id == SellerOrder.order_id)
-            .where(Order.buyer_user_id == user_id, SellerOrder.status.in_(list(OPEN)))
+            .where(
+                Order.buyer_user_id == user_id,
+                SellerOrder.status.in_(list(OPEN)),
+                ~stalled.stalled(db, now),
+            )
         )
         or 0
     )
+
+
+# -- limits against holding a rival's stock (H2, D-099) ----------------------------------
+#
+# A buyer, or several accounts together, could keep a shop's stock held by
+# ordering again and again: every order holds its units at once, until the
+# shop answers or its response window passes. Two limits, both PROVISIONAL
+# (P-099-3 to P-099-6, `core/settings_store.py`), checked under the buyer's
+# cart lock, so two checkouts of one buyer cannot both pass them:
+#
+# - the units one buyer's unanswered (`placed`) parts may hold, per offer and
+#   per shop; an answered part no longer counts, so a buyer whose order the
+#   shop confirmed may order more;
+# - a cool-down: a buyer who cancelled too many orders within a period may
+#   not place another until enough of those cancellations are older than it.
+#   Only the buyer's own cancellations count, never a shop's decline or an
+#   order the shop let expire. Each order counts once, however many of its
+#   parts were cancelled.
+#
+# Several accounts working together are bounded by the same limits on each
+# account, and each account needs its own verified phone number (D.2).
+
+
+def _refuse_during_cancellation_cooldown(db: Session, user: User, now: datetime) -> None:
+    allowed = settings_store.get_int(db, "orders.cancellations_before_cooldown")
+    period = timedelta(hours=settings_store.get_int(db, "orders.cancellation_cooldown_hours"))
+    cancelled_at = func.max(OrderStatusEvent.occurred_at)
+    recent = list(
+        db.scalars(
+            select(cancelled_at)
+            .join(SellerOrder, SellerOrder.id == OrderStatusEvent.seller_order_id)
+            .join(Order, Order.id == SellerOrder.order_id)
+            .where(
+                Order.buyer_user_id == user.id,
+                OrderStatusEvent.to_status == SellerOrderStatus.CANCELLED,
+                OrderStatusEvent.actor_type == ActorType.BUYER,
+                OrderStatusEvent.occurred_at > now - period,
+            )
+            .group_by(SellerOrder.order_id)
+            .order_by(cancelled_at.desc())
+        )
+    )
+    if len(recent) >= allowed:
+        # Ordering is allowed again once the cancellation that makes the
+        # count reach the limit is older than the period.
+        again_at = recent[allowed - 1] + period
+        raise Conflict(
+            "cancellation_cooldown",
+            "You cancelled several orders recently, so new orders are paused for a while. "
+            "Please try again later.",
+            details={"order_again_at": again_at.isoformat()},
+        )
+
+
+def _refuse_above_unconfirmed_limits(db: Session, user: User, quote: Quote) -> None:
+    per_offer = settings_store.get_int(db, "orders.max_unconfirmed_units_per_offer")
+    per_seller = settings_store.get_int(db, "orders.max_unconfirmed_units_per_seller")
+    waiting = db.execute(
+        select(OrderItem.offer_id, SellerOrder.seller_id, func.sum(OrderItem.quantity))
+        .join(SellerOrder, SellerOrder.id == OrderItem.seller_order_id)
+        .join(Order, Order.id == SellerOrder.order_id)
+        .where(Order.buyer_user_id == user.id, SellerOrder.status == SellerOrderStatus.PLACED)
+        .group_by(OrderItem.offer_id, SellerOrder.seller_id)
+    ).all()
+    by_offer: dict[uuid.UUID, int] = {}
+    by_seller: dict[uuid.UUID, int] = {}
+    for offer_id, seller_id, units in waiting:
+        by_offer[offer_id] = by_offer.get(offer_id, 0) + int(units)
+        by_seller[seller_id] = by_seller.get(seller_id, 0) + int(units)
+    for group in quote.groups:
+        for line in group.lines:
+            if by_offer.get(line.offer.id, 0) + line.item.quantity > per_offer:
+                raise Conflict(
+                    "unconfirmed_offer_limit",
+                    "You have ordered as many of this item as MarkX allows before the shop "
+                    "answers. Wait for the shop to confirm, then order more.",
+                    details={"offer_id": str(line.offer.id), "limit": per_offer},
+                )
+        units = sum(line.item.quantity for line in group.lines)
+        if by_seller.get(group.seller.id, 0) + units > per_seller:
+            raise Conflict(
+                "unconfirmed_store_limit",
+                "You have ordered as many items from this shop as MarkX allows before it "
+                "answers. Wait for the shop to confirm, then order more.",
+                details={"store_slug": group.store.slug, "limit": per_seller},
+            )
 
 
 def place_order(
@@ -754,10 +879,14 @@ def place_order(
         )
     if quote.grand_total.amount > settings_store.get_int(db, "orders.max_order_value_santim"):
         raise Conflict("order_too_large", "This order is above the largest total MarkX accepts.")
-    if open_order_count(db, user.id) >= settings_store.get_int(db, "orders.max_open_direct_orders"):
+    if open_order_count(db, user.id, now=now) >= settings_store.get_int(
+        db, "orders.max_open_direct_orders"
+    ):
         raise Conflict(
             "too_many_open_orders", "Finish or cancel an open order before placing another."
         )
+    _refuse_during_cancellation_cooldown(db, user, now)
+    _refuse_above_unconfirmed_limits(db, user, quote)
 
     # Step 3: hold stock for every line, in ascending offer id order, before
     # anything else is written. One line short ends the whole order.
@@ -818,6 +947,10 @@ def place_order(
                 copies[product.id] = _product_copy(db, product)
             copy = copies[product.id]
             label_am, label_en = copy.variant_labels.get(line.variant.id, ("", ""))
+            rate = commission_rate(
+                db, payment_kind="direct", seller=group.seller,
+                category_id=product.category_id, at=now,
+            )  # fmt: skip
             db.add(
                 OrderItem(
                     id=item_ids[line.offer.id],
@@ -835,12 +968,12 @@ def place_order(
                     unit_price_santim=line.price.amount,
                     quantity=line.item.quantity,
                     line_total_santim=line.total.amount,
-                    commission_bps=commission_bps(
-                        db, payment_kind="direct", seller=group.seller,
-                        category_id=product.category_id, at=now,
-                    ),
+                    commission_bps=rate.bps,
+                    # The rule and its cap travel with the rate (D-099).
+                    commission_rule_id=rate.rule_id,
+                    commission_cap_santim=rate.cap_santim,
                 )
-            )  # fmt: skip
+            )
         db.flush()
         for line in group.lines:
             # One reservation beside each hold (D-030). It expires with the
@@ -1606,15 +1739,16 @@ def complete_seller_order(
             .order_by(OrderItem.id)
         )
     )
-    fee = Money.zero()
-    for item in items:
-        fee += Money(item.line_total_santim).portion_bps(item.commission_bps)
+    # Each rule's cap per order applies here (D-099): no fee exceeds it.
+    computed = seller_order_fee(fee_lines(items))
+    fee = computed.amount
     seller_order.commission_santim = fee.amount
     order = _parent(db, seller_order)
     charge = FeeCharge(
         seller_order_id=seller_order.id,
         item_value_santim=seller_order.items_total_santim,
         amount_santim=fee.amount,
+        cap_applied=computed.cap_applied,
     )
     if fee.amount > 0:
         charge.ledger_transaction_id = ledger.charge_fee(

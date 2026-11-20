@@ -3661,6 +3661,192 @@ fixes "on the D-096 branch". Both are merged: #4 as `773bbb6`, #5 as
 `apps/api/markx/core/phone.py`, `apps/api/markx/main.py`;
 `apps/web/messages/en.json`, `am.json`; the tests named above.
 
+## D-099 Order life-cycle hardening: stalled deliveries go to staff (M6), limits on unanswered holds and a cancellation cool-down (H2), the commission cap applied; a phone-digit test for sign-in limits
+
+**Engineering decision, 20 November 2026.** Follows the independent audit
+(`docs/reports/2026-11-19-independent-audit.md`, section 8 and section 17
+item 8), D-086, D-087 and D-088. Product code, one migration (`0019`),
+tests and documents. **Nothing deployed, no account created, no money
+spent, no commission rule created.** Branch
+`claude/order-lifecycle-hardening-1djdof`, from `main` at `c70b338` with
+the complete history.
+
+### M6: parts on the road or after a failed handover never expired
+
+**The problem (audit §8, confirmed in the code first).** The overdue job
+(`cancel_overdue_fulfilment`, D-043) covers only `confirmed` and `ready`. A
+part `out_for_delivery` or `delivery_failed` that the shop never moved on
+kept its held stock and one of the buyer's open-order places for ever, and
+nobody was told. Only the shop can move a part out of these two states.
+
+**What changed** (`markx/orders/stalled.py`, new; `orders/service.py`
+`open_order_count`; `ops/checks.py` `stalled_deliveries`):
+
+- Each state has a time limit, counted from the moment the part last
+  entered it (its latest status event), so a retry starts the clock again.
+  A part on the road is never called stalled before its own promised
+  delivery time (rates allow up to 720 hours).
+- Once the limit passes, the operations watch reports the part to staff by
+  order code: `orders.stalled_on_the_road` and
+  `orders.stalled_after_failed_handover` (warnings). Staff follow it up with
+  the shop through the orders desk. The part keeps its status; the buyer and
+  the shop still see it and can still act (the buyer's code still works, the
+  shop can still record a failure, a retry or the return).
+- It stops counting against the buyer's open orders. **Safe:** the buyer
+  cannot move it on, and no goods, stock or money move. A part that the shop
+  returns becomes final and frees the place anyway, so a buyer who refuses
+  at the door gains nothing from this.
+- **Its stock is never released by the system, and the part is never
+  ended by it.** The goods are with a rider, the buyer or somewhere unknown:
+  releasing the hold could sell a unit the shop no longer has. A paid part
+  must never end undelivered without staff (D-086); since D-087 a payment
+  can only be recorded from the handover on, so only a part paid before
+  D-087 can be in these states with a payment. The stock comes back when the
+  shop records the return (`return_to_seller`) once the goods are on the
+  shelf, or leaves the shelf for good when the part completes. Only the
+  shop's own stock is held, and only by the shop's inaction: a buyer cannot
+  keep a part in either state.
+- A paid part after a failed handover is left out of the new check: it is
+  already reported a day after the failure by `orders.paid_delivery_failed`
+  (D-086), so staff are not told twice.
+
+**Not built:** a staff button that closes a stalled part or releases its
+stock (P-099-7 below). Staff can already dispatch on a shop's behalf and
+reissue the handover code (D-065, D-098).
+
+### H2: a rival could keep a shop's stock held
+
+**The problem (audit §8, §9, confirmed).** Every order holds its units at
+once, until the shop answers or the response window passes. One buyer
+could hold up to 20 units of an offer with a single unanswered order (the
+cart's line limit), and order, cancel and order again with no limit. The
+only bound was three open orders per buyer.
+
+**What changed** (`place_order` in `orders/service.py`, under the buyer's
+cart lock, so two checkouts of one buyer cannot both pass):
+
+- **Per offer and per shop:** the units one buyer's unanswered (`placed`)
+  parts may hold: at most 5 of one offer and 10 of one shop, all its offers
+  together. Refusals: `unconfirmed_offer_limit` and
+  `unconfirmed_store_limit` (409), with the limit in the details. A part
+  the shop confirmed or declined, or that expired, no longer counts.
+- **Cool-down:** a buyer who cancelled 3 orders within 24 hours may not
+  place another until the oldest of those is 24 hours old
+  (`cancellation_cooldown`, 409, `order_again_at` in the details). Only the
+  buyer's own cancellations count; an order counts once however many of its
+  parts were cancelled; a shop's decline or an expiry never counts, so a
+  shop cannot use declines to block a buyer.
+- The web app shows the three refusals in English and Amharic
+  (`apps/web/messages/*.json`; the Amharic awaits a native editor, like the
+  rest).
+
+**Why per buyer, not one limit for all buyers together (a choice for the
+founder to confirm, P-099-3/4).** A limit on how much of an offer all
+unanswered orders together may hold would refuse every other buyer once a
+rival filled it: it would make blocking a shop's online sales cheaper, not
+harder. Per-buyer limits never stop one buyer because of another. Several
+accounts working together are bounded by the same limits on each account
+(5 units of an offer, 10 of a shop, 3 open orders, 3 cancellations a day),
+and each account needs its own verified phone number (D.2). The shop can
+also decline suspicious orders, which frees the stock at once. What this
+does not stop: many accounts with many phone numbers. A buyer reliability
+score (blueprint D.10, Release 2) is the further step; not built.
+
+### The commission cap was stored but never applied
+
+**The problem (audit §11, D-086 §5, D-088 item 1, confirmed).**
+`commission_rules.cap_santim` was never read and `fee_charges.cap_applied`
+was always false: a capped rule would have charged its full rate.
+
+**What changed.** Applied, not refused:
+
+- Migration `0019` adds `order_items.commission_rule_id` and
+  `order_items.commission_cap_santim`, with two checks: a cap is never
+  negative, and a capped line names its rule. Both are empty on every
+  existing line (no rule exists, D-088); nothing is changed or deleted.
+- At placement the line copies the rule and its cap with the rate
+  (`commission_rate`, which replaces `commission_bps`), so a later rule
+  never changes a placed order (J.8).
+- One calculation, `markx/payments/fees.py` `seller_order_fee`, used for
+  the estimate the shop sees before confirming and for the fee charged at
+  completion: each line's share at its rate, then each rule's cap on the sum
+  of the part's lines under that rule. `cap_applied` is now set.
+- **Reading of "cap per order"** (blueprint: "an optional cap per order"):
+  per seller's part (the thing a shop is charged for), per rule. This is the
+  stricter reading for the shop: two phones in one part under a 500 birr cap
+  pay 500 birr, not 1,000. The founder may read it differently when setting
+  caps (F-10); the code then changes in one function.
+- **Commission stays at zero (D-088).** No rule was created; with no rule
+  the fee is zero, nothing is copied and nothing reaches the ledger, as
+  before. D-088's other mandatory items (a staff tool for rules, fee reversal,
+  invoicing, statements, payouts) are still not built.
+
+### Phone numbers in other digits: sign-in limits (pull request #6 review)
+
+A saved test, `tests/api/test_phone_digit_limits.py`, proves that typing the
+same number in Arabic-Indic, Persian, full-width or mixed digits is never a
+way around: the resend cool-down, the hourly code limit per number, the lock
+after five wrong codes (in every style, the right code included), the staff
+lock after five failed sign-ins, and the checks that one number is one
+account, one staff member (`staff_exists`), one open invitation
+(`invitation_exists`) and one team member (`already_member`). No product
+code changed for it: D-098 already keys every limit on the stored number.
+The test fails with the phone code from before D-098 (8 of 8) and passes on
+`main`.
+
+### PROVISIONAL values (THE FOUNDER MUST CONFIRM OR CHANGE THEM BEFORE MARKX GOES LIVE)
+
+Each is a setting in `markx/core/settings_store.py` (the one place), marked
+`PROVISIONAL (P-099-n)` there, in its description on the admin settings
+screen, and checked by `test_the_new_limits_are_provisional_settings`. Staff
+can change each one in the settings screen, audit-logged.
+
+| | Setting | Value | Why this value |
+| --- | --- | --- | --- |
+| P-099-1 | `orders.out_for_delivery_limit_hours` | 48 hours, never less than the part's promised delivery time | A rider delivery in town is promised within a day (the test zones use 24 hours); two days leaves room for a late rider or a busy day before staff are troubled |
+| P-099-2 | `orders.delivery_failed_limit_hours` | 72 hours | A retry or a return normally follows within a day or two; three days covers a weekend. Unpaid parts only; paid ones are already reported after one day (D-086) |
+| P-099-3 | `orders.max_unconfirmed_units_per_offer` | 5 units | A household buys one or two of an item; five covers a family or a small office. A buyer who needs more orders them once the shop confirms |
+| P-099-4 | `orders.max_unconfirmed_units_per_seller` | 10 units | Two full offers' worth from one shop before it answers; ordinary baskets are far smaller |
+| P-099-5 | `orders.cancellations_before_cooldown` | 3 orders | One or two cancellations a day (a changed address, a better price) are ordinary; a third in a day is not |
+| P-099-6 | `orders.cancellation_cooldown_hours` | 24 hours | The same day: an abuser is limited to three cancel-and-reorder rounds a day per account |
+| P-099-7 | (a rule, not a setting) | A stalled part keeps its stock until the shop records the return or the handover | Releasing it could sell goods the shop no longer has; F-22 asks whether staff should get a button |
+
+**How an honest buyer is affected.** Not at all in ordinary buying. They
+meet a limit only by ordering more than 5 of one item or 10 items from one
+shop before the shop has answered (they wait for the shop's confirmation,
+usually under 30 business minutes, then order the rest), or by cancelling a
+third order within a day (they wait until the first of those is a day old).
+Each refusal says so in their language, and nothing is held for a refused
+order. A buyer whose delivery stalled is helped: that order no longer takes
+one of their three open-order places.
+
+**Proof.** Every test below fails on `main` at `c70b338` and passes here,
+except the four marked "guard", which check that nothing ordinary changed
+and pass on both:
+
+- M6: `tests/api/test_stalled_deliveries.py`, 8 tests (8 fail on the old
+  code: no check, and the stalled part still refuses the buyer's next order
+  with `too_many_open_orders`).
+- H2: `tests/api/test_stock_hold_limits.py`, 7 tests (4 fail on the old
+  code: 6 units accepted, a fourth order accepted after three cancellations;
+  3 guards: other buyers unaffected, a confirmed or declined order frees the
+  units, an ordinary buyer is never paused).
+- Cap: `tests/unit/test_fees.py`, 7 tests (the module is new);
+  `tests/api/test_commission_cap.py`, 5 tests (4 fail on the old code: the
+  fee charged was 1,185 birr instead of the 500 birr cap, and the rule and
+  its cap were not copied onto the line; 1 guard: an uncapped rule charges
+  as before).
+- Phone digits: `tests/api/test_phone_digit_limits.py`, 8 tests (8 fail with
+  the phone code from before D-098).
+
+No existing check or test was weakened, removed or changed.
+
+**Where:** `apps/api/markx/orders/stalled.py`, `markx/payments/fees.py`
+(new); `markx/orders/service.py`, `selectors.py`, `models.py`;
+`markx/ops/checks.py`; `markx/core/settings_store.py`, `settings_am.py`;
+`migrations/versions/20261120_0900_commission_cap_on_order_lines.py`;
+`apps/web/messages/en.json`, `am.json`; the tests named above.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -3671,7 +3857,10 @@ were decided on 18 November 2026: see D-087 and D-088. F-11 to F-13
 deployment), F-19 and F-20 (D-094, backups) and N-1 (D-092, notification
 channels) are open and have no provisional answer: the code does the most cautious thing until the founder
 decides. F-21 (D-098, staff conflict of interest) has a PROVISIONAL answer
-(P-098-1, no override) that the founder must confirm or change.** Treat this list as part of the launch
+(P-098-1, no override) that the founder must confirm or change. D-099
+(order life-cycle hardening) sets seven PROVISIONAL values, P-099-1 to
+P-099-7, listed in D-099, and raises F-22, which has a PROVISIONAL answer
+(P-099-7).** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -4030,6 +4219,18 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   making sure two people hold each staff role), or whether a second
   person's approval, or the founder's, should be able to unblock it. No
   override is built until the founder decides.
+- **Founder's approval required: yes.**
+
+### F-22 Whether staff may close a stalled delivery or release its stock (D-099)
+
+- **Today (PROVISIONAL P-099-7):** a part out for delivery or after a
+  failed handover past its time limit is reported to staff and stops taking
+  one of the buyer's open-order places, but keeps its status and its stock
+  until the shop records the handover or the return. Staff follow it up
+  with the shop; they have no button to end it or release its stock.
+- **To decide:** whether staff should be able to record "the goods are back
+  at the shop" (releasing the stock) or "lost" on a shop's behalf, and with
+  what evidence; and the six time limits and caps P-099-1 to P-099-6.
 - **Founder's approval required: yes.**
 
 ## Open questions carried over from session 1

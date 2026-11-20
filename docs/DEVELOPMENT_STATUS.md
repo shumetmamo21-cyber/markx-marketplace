@@ -174,10 +174,10 @@ needs a code change, none is fixed):
 
 | | Defect | Where it is shown |
 | --- | --- | --- |
-| a | Commission is zero; the per-order cap is stored but never applied | [state report §5 a](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| a | Commission is zero; the per-order cap is stored but never applied (**cap fixed by D-099**: copied onto each line and applied to every fee calculation; commission stays at zero, D-088) | [state report §5 a](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | b | The "not your own store" check exists only in seller verification: staff who belong to a store can still decide its disputes, reviews, reports and takedowns (**fixed by D-098**, H1: one shared check in every such staff action) | [state report §5 b](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| c | Orders out for delivery or with a failed delivery never expire | [state report §5 c](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| d | A buyer can keep a competitor's stock held by ordering and cancelling (limited, not removed) | [state report §5 d](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| c | Orders out for delivery or with a failed delivery never expire (**fixed by D-099**, M6: past a time limit they go to staff and free the buyer's open-order place; their stock stays held until the shop settles them) | [state report §5 c](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| d | A buyer can keep a competitor's stock held by ordering and cancelling (limited, not removed; **limited further by D-099**, H2: per-buyer limits on unanswered holds per offer and per shop, and a cool-down after three cancellations in a day; many accounts with many phone numbers are still possible) | [state report §5 d](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | e | About 22 parts of the website freeze with no message when the connection drops; no proper error pages | [state report §5 e](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | f | Certificates do not renew automatically; rollback breaks when an image prefix is set | [state report §5 f](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | g | The picomatch audit warning is allowed until 31 December 2026; the web CSP allows inline scripts | [state report §5 g](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
@@ -1450,9 +1450,11 @@ Be careful with these. They were written and never exercised.
   (`orders.paid_past_hold`, `orders.paid_delivery_failed`); staff can ask
   the shop to deliver. Recording a refund is, by the founder's decision, a
   Release 2 requirement (D-087).
-- **The commission cap is stored but never applied** (D-086). **Mandatory
-  fix before any commission is enabled** (D-088, item 1). Harmless while fees
-  stay at zero, as the founder decided.
+- **Fixed (D-099): the commission cap is applied.** It was stored but never
+  applied (D-086, D-088 item 1). Each line now copies the rule and its cap,
+  and every fee calculation applies it. D-088's other items before any
+  commission (a staff tool for rules, fee reversal, invoicing, statements,
+  payouts) are still not built; fees stay at zero.
 - **Weekly reports stored before D-086** count every cancellation as the
   buyer's; reports from now on split them.
 
@@ -1567,8 +1569,8 @@ Be careful with these. They were written and never exercised.
   a staff warning; the change is one job.
 - The parent order reads `completed` as soon as every part is handed over,
   even while one is still inside its problem window (D-038, D-045).
-- The device fee cap per order (`cap_santim`) is not applied; no rule
-  carries one and `cap_applied` is always false (D-045).
+- Fixed by D-099: the fee cap per order (`cap_santim`) is copied onto each
+  line and applied; `cap_applied` is set when it lowers a fee (D-045).
 - A wrong handover code commits the attempt count inside the service
   (`db.commit()`), the same pattern as login codes. A caller that wraps
   `confirm_delivery` in a larger transaction would commit that larger
