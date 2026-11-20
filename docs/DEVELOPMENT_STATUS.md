@@ -1,13 +1,32 @@
 # Development status
 
-**Last updated:** 20 November 2026, by the **staff conflict and phone
-digits session** (D-098), on branch
-`claude/staff-conflict-phone-fixes-qkiixq`, from `main` at `d01fef7`
-(not merged; the founder approves a merge). See "Staff conflict of
-interest, phone digits" just below. Before it, the checks and secret-scan
-session (D-097, pull request #5) was merged into `main` on 20 November
-2026 as `d01fef7` (CI 154 and Browser journeys 30 passed on it), and the
-backup trust hardening session (D-096, pull request #4) as `773bbb6`.
+**Last updated:** 20 November 2026, by the **order life-cycle hardening
+session** (D-099), on branch `claude/order-lifecycle-hardening-1djdof`,
+from `main` at `c70b338` with the complete history (not merged; the
+founder approves a merge). See "Order life-cycle hardening" just below.
+Before it, the staff conflict and phone digits session (D-098, pull request
+#6) was merged into `main` on 20 November 2026 as `c70b338`; the checks and
+secret-scan session (D-097, pull request #5) as `d01fef7`, and the backup
+trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## Order life-cycle hardening (20 November 2026, D-099)
+
+Product code, one migration (`0019`), tests and documents. **Nothing
+deployed; no account; no money; no commission rule created.** Details and
+the seven PROVISIONAL values (P-099-1 to P-099-7): `docs/DECISIONS.md`,
+D-099; new founder question F-22.
+
+| Finding | State | Proof (test) |
+| --- | --- | --- |
+| **M6** parts out for delivery or after a failed handover never expire (audit §8, §17 item 8) | **Fixed.** Past a time limit (48 hours on the road, never before the promised delivery time; 72 hours after a failed handover; both PROVISIONAL) the watch reports the part to staff by order code (`orders.stalled_on_the_road`, `orders.stalled_after_failed_handover`) and it stops taking one of the buyer's open-order places. It is never ended and its stock never released by the system (the goods are not on the shelf; paid parts need staff, D-086); the shop's return releases it | `tests/api/test_stalled_deliveries.py`, 8 tests; all 8 fail on `c70b338` (no check; the stalled part still refuses the buyer's next order with `too_many_open_orders`) |
+| **H2** a rival can keep a shop's stock held by ordering and cancelling (audit §8, §9) | **Fixed for one account, limited for many.** Per buyer, before the shop answers: at most 5 units of one offer and 10 of one shop; a cool-down after 3 cancelled orders in 24 hours (all PROVISIONAL). Other buyers are never limited by one buyer's orders. Many accounts with many phone numbers remain possible (each bounded by the same limits) | `tests/api/test_stock_hold_limits.py`, 7 tests; 4 fail on `c70b338` (6 units accepted; a fourth order accepted after 3 cancellations; settings missing), 3 guards for ordinary buyers pass on both |
+| **Commission cap** stored but never applied (audit §11; D-086, D-088 item 1) | **Fixed: applied.** The rule and its cap are copied onto each order line at placement (migration `0019`) and one calculation (`payments/fees.py`) applies each rule's cap per part to the shop's estimate and to the fee at completion; `cap_applied` is set. Commission stays at zero (D-088) | `tests/unit/test_fees.py`, 7 tests (new module); `tests/api/test_commission_cap.py`, 5 tests; 4 fail on `c70b338` (fee 1,185 birr instead of the 500 birr cap; rule and cap not copied), 1 guard passes on both |
+| **Pull request #6 review:** a test that sign-in limits hold in any digits | **Added.** Resend cool-down, hourly code limit, lock after five wrong codes, staff lock, and one account / staff member / invitation / team member per number, each across Arabic-Indic, Persian, full-width and mixed digits | `tests/api/test_phone_digit_limits.py`, 8 tests; all 8 fail with the phone code from before D-098 (`d01fef7`), pass on `c70b338` and here |
+
+**Also corrected:** the documents said pull request #6 was not merged; it
+is (`c70b338`).
+
+**Test results:** see "Tests executed", 20 November 2026 (D-099).
 
 ## Staff conflict of interest, phone digits (20 November 2026, D-098)
 
@@ -1605,6 +1624,33 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Order life-cycle hardening** (D-099), on 20 November 2026, branch
+`claude/order-lifecycle-hardening-1djdof`, from `main` at `c70b338` with
+the complete history (`git fetch --unshallow`; `git rev-parse
+--is-shallow-repository` prints `false`). PostgreSQL 17.12 and MinIO in
+containers, with the CI job's settings (MinIO and the backup tools
+required, least-privilege MinIO users, `postgres:17.12` client tools).
+
+```text
+uv run pytest -q -p no:cacheprovider                     ->  1905 passed, 0 skipped, in 16 min 29 s
+the 35 new tests (5 files)                               ->  35 passed
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  245 files already formatted
+uv run mypy markx                                        ->  no issues found in 147 source files
+uv run alembic upgrade head && uv run alembic check      ->  0018 -> 0019; no new upgrade operations detected
+check_openapi_copy --exact openapi.json; web copy        ->  both match the API exactly (no API shape changed)
+apps/web: npm run lint; npm run typecheck; npm test      ->  passed; passed; 102 passed
+
+# The new tests against the old code (a worktree of c70b338 with only the new test files)
+test_commission_cap, test_stalled_deliveries,
+test_stock_hold_limits                                   ->  16 failed, 4 passed (the 4 ordinary-use guards)
+test_fees                                                ->  cannot import: payments/fees.py is new
+test_phone_digit_limits with d01fef7's phone.py           ->  8 failed (on c70b338: 8 passed)
+```
+
+A first, incomplete run of the unchanged code (839 passed, none failed)
+was cut short when a second run was started by mistake and dropped the
+shared test database; the complete run above is the one that counts.
 
 **Staff conflict of interest, phone digits** (D-098), on 20 November
 2026, branch `claude/staff-conflict-phone-fixes-qkiixq`, from `main` at
