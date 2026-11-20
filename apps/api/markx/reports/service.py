@@ -27,6 +27,7 @@ from markx.core.errors import Conflict, NotFound
 from markx.notifications import service as notifications
 from markx.offers.models import Offer, OfferStatus
 from markx.sellers.models import Seller, SellerStatus, Store
+from markx.trust import conflict
 from markx.trust.models import Report, ReportStatus, ReportTarget, Review, ReviewStatus
 
 
@@ -109,6 +110,28 @@ def file_report(
     return report
 
 
+def _target_seller(
+    db: Session, target_type: ReportTarget, target_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The store a reported thing belongs to, if any (D-098)."""
+    if target_type == ReportTarget.OFFER:
+        return db.scalar(select(Offer.seller_id).where(Offer.id == target_id))
+    if target_type == ReportTarget.STORE:
+        return db.scalar(select(Store.seller_id).where(Store.id == target_id))
+    if target_type == ReportTarget.REVIEW:
+        return db.scalar(select(Review.seller_id).where(Review.id == target_id))
+    return db.scalar(select(Product.proposed_by_seller_id).where(Product.id == target_id))
+
+
+def _target_author(
+    db: Session, target_type: ReportTarget, target_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Who wrote a reported review (D-098); nobody for anything else."""
+    if target_type == ReportTarget.REVIEW:
+        return db.scalar(select(Review.buyer_user_id).where(Review.id == target_id))
+    return None
+
+
 def resolve(
     db: Session,
     actor: Actor,
@@ -140,6 +163,17 @@ def resolve(
         )
     else:
         closing = [first]
+    # D-098: not about one's own store, review or report. PROVISIONAL (P-098-2, D-098):
+    # whoever filed one of these reports may not close it either, so a member
+    # of staff cannot report a rival and then action the report.
+    #   The engineer's safest default; THE FOUNDER MUST CONFIRM OR CHANGE IT
+    #   BEFORE MARKX GOES LIVE.
+    conflict.refuse_conflict(
+        db, actor, action=f"report.{outcome.value}", target_type="report", target_id=first.id,
+        seller_ids=[_target_seller(db, ReportTarget(first.target_type), first.target_id)],
+        author_user_ids=[r.reporter_user_id for r in closing]
+        + [_target_author(db, ReportTarget(first.target_type), first.target_id)],
+    )  # fmt: skip
     now = _now()
     for report in closing:
         report.status = outcome.value

@@ -50,6 +50,7 @@ from markx.offers.models import (
 )
 from markx.search import service as search
 from markx.sellers.models import Seller, SellerMember, SellerRole, SellerStatus
+from markx.trust import conflict
 
 MAX_PRICE_SANTIM = 10_000_000_000  # ETB 100 million: a typing mistake, not a price
 MAX_STOCK = 1_000_000
@@ -596,6 +597,10 @@ def staff_remove_offer(db: Session, actor: Actor, offer_id: uuid.UUID, *, reason
     offer = db.scalar(select(Offer).where(Offer.id == offer_id).with_for_update(key_share=True))
     if offer is None:
         raise NotFound("offer_not_found", "That offer was not found.")
+    conflict.refuse_conflict(
+        db, actor, action="offer.staff_remove", target_type="offer", target_id=offer.id,
+        seller_ids=[offer.seller_id],
+    )  # fmt: skip
     if offer.removed_by_staff_at is not None:
         raise Conflict("offer_removed", "That offer was already removed.")
     # An offer the seller removed first is held too: removing it yourself
@@ -612,6 +617,10 @@ def staff_restore_offer(db: Session, actor: Actor, offer_id: uuid.UUID, *, reaso
     offer = db.scalar(select(Offer).where(Offer.id == offer_id).with_for_update(key_share=True))
     if offer is None:
         raise NotFound("offer_not_found", "That offer was not found.")
+    conflict.refuse_conflict(
+        db, actor, action="offer.staff_restore", target_type="offer", target_id=offer.id,
+        seller_ids=[offer.seller_id],
+    )  # fmt: skip
     if offer.removed_by_staff_at is None:
         raise Conflict("offer_not_held", "That offer was not taken down by staff.")
     offer.removed_by_staff_at = None

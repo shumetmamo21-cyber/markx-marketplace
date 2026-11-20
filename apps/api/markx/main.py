@@ -19,9 +19,10 @@ from markx.catalog.router import admin_router as catalog_admin_router
 from markx.catalog.router import router as catalog_router
 from markx.core.config import get_config
 from markx.core.db import get_engine
+from markx.core.errors import ValidationFailed
 from markx.core.http import enforce_request_origin, install_error_handlers, install_middleware
 from markx.core.logging import configure_logging
-from markx.core.phone import normalize_phone
+from markx.core.phone import InvalidPhoneNumber, normalize_phone
 from markx.delivery.router import admin_router as delivery_admin_router
 from markx.delivery.router import router as delivery_router
 from markx.exports.router import router as exports_router
@@ -94,7 +95,11 @@ def _dev_router() -> APIRouter:
 
     @router.get("/sms-inbox", response_model=list[DevSmsOut])
     def sms_inbox(phone: str = Query(min_length=9, max_length=24)) -> list[DevSmsOut]:
-        return [DevSmsOut(**m) for m in read_dev_sms_inbox(normalize_phone(phone))]
+        try:
+            normalized = normalize_phone(phone)
+        except InvalidPhoneNumber as exc:
+            raise ValidationFailed("phone_invalid", "Enter an Ethiopian mobile number.") from exc
+        return [DevSmsOut(**m) for m in read_dev_sms_inbox(normalized)]
 
     return router
 

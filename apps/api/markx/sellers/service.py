@@ -61,6 +61,7 @@ from markx.sellers.models import (
     SellerStatus,
     Store,
 )
+from markx.trust import conflict
 
 DOCUMENT_LINK_SECONDS = 300  # blueprint D.3: links expire within five minutes
 MAX_DOCUMENTS_PER_SELLER = 40
@@ -147,23 +148,13 @@ def _seller_snapshot(seller: Seller) -> dict[str, Any]:
     }
 
 
-def _refuse_own_seller(db: Session, actor: Actor, seller_id: uuid.UUID) -> None:
+def _refuse_own_seller(db: Session, actor: Actor, seller_id: uuid.UUID, action: str) -> None:
     """Nobody verifies themselves (blueprint C.5): a staff member who belongs to
-    a seller may not take staff decisions about it."""
-    if actor.user_id is None:
-        return
-    is_member = db.scalar(
-        select(SellerMember.id).where(
-            SellerMember.seller_id == seller_id,
-            SellerMember.user_id == actor.user_id,
-            SellerMember.is_active,
-        )
-    )
-    if is_member is not None:
-        raise PermissionDenied(
-            "conflict_of_interest",
-            "You belong to this seller, so another staff member must decide.",
-        )
+    a seller may not take staff decisions about it. The one shared check (D-098)."""
+    conflict.refuse_conflict(
+        db, actor, action=action, target_type="seller", target_id=seller_id,
+        seller_ids=[seller_id],
+    )  # fmt: skip
 
 
 # -- verification checks ---------------------------------------------------------
@@ -700,7 +691,7 @@ def review_document(
     decision: str,
     note: str | None,
 ) -> SellerDocument:
-    _refuse_own_seller(db, actor, seller_id)
+    _refuse_own_seller(db, actor, seller_id, "seller_document.review")
     get_seller(db, seller_id, lock=True)
     document = _document_of(db, seller_id, document_id)
     if decision == "rejected" and not note:
@@ -835,13 +826,13 @@ def _notify_owner(db: Session, seller: Seller, template: str, **params: Any) -> 
     )
 
 
-def _staff_seller(db: Session, actor: Actor, seller_id: uuid.UUID) -> Seller:
-    _refuse_own_seller(db, actor, seller_id)
+def _staff_seller(db: Session, actor: Actor, seller_id: uuid.UUID, action: str) -> Seller:
+    _refuse_own_seller(db, actor, seller_id, action)
     return get_seller(db, seller_id, lock=True)
 
 
 def request_documents(db: Session, actor: Actor, seller_id: uuid.UUID, *, note: str) -> Seller:
-    seller = _staff_seller(db, actor, seller_id)
+    seller = _staff_seller(db, actor, seller_id, "seller.request_documents")
     if seller.status != SellerStatus.APPLIED or seller.review_state != ReviewState.PENDING:
         raise Conflict("not_awaiting_review", "This application is not waiting for review.")
     before = _seller_snapshot(seller)
@@ -882,7 +873,7 @@ def approve_application(
     Level 3 is earned from track record and is never given at approval
     (blueprint D.3). The level must be backed by accepted documents.
     """
-    seller = _staff_seller(db, actor, seller_id)
+    seller = _staff_seller(db, actor, seller_id, "seller.approve")
     if seller.status != SellerStatus.APPLIED or seller.review_state != ReviewState.PENDING:
         raise Conflict("not_awaiting_review", "This application is not waiting for review.")
     if verification_level not in (1, 2):
@@ -923,7 +914,7 @@ def approve_application(
 #   The engineer's guess at the founder's request; THE FOUNDER MUST CONFIRM OR
 #   CHANGE IT BEFORE MARKX GOES LIVE.
 def reject_application(db: Session, actor: Actor, seller_id: uuid.UUID, *, reason: str) -> Seller:
-    seller = _staff_seller(db, actor, seller_id)
+    seller = _staff_seller(db, actor, seller_id, "seller.reject")
     if seller.status != SellerStatus.APPLIED or seller.review_state not in (
         ReviewState.PENDING,
         ReviewState.NEEDS_DOCUMENTS,
@@ -960,7 +951,7 @@ def set_verification_level(
     Raising needs the checks behind the level. Level 3 is given only to a
     seller already at Level 2. Lowering is always possible, with a reason.
     """
-    seller = _staff_seller(db, actor, seller_id)
+    seller = _staff_seller(db, actor, seller_id, "seller.set_verification_level")
     if seller.review_state != ReviewState.APPROVED or seller.status == SellerStatus.CLOSED:
         raise Conflict("seller_not_approved", "Only an approved seller has a verification level.")
     if shop_visited and seller.shop_visited_at is None:
@@ -984,7 +975,7 @@ def set_verification_level(
 def complete_recheck(db: Session, actor: Actor, seller_id: uuid.UUID, *, note: str) -> Seller:
     """The yearly re-check (blueprint D.3): staff confirm that the documents
     behind the seller's level still stand, and the next check is scheduled."""
-    seller = _staff_seller(db, actor, seller_id)
+    seller = _staff_seller(db, actor, seller_id, "seller.recheck")
     if seller.review_state != ReviewState.APPROVED or seller.status == SellerStatus.CLOSED:
         raise Conflict("seller_not_approved", "Only an approved seller is re-checked.")
     _require_level(db, seller, min(seller.verification_level, 2))
@@ -1001,7 +992,7 @@ def complete_recheck(db: Session, actor: Actor, seller_id: uuid.UUID, *, note: s
 
 
 def suspend_seller(db: Session, actor: Actor, seller_id: uuid.UUID, *, reason: str) -> Seller:
-    seller = _staff_seller(db, actor, seller_id)
+    seller = _staff_seller(db, actor, seller_id, "seller.suspend")
     if seller.status != SellerStatus.ACTIVE:
         raise Conflict("seller_not_active", "Only an active seller can be suspended.")
     before = _seller_snapshot(seller)
@@ -1016,7 +1007,7 @@ def suspend_seller(db: Session, actor: Actor, seller_id: uuid.UUID, *, reason: s
 
 
 def reinstate_seller(db: Session, actor: Actor, seller_id: uuid.UUID, *, reason: str) -> Seller:
-    seller = _staff_seller(db, actor, seller_id)
+    seller = _staff_seller(db, actor, seller_id, "seller.reinstate")
     if seller.status != SellerStatus.SUSPENDED:
         raise Conflict("seller_not_suspended", "Only a suspended seller can be reinstated.")
     before = _seller_snapshot(seller)

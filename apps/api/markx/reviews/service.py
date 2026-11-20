@@ -36,6 +36,7 @@ from markx.notifications import service as notifications
 from markx.notifications.models import Outbox
 from markx.orders.models import Order, OrderItem, SellerOrder, SellerOrderStatus
 from markx.sellers.models import Seller, SellerMember
+from markx.trust import conflict
 from markx.trust.models import RatingSummary, Review, ReviewStatus
 
 TOPIC_RECOUNT = "reviews.recount"
@@ -254,6 +255,10 @@ def moderate(
     review = db.scalar(select(Review).where(Review.id == review_id).with_for_update())
     if review is None:
         raise NotFound("review_not_found", "That review was not found.")
+    conflict.refuse_conflict(
+        db, actor, action=f"review.{action}", target_type="review", target_id=review.id,
+        seller_ids=[review.seller_id], author_user_ids=[review.buyer_user_id],
+    )  # fmt: skip
     target = ReviewStatus.PUBLISHED if action == "publish" else ReviewStatus.HIDDEN
     if review.moderation_status == target:
         raise Conflict("review_unchanged", f"This review is already {target.value}.")

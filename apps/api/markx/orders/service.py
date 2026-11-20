@@ -105,6 +105,7 @@ from markx.payments.models import (
     RuleScope,
 )
 from markx.sellers.models import Seller, SellerMember, SellerStatus, Store
+from markx.trust import conflict
 from markx.trust.models import CaseDecision, CaseStatus, DisputeCase, DisputeMessage
 
 MAX_CART_LINES = 30
@@ -1255,6 +1256,18 @@ def _lock_seller_order(
     return seller_order
 
 
+def _refuse_staff_conflict(
+    db: Session, actor: Actor, seller_order: SellerOrder, action: str
+) -> None:
+    """D-098: staff never act on a seller order of a store they belong to, nor
+    on an order they placed themselves."""
+    buyer_user_id = db.scalar(select(Order.buyer_user_id).where(Order.id == seller_order.order_id))
+    conflict.refuse_conflict(
+        db, actor, action=action, target_type="seller_order", target_id=seller_order.id,
+        seller_ids=[seller_order.seller_id], buyer_user_id=buyer_user_id,
+    )  # fmt: skip
+
+
 def _shipment(db: Session, seller_order: SellerOrder) -> Shipment:
     """The seller order's one shipment, locked after the seller order (the
     tracking events point at it, so never a plain FOR UPDATE: D-027)."""
@@ -1388,6 +1401,7 @@ def staff_dispatch(
     """Staff send a parcel out, for a partner courier (J.9) or on a seller's
     behalf. Audit-logged; the event names the role, never the person."""
     seller_order = _lock_seller_order(db, seller_order_id)
+    _refuse_staff_conflict(db, actor, seller_order, "seller_order.dispatch")
     _dispatch(
         db, seller_order, actor_type=ActorType.STAFF, actor_user_id=actor.user_id,
         rider_name=rider_name, rider_phone=rider_phone, now=now or _now(),
@@ -1806,6 +1820,7 @@ def staff_reissue_handover_code(
     """Staff issue the buyer a new code, after a lockout or a leak: the
     version rises, so the old code is dead, and the attempt count restarts."""
     seller_order = _lock_seller_order(db, seller_order_id)
+    _refuse_staff_conflict(db, actor, seller_order, "shipment.reissue_handover_code")
     if seller_order.status not in AWAITING_HANDOVER:
         raise Conflict("order_not_awaiting_handover", "This order is not waiting for a handover.")
     shipment = _shipment(db, seller_order)
@@ -1960,6 +1975,7 @@ def resolve_dispute(
     """
     assert actor.user_id is not None, "a dispute is decided by a signed-in member of staff"
     seller_order = _lock_seller_order(db, seller_order_id)
+    _refuse_staff_conflict(db, actor, seller_order, "dispute.resolve")
     # The clock is read once this decision holds the order, so `resolved_at`
     # is the moment it took effect: a reply that got the lock first is always
     # stamped before it, never after.
