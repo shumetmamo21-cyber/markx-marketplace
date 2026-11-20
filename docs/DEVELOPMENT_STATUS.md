@@ -1,8 +1,41 @@
 # Development status
 
-**Last updated:** 19 November 2026, by the **documents-repair session**
-(D-095): documents only, no code, test, migration, setting or workflow
-changed. See "State on 19 November 2026" just below.
+**Last updated:** 19 November 2026, by the **backup trust hardening
+session** (D-096), on branch `claude/markx-backup-trust-hardening-4mmhxz`
+(not merged; the founder approves a merge). See "Backup trust hardening"
+just below. Before it, the documents-repair session (D-095) changed
+documents only.
+
+## Backup trust hardening (19 November 2026, D-096)
+
+The independent audit's most serious backup findings, each checked first
+against the code at `c4a1843` (all were still true), fixed, and proved by
+tests against PostgreSQL 17.12 and MinIO only. **Nothing is connected: no
+account, bucket, key or server exists; nothing was deployed; no money was
+spent.** Details and every PROVISIONAL choice: `docs/DECISIONS.md`, D-096.
+
+| Finding | State | Proof (test) |
+| --- | --- | --- |
+| **BK-1** the server's key can delete every backup; no object lock | **Fixed (code and tests); real provider NOT VERIFIED.** The service only adds, reads and lists; retention is `prune`, off the server, with its own key, version- and lock-aware; staging and production require a COMPLIANCE object lock (PROVISIONAL) | `test_the_servers_backup_key_can_add_read_and_list_but_never_delete`, `test_a_required_object_lock_is_checked_and_a_bucket_without_one_is_refused`, `test_in_a_locked_bucket_every_object_is_locked_and_a_reused_blob_stays_locked`, `test_retention_removes_every_version_and_leaves_no_delete_marker` (`tests/storage/test_backup_trust.py`); `test_the_service_backs_up_and_never_deletes_or_runs_retention`, `test_the_service_does_not_start_against_an_unsafe_bucket` (`tests/unit/test_backup_commands.py`) |
+| **BK-3** a damaged upload is reused by name, and the set marked complete | **Fixed.** Reuse only when size and ETag match the record made right after the read-back passed; the index records each blob's encrypted size and SHA-256; a set is complete only when every blob passed | `test_a_blob_whose_upload_failed_its_check_is_uploaded_again_by_the_next_run` (the audit's regression test), `test_a_blob_changed_at_the_destination_since_its_check_is_uploaded_again`, `test_the_index_records_each_blobs_encrypted_size_and_hash`, `test_a_set_is_complete_only_when_every_blob_in_it_passed` |
+| **BK-2** the drill puts the recovery key on the server and restores into the production cluster | **Fixed (code, CI and runbook).** `verify`, `restore`, `drill`, `prune` refuse staging and production; `drill --from-destination` on a throwaway recovery machine with a read-only key; `record-drill` for the watch | `test_what_needs_the_recovery_key_or_deletes_never_runs_on_a_server` (24 cases), `test_the_off_server_drill_needs_only_a_read_only_key_and_writes_nothing`, `test_record_drill_refuses_a_report_it_cannot_tie_to_a_real_set`; CI step "Off-server recovery drill" |
+| **BK-6** a restore runs as the superuser, so a forged dump can run programs | **Fixed.** `pg_restore` and the checks run as `markx_migrator`/`markx_app`; the throwaway PostgreSQL has no network (`infra/backup/recovery-host.sh`); the runbook says sets after a suspected break-in are not trusted. Signing stays on the server (a later option) | `test_a_forged_dump_cannot_run_a_program_on_the_recovery_machine` (the same archive runs `COPY ... TO PROGRAM` as the superuser, is refused as the owner), `test_the_restored_copy_is_owned_by_the_owner_role_with_the_sources_exact_grants` |
+| **BK-7** a restore can reset production's role passwords | **Fixed.** The BK-2 refusal alone did NOT cover it (a machine without `MARKX_ENV` could still point at production), so the restore now never resets an existing role's password and refuses `MARKX_DB_*_PASSWORD` when the roles exist | `test_a_restore_never_resets_the_password_of_an_existing_role` |
+| **BK-17** CI uses MinIO's root keys and a floating `postgres:17` | **Fixed.** Five least-privilege MinIO users (`infra/backup/minio-least-privilege.sh`) in the tests and both CI drills; `postgres:17.12` pinned | every test in `test_backup_recovery.py` and `test_backup_trust.py` now runs on those users (CI requires them); CI steps "Least-privilege MinIO users" and both drills |
+
+**Found and fixed on the way:** a restore as the owner role would have
+widened every table's grants (bootstrap.sh's default privileges), taking
+the audit log's protection away; the restore now clears them first
+(proved by the exact-grants test, which fails without the fix).
+
+**Still open from the backup findings:** BK-4 (alerts that work without the
+server), BK-5 (an off-server escrow of the application secrets), moving
+manifest signing off the server (audit 3B), BK-8 to BK-16 and BK-18; no
+scheduled deep verification (BK-11). **To test on the real provider once
+F-16 is decided:** the runbook's section "To test on the real provider",
+Cloudflare R2's bucket locks above all (UNKNOWN).
+
+**Test results:** see "Tests executed", 19 November 2026 (D-096).
 
 ## State on 19 November 2026
 
@@ -101,11 +134,11 @@ needs a code change, none is fixed):
 | e | About 22 parts of the website freeze with no message when the connection drops; no proper error pages | [state report §5 e](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | f | Certificates do not renew automatically; rollback breaks when an image prefix is set | [state report §5 f](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | g | The picomatch audit warning is allowed until 31 December 2026; the web CSP allows inline scripts | [state report §5 g](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h1 | The server's storage key can delete every backup | [state report §5 h1](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h2 | Backups are not protected by object lock | [state report §5 h2](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h3 | Recovery drills put the recovery private key on the server | [state report §5 h3](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h4 | A restore runs with full database administrator rights | [state report §5 h4](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| h5 | A failed upload can be reused just by its name | [state report §5 h5](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h1 | The server's storage key can delete every backup (**fixed on the D-096 branch**, BK-1) | [state report §5 h1](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h2 | Backups are not protected by object lock (**fixed on the D-096 branch**: required on staging and production, PROVISIONAL; real provider not verified) | [state report §5 h2](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h3 | Recovery drills put the recovery private key on the server (**fixed on the D-096 branch**, BK-2) | [state report §5 h3](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h4 | A restore runs with full database administrator rights (**fixed on the D-096 branch**, BK-6) | [state report §5 h4](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| h5 | A failed upload can be reused just by its name (**fixed on the D-096 branch**, BK-3) | [state report §5 h5](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | h6 | All alerts run on the server they watch | [state report §5 h6](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | h7 | `MARKX_ENCRYPTION_KEY` and `MARKX_SECRET_KEY` have no recovery copy off the server (partly covered by a written instruction) | [state report §5 h7](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | h8 | The server holds the key that signs backups | [state report §5 h8](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
@@ -119,7 +152,8 @@ point into
   - BK-5 also names the database role passwords and the TLS keys as having
     no escrow;
   - BK-7: a restore or drill on the production cluster can reset production
-    role passwords through bootstrap;
+    role passwords through bootstrap (**checked and fixed on the D-096
+    branch**);
   - BK-8: "off-site" is decided by the provider label, not the endpoint;
   - BK-9: the backup uses the schema-owner role, with internet access;
   - BK-10: a restore depends on a content type sniffed from the first 16
@@ -132,7 +166,7 @@ point into
   - BK-15: the plaintext manifest shows row counts per table;
   - BK-16: unexpected restore errors leave no FAILED report;
   - BK-17: the CI drill uses root MinIO keys and a floating `postgres:17`
-    tag;
+    tag (**checked and fixed on the D-096 branch**);
   - BK-18: the recovery key is plain base64 with no passphrase or split.
 - Backend and security (audit §8 and §9):
   - M1: fake reviews through self-orders;
@@ -180,8 +214,8 @@ point into
   - no scheduled runs;
   - no migration downgrade or upgrade-from-previous-release test;
   - no load test;
-  - no test of BK-3;
-  - the drill does not use least-privilege keys;
+  - no test of BK-3 (**added on the D-096 branch**);
+  - the drill does not use least-privilege keys (**fixed on the D-096 branch**);
   - branch protection on `main`: NOT VERIFIED by the audit.
 
 **Known issue: Node.js 20 in the pinned GitHub actions.** GitHub's runners
@@ -1165,7 +1199,15 @@ PostgreSQL 17 and MinIO; **not connected** to any real destination.
 - **Drill** with seven injected faults; CI keeps its report (artifact
   `restore-drill`).
 - **Retention**: founder-set; the newest complete set always kept; only
-  signed sets trusted; blobs after 48 hours and only when unneeded.
+  signed sets trusted; blobs after 48 hours and only when unneeded. Since
+  D-096 never on the server: `prune` with its own key, every version
+  removed, what a lock holds left.
+- **D-096 hardening** (branch `claude/markx-backup-trust-hardening-4mmhxz`):
+  no delete from the server, object lock required on staging and
+  production, verified blob reuse (the blob ledger), drills and restores
+  only on a throwaway recovery machine, restores as the owner role, no
+  password reset; least-privilege MinIO users in tests and CI. See the
+  section at the top of this file.
 - **Monitoring**: `backup_runs` (migration `0018`, read-only for the
   application role) and the watch's `backup.failed`, `backup.incomplete`,
   `backup.stale`, `backup.drill_failed`, `backup.drill_overdue` on staging
@@ -1189,7 +1231,8 @@ Be careful with these. They were written and never exercised.
 - `docs/runbooks/` procedures that cannot be rehearsed: preparing a server,
   the certificate (no tool is installed; the deploy hook named in
   `tls-certificates.md` does not exist yet), recovering a lost server,
-  secret rotation, the monthly drill on a server.
+  secret rotation, the monthly drill on a real recovery machine against a
+  real bucket (D-096: drills no longer run on a server).
 - **Backups against a real provider** (D-094): every backup, restore and
   drill test used MinIO. The `s3` and `r2` paths of the backup destination
   share the storage adapter's client code, but no set has ever been written
@@ -1510,6 +1553,34 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Backup trust hardening** (D-096), on 19 November 2026, branch
+`claude/markx-backup-trust-hardening-4mmhxz` (commits `ffbfc39`, `2b4e179`,
+`f9b8c99`), PostgreSQL `postgres:17.12` and MinIO
+(`bitnamilegacy/minio:2025.7.23-debian-12-r5`) in Docker on the session's
+machine, the least-privilege MinIO users made by
+`infra/backup/minio-least-privilege.sh`. **No real provider, bucket or key
+was used; nothing left this machine.**
+
+```text
+# API, the whole suite (MinIO, the backup tests and their MinIO users required)
+$ MARKX_TEST_MINIO_MC="docker exec -i markx-minio mc" uv run pytest -q -p no:cacheprovider
+  ->  1789 passed in 798.56s (0:13:18)
+$ uv run ruff check .            ->  All checks passed!
+$ uv run ruff format --check .   ->  235 files already formatted
+$ uv run mypy markx              ->  Success: no issues found in 144 source files
+# The two CI drill steps, run locally with CI's exact commands and settings:
+#   rehearsal (no-delete key, read-only source key)    ->  DRILL PASSED, 7 of 7 faults refused
+#   off-server (read-only key, PostgreSQL --network none) ->  DRILL PASSED, 7 of 7 faults refused
+# The recovery container: NetworkMode=none, only "lo", "Network is unreachable".
+# The exact-grants test fails with prepare_for_owner_restore removed, passes with it.
+```
+
+GitHub, pull request #4, commit `adf128a`: **CI 144 and 145 passed** (all
+five jobs; the API job ran 1789 tests and both drills), **Browser journeys 26
+passed**. Earlier runs and why they failed:
+`docs/reports/2026-11-19-backup-trust-hardening.md`.
+
 
 **Off-server backup and disaster recovery** (D-094), on 18 November 2026,
 commits `c7d0d82` to `3922579` (on `866a184`), PostgreSQL 17 and MinIO

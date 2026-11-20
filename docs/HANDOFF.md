@@ -5,7 +5,8 @@ kept current at each pushed milestone; Parts A.00 and A.0 were added by the
 two back-end-only sessions that followed, Part A.000 by the ninth session
 and Part A.0000 by the tenth (both the web app's owner), and Parts A.00000
 to A.0000000 by the deployment, Telegram and backup sessions. Part
-A.00000000 was added on 19 November 2026 by the documents-repair session.
+A.00000000 was added on 19 November 2026 by the documents-repair session,
+and Part A.000000000 the same day by the backup trust hardening session.
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -14,6 +15,66 @@ A.00000000 was added on 19 November 2026 by the documents-repair session.
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.000000000 — Backup trust hardening (19 November 2026, D-096)
+
+On branch `claude/markx-backup-trust-hardening-4mmhxz`, from `main` at
+`c4a1843`, with one pull request into `main` that is **not merged**: the
+founder says "merge approved" first. Built and tested with PostgreSQL 17.12
+and MinIO only; **no money spent, no account created, nothing deployed, no
+real storage used.** In plain words, for the founder:
+
+- **The server can no longer delete a backup (BK-1).** Its backup key may
+  only add, read and list. Deleting old backups ("retention") is now a
+  separate job run away from the server with its own key. On staging and
+  production the backup bucket must have an "object lock" (nobody can
+  delete a backup before its time, not even with the account's keys), or
+  the backup service will not start. This costs storage, so it is
+  **PROVISIONAL** until you confirm it with F-16.
+- **A damaged upload is never reused (BK-3).** The backup now remembers
+  each file it uploaded and checked, and reuses one only when the storage
+  still shows exactly that file; anything else is uploaded again.
+- **Drills and restores never happen on the server (BK-2).** The recovery
+  key stays off the server: the drill and any restore run on a separate,
+  throwaway machine (your laptop, or a free CI runner) with a key that can
+  only read the backups. CI now does this on every push.
+- **A forged backup cannot harm the recovery machine (BK-6)**, and **a
+  restore can never change the live database's passwords (BK-7).**
+- **The tests use limited keys (BK-17)**, as the real server will.
+- **What you need to decide:** the six PROVISIONAL items in D-096 (object
+  lock required, its mode, 30 days minimum, 44 days recommended, retention
+  run by hand monthly at the drill, the recovery machine being the
+  key-holder's laptop), together with F-16, F-19 and F-20.
+- **Still open:** BK-4 (alerts that survive losing the server), BK-5 (a
+  safe copy of the application's secrets), moving backup signing off the
+  server, the other lower findings; and every test against the real
+  provider, Cloudflare R2's lock above all (UNKNOWN today).
+- **Checks:** 1789 tests passed locally; on GitHub, pull request #4's CI
+  runs 144 and 145 and Browser journeys run 26 passed on `adf128a`. The
+  report: `docs/reports/2026-11-19-backup-trust-hardening.md`.
+- Details, tests and proof: `docs/DEVELOPMENT_STATUS.md`, "Backup trust
+  hardening"; decision D-096 in `docs/DECISIONS.md`; procedures in
+  `docs/runbooks/backup-and-restore.md`.
+- **Next task: waiting for the founder's choice.**
+
+**For the next engineer** (traps paid for in this session):
+
+- The backup tests need the least-privilege MinIO users: run
+  `MC="docker exec -i markx-minio mc" infra/backup/minio-least-privilege.sh`
+  once, or set `MARKX_TEST_MINIO_MC` to that command. MinIO matches a policy
+  wildcard only at the END of a bucket name: the tests' file buckets are
+  `markx-test-files-*` for that reason.
+- A restore runs `pg_restore` as `markx_migrator`. bootstrap.sh's default
+  privileges must be cleared in the new database first
+  (`prepare_for_owner_restore`), or every restored table gets wider grants
+  than its source.
+- MinIO keeps an object-lock date to the millisecond: lengthen to a whole
+  second, rounded up. A bucket made in a test with a COMPLIANCE lock cannot
+  be removed until the lock ends; that is expected.
+- `S3Destination.put_file` now returns the stored object (its ETag and lock
+  date); a test double must return it too.
 
 ---
 

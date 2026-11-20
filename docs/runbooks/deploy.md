@@ -33,7 +33,9 @@ the founder.
    off-server backups": the destination, the recovery key's keeper and the
    retention are the founder's decisions F-16, F-19, F-20). The keys are
    made on a trusted machine, never on the server; only the PUBLIC key and
-   the signing key come here, the recovery key never does:
+   the signing key come here, the recovery key never does. Of the backup
+   bucket's three keys only the server's (no delete) goes into `backup.env`;
+   the read-only and the retention keys never come here (D-096):
 
    ```bash
    install -o 0 -g 0 -m 644 backup-public.key /etc/markx/backup-public.key

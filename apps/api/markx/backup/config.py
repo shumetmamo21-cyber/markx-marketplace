@@ -19,6 +19,14 @@ bucket that is also a file bucket. The backup service (`run`, `serve`,
 A restore needs none of the service's settings: an operator's machine needs
 the destination's (read) credentials, the recovery key and the signer key.
 
+**Object lock (BK-1).** On staging and production the backup bucket must have
+S3 Object Lock in COMPLIANCE mode with a default retention of at least
+`MARKX_BACKUP_OBJECT_LOCK_MIN_DAYS`; the service refuses to start otherwise
+(`destination.py`). PROVISIONAL: requiring it costs storage for the lock
+period once a real bucket exists, and the period itself is the founder's to
+confirm with F-16 and F-20 (docs/DECISIONS.md, D-096). A laptop and the tests
+ask for it with MARKX_BACKUP_REQUIRE_OBJECT_LOCK=1.
+
 A laptop and the tests may use a folder or MinIO; a folder on the same
 machine is reported as NOT off-server in every record and manifest.
 """
@@ -122,9 +130,22 @@ class BackupConfig(BaseSettings):
     # running at the same moment can never lose a blob it just uploaded.
     blob_grace_hours: int = Field(default=48, ge=24, le=24 * 30)
 
+    # -- object lock (BK-1): PROVISIONAL, the founder confirms with F-16 ----------------
+    # Always required on staging and production; this asks for it anywhere else.
+    require_object_lock: bool = False
+    # The bucket's default COMPLIANCE retention must be at least this many days,
+    # and every object of the newest set stays locked at least this long.
+    # PROVISIONAL: 30 days, the blueprint's backup period (H.2); F-16 and F-20.
+    object_lock_min_days: int = Field(default=30, ge=1, le=3650)
+
     @property
     def is_real_environment(self) -> bool:
         return self.env in ("staging", "production")
+
+    @property
+    def object_lock_required(self) -> bool:
+        """PROVISIONAL (F-16): always on staging and production."""
+        return self.is_real_environment or self.require_object_lock
 
     @property
     def offsite(self) -> bool:
@@ -245,6 +266,10 @@ class BackupConfig(BaseSettings):
         ):  # fmt: skip
             problems.append(
                 "the backup bucket must be its own bucket, never the documents' or the pictures'"
+            )
+        if self.require_object_lock and self.destination == "local":
+            problems.append(
+                "MARKX_BACKUP_REQUIRE_OBJECT_LOCK needs object storage: a folder has no object lock"
             )
         if problems:
             raise ValueError("Backup settings: " + "; ".join(problems))
