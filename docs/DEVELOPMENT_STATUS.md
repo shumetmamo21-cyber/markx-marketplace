@@ -1604,6 +1604,37 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Staff conflict of interest, phone digits** (D-098), on 20 November
+2026, branch `claude/staff-conflict-phone-fixes-qkiixq`, from `main` at
+`d01fef7` with the complete history (not shallow). PostgreSQL 17.12 and
+MinIO in containers, with the CI job's settings (MinIO and the backup tools
+required, least-privilege MinIO users, `postgres:17.12` client tools).
+
+```text
+uv run pytest -q -p no:cacheprovider                     ->  1870 passed, 0 skipped, in 19 min 46 s
+uv run pytest tests/api/test_staff_conflict.py           ->  22 passed
+uv run pytest tests/api/test_phone_digits.py             ->  45 passed
+uv run pytest tests/unit/test_phone.py                   ->  45 passed
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  238 files already formatted
+uv run mypy markx                                        ->  no issues found in 145 source files
+uv run alembic upgrade head && uv run alembic check      ->  no new upgrade operations detected
+check_openapi_copy --exact openapi.json; web copy        ->  both match the API exactly
+apps/web: npm run lint; npm run typecheck; npm test      ->  passed; passed; 102 passed
+
+# The new tests catch the defects
+conflict check switched off  ->  22 of 23 conflict tests fail (the "left the team" test passes, as it should)
+old markx/core/phone.py      ->  phone-digit tests fail with the database's check violations (the server error)
+
+# Found by the first full run, fixed
+tests/db/test_dispute_contention.py: 3 tests decided disputes as the buyer
+  (Actor(user_id=<buyer>)); now refused by D-098. They act as the bazaar's
+  staff member; assertions unchanged; 4 passed.
+```
+
+The first full run, before that fix and without MinIO: 3 failed (those
+three), 1776 passed, 91 skipped (the MinIO tests). Browser journeys were
+not run locally; GitHub runs them on the pull request.
+
 **Checks once per change, secret scan** (D-097), on 20 November 2026,
 branch `claude/markx-checks-secret-scan-ik3o3z`, from `main` at `773bbb6`
 with the complete history (not shallow), every branch and every pull
