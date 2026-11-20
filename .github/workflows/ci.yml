@@ -2,20 +2,99 @@
 # GitHub's free hosted runners; nothing here is deployed or paid for.
 name: CI
 
+#
+# D-097: one run per change. A pull request runs it (opened, every push to
+# it); main runs it on every push (each merge); anyone with access can start
+# it by hand. A push to a branch without a pull request no longer runs it, so
+# a push to a pull request's branch no longer starts two full runs.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# D-097: runs of one pull request share a group (by its NUMBER, never by
+# branch name: on a public repository a fork's branch may also be called
+# main), so a newer push cancels the older run of that pull request. Every
+# other run (main, by hand) has a group of its own and is never cancelled.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # D-097: decides whether this change is documents only. Only then are the
+  # heavy jobs skipped; "CI result" below still reports a pass. Anything it
+  # cannot decide counts as code, so every job runs.
+  changes:
+    name: What changed (documents only?)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.decide.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the base commit is needed for the comparison
+      - name: Compare with the base
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          # Documents that a test or check reads count as code, so a change
+          # to one still runs every job. Searched for D-097: no test, script
+          # or workflow reads a document's text; add any that does here.
+          read_by_checks=()
+          is_document() {
+            case "$1" in
+              # Inside an application, infrastructure or CI folder a file may
+              # be part of a build or a check, whatever its name.
+              apps/* | infra/* | .github/*) return 1 ;;
+              *.md) ;;
+              *) return 1 ;;
+            esac
+            for kept in "${read_by_checks[@]}"; do
+              [[ "$1" == "$kept" ]] && return 1
+            done
+            return 0
+          }
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="" ;; # started by hand: every job
+          esac
+          code=true
+          # --no-renames: a file moved into docs/ also counts where it left.
+          if [[ -n "$base" && ! "$base" =~ ^0+$ ]] \
+            && files=$(git diff --no-renames --name-only "$base" "$GITHUB_SHA") \
+            && [[ -n "$files" ]]; then
+            code=false
+            while IFS= read -r file; do
+              if is_document "$file"; then
+                echo "document: $file"
+              else
+                echo "code:     $file"
+                code=true
+              fi
+            done <<< "$files"
+          else
+            echo "No base to compare with (or nothing changed): every job runs."
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [[ "$code" == true ]]; then
+            echo "Code or settings changed: every job runs."
+          else
+            echo "Documents only: the heavy jobs are skipped; the secret scan still runs."
+          fi
+
   api:
     name: API (lint, types, migrations, tests)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
@@ -192,6 +271,8 @@ jobs:
 
   web:
     name: Web app (lint, types, unit tests, build)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
@@ -220,7 +301,8 @@ jobs:
         run: npm run build
 
   # D-084: the secret scan and the dependency audits the blueprint's pipeline
-  # asks for on every change. Findings are reviewed, never silently ignored:
+  # asks for on every change. D-097: it runs on documents-only changes too,
+  # since a document can leak a secret as easily as code. Findings are reviewed, never silently ignored:
   # see .gitleaks.toml and .github/security/npm-audit-allowlist.json.
   security:
     name: Security (secret scan, dependency audits)
@@ -265,6 +347,8 @@ jobs:
 
   containers:
     name: Containers (API and web images build, Compose files are valid)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -327,9 +411,51 @@ jobs:
   # outside service, domain or certificate authority is contacted.
   production-rehearsal:
     name: Production stack rehearsal (Compose, proxy, deploy, rollback)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Rehearse a deployment
         run: sudo -E infra/production/rehearsal/rehearse.sh
+
+  # D-097: one result for the whole run. It passes when every job that had
+  # to run passed: all of them for a code change; "What changed" and the
+  # security job for a documents-only change, whose skipped heavy jobs count
+  # as passed. Anything else (a failure, a cancellation, a heavy job skipped
+  # on a code change) fails it.
+  result:
+    name: CI result
+    if: always()
+    needs: [changes, api, web, security, containers, production-rehearsal]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every required job passed
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          CHANGES: ${{ needs.changes.result }}
+          SECURITY: ${{ needs.security.result }}
+          API: ${{ needs.api.result }}
+          WEB: ${{ needs.web.result }}
+          CONTAINERS: ${{ needs.containers.result }}
+          REHEARSAL: ${{ needs.production-rehearsal.result }}
+        run: |
+          echo "code changed: ${CODE:-unknown}"
+          echo "changes=$CHANGES security=$SECURITY api=$API web=$WEB containers=$CONTAINERS production-rehearsal=$REHEARSAL"
+          ok=true
+          [[ "$CHANGES" == success ]] || ok=false
+          [[ "$SECURITY" == success ]] || ok=false
+          for result in "$API" "$WEB" "$CONTAINERS" "$REHEARSAL"; do
+            if [[ "$CODE" == false ]]; then
+              [[ "$result" == skipped || "$result" == success ]] || ok=false
+            else
+              [[ "$result" == success ]] || ok=false
+            fi
+          done
+          if [[ "$ok" != true ]]; then
+            echo "CI failed: see the jobs above."
+            exit 1
+          fi
+          echo "CI passed."

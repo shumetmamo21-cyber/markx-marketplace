@@ -3,14 +3,16 @@
 # database, on GitHub's free hosted runners. Nothing here is deployed or paid
 # for. Any failing journey fails the run (D-081, D-084).
 #
-# It runs on every push that changes code or infrastructure; a push that
-# changes only documents does not start it. It can also be started from the
-# Actions tab once this file is on the default branch.
+# D-097: it runs on every push to main that changes code or infrastructure
+# (a push that changes only documents does not start it), and by hand from
+# the Actions tab on any branch, including a pull request's branch before it
+# is merged. It no longer runs on every push to every branch.
 name: Browser journeys
 
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - "apps/**"
       - "infra/**"
@@ -19,10 +21,12 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch supersedes a run in progress.
+# D-097: a run on main has a group of its own, so a newer run never cancels
+# it, running or waiting. On any other branch (started by hand) a newer run
+# of the same branch supersedes the older one.
 concurrency:
-  group: journeys-${{ github.ref }}
-  cancel-in-progress: true
+  group: journeys-${{ github.ref == 'refs/heads/main' && format('main-{0}', github.run_id) || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   journeys:

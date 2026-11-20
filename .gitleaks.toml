@@ -2,7 +2,9 @@
 # with this file over the whole Git history, and fails on any finding.
 #
 # Every default rule applies. The only exceptions are values that are
-# deliberately in the repository and labelled as not secret: the laptop-only
+# deliberately in the repository and labelled as not secret IN THE VALUE
+# ITSELF (D-097, W-1): a label elsewhere on the line, such as a comment that
+# says "dev-only", no longer hides anything on that line. The laptop-only
 # defaults, which the API refuses to start with on staging or production
 # (markx/core/config.py), and test fixtures. Never add a real value here;
 # if Gitleaks finds a real secret, revoke it first, then remove it.
@@ -12,22 +14,24 @@ title = "MarkX"
 useDefault = true
 
 [[allowlists]]
-description = "Development and test values, labelled as such in the value or on the line"
-regexTarget = "line"
+description = "Development and test values, labelled as such in the value itself"
+# D-097 (W-1): each pattern is tested against the secret Gitleaks found, never
+# against the whole line, so only the labelled value is ignored.
+regexTarget = "secret"
 regexes = [
   '''dev[-_]only''',
   '''(?i)test[-_]only''',
   '''not-a-real-secret''',
   # The development encryption key: base64 of "dev-only-encryption-key-32bytes!".
-  '''ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=''',
+  '''^ZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=$''',
   # The tests' well-formed Fernet key (D-091): base64 of "test-only-not-a-real-key-32bytes".
-  '''dGVzdC1vbmx5LW5vdC1hLXJlYWwta2V5LTMyYnl0ZXM=''',
+  '''^dGVzdC1vbmx5LW5vdC1hLXJlYWwta2V5LTMyYnl0ZXM=$''',
 ]
 
 [[allowlists]]
 description = "Public Turnstile site keys (sent to every visitor's browser by design; never a secret key)"
-regexTarget = "match"
+regexTarget = "secret"
 regexes = [
   # The founder's localhost-only test widget "MarkX" (D-085), documented in docs/SETUP.md.
-  '''0x4AAAAAAGGYs5bV6hfwiNJC''',
+  '''^0x4AAAAAAGGYs5bV6hfwiNJC$''',
 ]
