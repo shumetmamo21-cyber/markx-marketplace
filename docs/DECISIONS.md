@@ -3498,6 +3498,11 @@ job as passed, and "CI result" gives one name to require. The
 documents-only path ran locally against real commits; it runs on GitHub
 only once a documents-only pull request or push to main exists.
 
+**On GitHub (pull request #5, `ec64a85`):** the branch push started no
+run; opening the pull request started one, CI 151, which passed every job
+(What changed found code, so all ran, the production rehearsal included);
+Browser journeys 28, started by hand on the branch, passed.
+
 **Where:** `.github/workflows/ci.yml`, `.github/workflows/journeys.yml`,
 `.gitleaks.toml`, `.gitignore`; `docs/SETUP.md` and `docs/ARCHITECTURE.md`
 (the journeys and CI triggers).

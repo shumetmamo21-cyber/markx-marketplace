@@ -1612,7 +1612,10 @@ code, all passed -> pass; code, one failed / cancelled / skipped -> FAIL
 docs only, heavy skipped -> pass; docs only, security failed -> FAIL; "What changed" failed -> FAIL
 ```
 
-GitHub results: see `docs/HANDOFF.md`, Part A.0000000000.
+GitHub, pull request #5 on `ec64a85`: CI 151 (one run, `pull_request`)
+passed all seven jobs, the production rehearsal included; Browser journeys
+28 (by hand) passed. The branch push alone started no run. Details:
+`docs/HANDOFF.md`, Part A.0000000000.
 
 **Backup trust hardening** (D-096), on 19 November 2026, branch
 `claude/markx-backup-trust-hardening-4mmhxz` (commits `ffbfc39`, `2b4e179`,

@@ -44,6 +44,18 @@ changed; nothing deployed; no account; no money spent.** In plain words:
   ignores key and certificate files.
 - **Next task: waiting for the founder's choice.**
 
+**GitHub results (pull request #5, commit `ec64a85`).** The branch push
+alone started no run. Opening the pull request started **one** CI run,
+**CI 151 (event `pull_request`): passed**, all seven jobs: What changed
+(it listed `.github/workflows/*`, `.gitignore`, `.gitleaks.toml` as code,
+so every job ran), Security, API (tests, both recovery drills), Web app,
+Containers, Production stack rehearsal, CI result. **Browser journeys 28**,
+started by hand on the branch: **passed** (page weight and every journey).
+Before D-097 the same kind of change started two CI runs (pull request #4:
+144 and 145). The commit that recorded these results started CI 152, again
+one run; its result is in the session report, not here, so recording it
+does not start yet another run.
+
 **For the next engineer:**
 
 - A push to a branch with no pull request runs no CI. Open the pull
