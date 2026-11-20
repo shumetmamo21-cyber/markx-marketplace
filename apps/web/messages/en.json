@@ -121,7 +121,14 @@
   "errors": {
     "notFound": "We could not find that page.",
     "goHome": "Go to the home page",
-    "generic": "Something went wrong on our side. Please try again."
+    "generic": "Something went wrong on our side. Please try again.",
+    "tryAgain": "Try again",
+    "retrying": "Trying again…",
+    "pageTitle": "This page could not be shown",
+    "pageLead": "Something went wrong on our side or with the connection. Please try again.",
+    "offlineLead": "You seem to be offline. Check your internet connection, then try again.",
+    "goSeller": "Go to the seller area",
+    "goAdmin": "Go to the staff area"
   },
   "auth": {
     "title": "Sign in",
@@ -463,7 +470,9 @@
     "restricted_goods": "That product is on the list of goods not allowed on MarkX.",
     "telegram_linking_unavailable": "Connecting Telegram is not available yet.",
     "telegram_already_connected": "Your account is already connected to Telegram. Disconnect it first to connect another.",
-    "telegram_already_linked": "This Telegram account cannot be connected to this MarkX account."
+    "telegram_already_linked": "This Telegram account cannot be connected to this MarkX account.",
+    "network_unavailable": "No connection. Check your internet, then try again.",
+    "server_unavailable": "MarkX could not answer just now. Please try again in a moment."
   },
   "seller": {
     "title": "Seller dashboard",

@@ -2,14 +2,17 @@
 
 import { useState } from "react";
 
-import { browserApi } from "@/lib/api/browser";
+import { browserApi, errorCode } from "@/lib/api/browser";
 import type { Messages } from "@/lib/i18n";
+
+import { ProblemNotice } from "./Resilience";
 
 type Status = "idle" | "sending" | "sent" | "failed";
 
 // "No result leads to a product-request form" (blueprint I.5, D.8).
 export function ProductRequestForm({ query, t }: { query: string; t: Messages["search"] }) {
   const [status, setStatus] = useState<Status>("idle");
+  const [code, setCode] = useState("unknown");
   if (status === "sent") {
     return <p role="status" className="font-semibold text-highland">{t.requestSent}</p>;
   }
@@ -29,6 +32,7 @@ export function ProductRequestForm({ query, t }: { query: string; t: Messages["s
             contact_phone: phone || null,
           },
         });
+        setCode(errorCode(error));
         setStatus(error ? "failed" : "sent");
       }}
     >
@@ -41,7 +45,7 @@ export function ProductRequestForm({ query, t }: { query: string; t: Messages["s
         <span className="text-sm font-semibold">{t.requestPhone}</span>
         <input name="phone" type="tel" inputMode="tel" autoComplete="tel" className="min-h-12 w-full rounded-card border border-line bg-white px-3" />
       </label>
-      {status === "failed" ? <p role="alert" className="text-clay">{t.requestFailed}</p> : null}
+      {status === "failed" ? <ProblemNotice code={code} text={t.requestFailed} retry="submit" className="text-clay" /> : null}
       <button
         type="submit"
         disabled={status === "sending"}

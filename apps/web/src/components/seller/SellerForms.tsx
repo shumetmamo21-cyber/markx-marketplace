@@ -7,6 +7,8 @@ import { browserApi, errorCode, sendForm } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { apiErrorText, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "../Resilience";
+
 // The seller dashboard's forms (blueprint I.5, C.3). Each sends what the
 // member typed and shows the API's answer in words; the API checks the role,
 // the shop's state and every value again. Nothing here decides a rule.
@@ -33,7 +35,7 @@ function SellerForm({ t, onSubmit, children, label, done, reset = false }: {
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   return (
     <form
       className="space-y-3"
@@ -45,17 +47,18 @@ function SellerForm({ t, onSubmit, children, label, done, reset = false }: {
         const { error } = await onSubmit(new FormData(element));
         setBusy(false);
         if (error) {
-          setMessage({ ok: false, text: apiErrorText(t, errorCode(error)) });
+          setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
           return;
         }
         if (reset) element.reset();
-        setMessage({ ok: true, text: done ?? t.seller.saved });
+        setMessage({ ok: true, text: done ?? t.seller.saved, code: "" });
         router.refresh();
       }}
     >
       {children}
       <button type="submit" disabled={busy} className={button}>{label}</button>
-      {message ? <p role={message.ok ? "status" : "alert"} className={message.ok ? "font-semibold" : "font-semibold text-clay"}>{message.text}</p> : null}
+      {message?.ok ? <p role="status" className="font-semibold">{message.text}</p> : null}
+      {message && !message.ok ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
     </form>
   );
 }
@@ -156,25 +159,30 @@ export function DocumentUploadForm({ sellerId, t, types }: { sellerId: string; t
 /** Opens one of the shop's own documents behind a short-lived link the API
  * signs for this member (the link alone opens nothing). */
 export function OpenDocumentButton({ sellerId, documentId, t }: { sellerId: string; documentId: string; t: T }) {
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ code: string; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setProblem(null);
+    setBusy(true);
+    const { data, error } = await browserApi.POST("/api/v1/seller/{seller_id}/documents/{document_id}/link", {
+      params: { path: { seller_id: sellerId, document_id: documentId } },
+    });
+    setBusy(false);
+    if (data) window.open(data.url, "_blank", "noopener");
+    else setProblem({ code: errorCode(error), text: apiErrorText(t, errorCode(error)) });
+  };
   return (
-    <span className="inline-flex flex-col">
+    <div className="inline-flex flex-col gap-1">
       <button
         type="button"
-        className="min-h-12 rounded-card border border-ink px-4 text-sm font-semibold"
-        onClick={async () => {
-          setProblem(null);
-          const { data, error } = await browserApi.POST("/api/v1/seller/{seller_id}/documents/{document_id}/link", {
-            params: { path: { seller_id: sellerId, document_id: documentId } },
-          });
-          if (data) window.open(data.url, "_blank", "noopener");
-          else setProblem(apiErrorText(t, errorCode(error)));
-        }}
+        disabled={busy}
+        className="min-h-12 rounded-card border border-ink px-4 text-sm font-semibold disabled:opacity-60"
+        onClick={open}
       >
         {t.seller.docOpen}
       </button>
-      {problem ? <span role="alert" className="text-sm font-semibold text-clay">{problem}</span> : null}
-    </span>
+      {problem ? <ProblemNotice code={problem.code} text={problem.text} retry={() => void open()} busy={busy} className="text-sm font-semibold text-clay" /> : null}
+    </div>
   );
 }
 

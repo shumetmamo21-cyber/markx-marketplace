@@ -6,13 +6,15 @@ import { useId, useState } from "react";
 import { browserApi, errorCode } from "@/lib/api/browser";
 import { apiErrorText, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "./Resilience";
+
 // The shop's one reply to a review, which it may reword (blueprint S-16).
 // The API checks the member's role and that the review is published.
 export function SellerReplyForm({ sellerId, reviewId, current, t }: { sellerId: string; reviewId: string; current: string | null; t: Pick<Messages, "seller" | "apiErrors"> }) {
   const router = useRouter();
   const id = useId();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   const s = t.seller;
   return (
     <form
@@ -27,9 +29,9 @@ export function SellerReplyForm({ sellerId, reviewId, current, t }: { sellerId: 
           body: { body },
         });
         setBusy(false);
-        if (error) setMessage({ ok: false, text: apiErrorText(t, errorCode(error)) });
+        if (error) setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
         else {
-          setMessage({ ok: true, text: s.saved });
+          setMessage({ ok: true, text: s.saved, code: "" });
           router.refresh();
         }
       }}
@@ -37,7 +39,8 @@ export function SellerReplyForm({ sellerId, reviewId, current, t }: { sellerId: 
       <label htmlFor={`${id}-reply`} className="block text-sm font-semibold">{s.replyLabel}</label>
       <textarea id={`${id}-reply`} name="body" required minLength={1} maxLength={1000} rows={3} defaultValue={current ?? ""} className="w-full rounded-card border border-line bg-white p-3" />
       <button type="submit" disabled={busy} className="min-h-12 rounded-card bg-ink px-4 font-bold text-paper disabled:opacity-60">{current ? s.replyChange : s.replySend}</button>
-      {message ? <p role={message.ok ? "status" : "alert"} className={message.ok ? "font-semibold" : "font-semibold text-clay"}>{message.text}</p> : null}
+      {message?.ok ? <p role="status" className="font-semibold">{message.text}</p> : null}
+      {message && !message.ok ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
     </form>
   );
 }

@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { browserApi } from "@/lib/api/browser";
+import { browserApi, errorCode } from "@/lib/api/browser";
 import { fill, type Locale, type Messages } from "@/lib/i18n";
 import { safeNext } from "@/lib/safe-next";
 import { signInProblem } from "@/lib/sign-in-problem";
 
+import { ProblemNotice } from "./Resilience";
 import { TurnstileWidget } from "./TurnstileWidget";
 
 type Step = { kind: "phone" } | { kind: "code"; masked: string; minutes: number };
@@ -22,11 +23,11 @@ export function SignInForm({ lang, t, next, dev, siteKey }: { lang: Locale; t: M
   const [step, setStep] = useState<Step>({ kind: "phone" });
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ code: string; text: string } | null>(null);
   const [botToken, setBotToken] = useState<string | null>(null);
   const [botReset, setBotReset] = useState(0);
 
-  const fail = (error: unknown) => setProblem(signInProblem(t, error));
+  const fail = (error: unknown) => setProblem({ code: errorCode(error), text: signInProblem(t, error) });
 
   if (step.kind === "phone") {
     return (
@@ -34,7 +35,7 @@ export function SignInForm({ lang, t, next, dev, siteKey }: { lang: Locale; t: M
         className="space-y-4"
         onSubmit={async (event) => {
           event.preventDefault();
-          if (siteKey && !botToken) return setProblem(t.botCheck);
+          if (siteKey && !botToken) return setProblem({ code: "bot_check", text: t.botCheck });
           setBusy(true);
           setProblem(null);
           const { data, error } = await browserApi.POST("/api/v1/auth/otp/request", {
@@ -63,7 +64,7 @@ export function SignInForm({ lang, t, next, dev, siteKey }: { lang: Locale; t: M
           <span id="phone-hint" className="block text-sm text-slate">{t.phoneHint}</span>
         </label>
         {siteKey ? <TurnstileWidget siteKey={siteKey} resetKey={botReset} onToken={setBotToken} /> : null}
-        {problem ? <p role="alert" className="text-clay">{problem}</p> : null}
+        {problem ? <ProblemNotice code={problem.code} text={problem.text} retry="submit" busy={busy} className="text-clay" /> : null}
         <button type="submit" disabled={busy} className="min-h-12 w-full rounded-card bg-adey font-bold disabled:opacity-60">
           {busy ? t.sending : t.sendCode}
         </button>
@@ -102,7 +103,7 @@ export function SignInForm({ lang, t, next, dev, siteKey }: { lang: Locale; t: M
           className="min-h-12 w-full rounded-card border border-line bg-white px-4 text-center text-2xl tracking-[0.4em]"
         />
       </label>
-      {problem ? <p role="alert" className="text-clay">{problem}</p> : null}
+      {problem ? <ProblemNotice code={problem.code} text={problem.text} retry="submit" busy={busy} className="text-clay" /> : null}
       <button type="submit" disabled={busy} className="min-h-12 w-full rounded-card bg-adey font-bold disabled:opacity-60">
         {busy ? t.verifying : t.verify}
       </button>

@@ -3,9 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { browserApi } from "@/lib/api/browser";
+import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import type { Messages } from "@/lib/i18n";
+
+import { ProblemNotice } from "./Resilience";
 
 type ProblemType = components["schemas"]["ProblemIn"]["problem_type"];
 const PROBLEM_TYPES: ProblemType[] = ["not_received", "wrong_item", "not_as_described", "damaged", "suspected_fake", "other"];
@@ -22,16 +24,17 @@ type Props = {
 export function OrderActions({ orderId, part, t, types }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  // The failed action's code and how to send it again.
+  const [failed, setFailed] = useState<{ code: string; retry: () => void } | null>(null);
   const [reporting, setReporting] = useState(false);
   const base = { params: { path: { order_id: orderId, seller_order_id: part.id } } };
 
   const act = async (name: string, run: () => Promise<{ error?: unknown }>) => {
     setBusy(name);
-    setFailed(false);
+    setFailed(null);
     const { error } = await run();
     setBusy(null);
-    if (error) setFailed(true);
+    if (error) setFailed({ code: errorCode(error), retry: () => void act(name, run) });
     else router.refresh();
   };
 
@@ -82,7 +85,7 @@ export function OrderActions({ orderId, part, t, types }: Props) {
           <button type="submit" disabled={busy !== null} className="min-h-12 rounded-card bg-clay px-4 font-bold text-white disabled:opacity-60">{t.problemSend}</button>
         </form>
       ) : null}
-      {failed ? <p role="alert" className="text-clay">{t.actionFailed}</p> : null}
+      {failed ? <ProblemNotice code={failed.code} text={t.actionFailed} retry={failed.retry} busy={busy !== null} className="text-clay" /> : null}
     </div>
   );
 }

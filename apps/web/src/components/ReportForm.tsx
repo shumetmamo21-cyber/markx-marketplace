@@ -6,6 +6,8 @@ import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { apiErrorText, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "./Resilience";
+
 type Target = components["schemas"]["ReportTarget"];
 type Reason = components["schemas"]["ReportReason"];
 const REASONS: Reason[] = ["counterfeit", "prohibited", "wrong_information", "offensive", "fraud", "spam", "other"];
@@ -21,7 +23,7 @@ type Props = {
 // second open report from the same person, and decides what is visible.
 export function ReportForm({ target, t }: Props) {
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   const title = t.report[target.type];
   if (message?.ok) return <p role="status" className="text-sm font-semibold">{message.text}</p>;
   return (
@@ -45,7 +47,7 @@ export function ReportForm({ target, t }: Props) {
             },
           });
           setBusy(false);
-          setMessage(error ? { ok: false, text: apiErrorText(t, errorCode(error)) } : { ok: true, text: t.report.thanks });
+          setMessage(error ? { ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) } : { ok: true, text: t.report.thanks, code: "" });
         }}
       >
         <label className="block space-y-1">
@@ -59,7 +61,7 @@ export function ReportForm({ target, t }: Props) {
           <textarea name="note" maxLength={500} rows={2} className="w-full rounded-card border border-line bg-white p-3" />
         </label>
         <button type="submit" disabled={busy} className="min-h-12 rounded-card border border-ink px-4 font-semibold disabled:opacity-60">{t.report.send}</button>
-        {message ? <p role="alert" className="font-semibold text-clay">{message.text}</p> : null}
+        {message ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
       </form>
     </details>
   );

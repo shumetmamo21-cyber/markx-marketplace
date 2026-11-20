@@ -6,6 +6,8 @@ import { useId, useState } from "react";
 import { errorCode, sendForm } from "@/lib/api/browser";
 import { apiErrorText, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "./Resilience";
+
 type Props = {
   /** The API route that takes the photo as the multipart field `file`. */
   path: string;
@@ -22,7 +24,7 @@ export function PhotoUpload({ path, label, send, sent, t }: Props) {
   const router = useRouter();
   const id = useId();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   return (
     <form
       className="space-y-2"
@@ -34,18 +36,19 @@ export function PhotoUpload({ path, label, send, sent, t }: Props) {
         const { ok, body } = await sendForm(path, new FormData(form));
         setBusy(false);
         if (!ok) {
-          setMessage({ ok: false, text: apiErrorText(t, errorCode(body)) });
+          setMessage({ ok: false, text: apiErrorText(t, errorCode(body)), code: errorCode(body) });
           return;
         }
         form.reset();
-        setMessage({ ok: true, text: sent });
+        setMessage({ ok: true, text: sent, code: "" });
         router.refresh();
       }}
     >
       <label htmlFor={`${id}-file`} className="block text-sm font-semibold">{label}</label>
       <input id={`${id}-file`} name="file" type="file" accept="image/jpeg,image/png,image/webp" required className="block w-full max-w-full text-sm file:mr-3 file:min-h-12 file:rounded-card file:border file:border-ink file:bg-white file:px-4 file:font-semibold" />
       <button type="submit" disabled={busy} className="min-h-12 rounded-card bg-ink px-4 font-bold text-paper disabled:opacity-60">{send}</button>
-      {message ? <p role={message.ok ? "status" : "alert"} className={message.ok ? "font-semibold" : "font-semibold text-clay"}>{message.text}</p> : null}
+      {message?.ok ? <p role="status" className="font-semibold">{message.text}</p> : null}
+      {message && !message.ok ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
     </form>
   );
 }

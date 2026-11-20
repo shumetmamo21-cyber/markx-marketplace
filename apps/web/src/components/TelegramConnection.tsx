@@ -7,6 +7,8 @@ import { formatDateTime } from "@/lib/format";
 import { apiErrorText, fill, type Locale, type Messages } from "@/lib/i18n";
 import { safeTelegramLink, type TelegramConnection as Connection, telegramPanel, type TelegramTone } from "@/lib/telegram";
 
+import { ProblemNotice } from "./Resilience";
+
 // The person's own Telegram connection (D-093). Every state comes from the
 // API; the page never shows "connected" until the API says so. The one-time
 // link exists only in this browser's memory: the API never shows it again.
@@ -41,7 +43,7 @@ export function TelegramConnection({ initial, lang, t }: { initial: Connection; 
   const [requesting, setRequesting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ code: string; text: string; retry: () => void } | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const [checkFailed, setCheckFailed] = useState(false);
   const state = useRef(initial.state);
@@ -90,7 +92,7 @@ export function TelegramConnection({ initial, lang, t }: { initial: Connection; 
     const { data, error } = await browserApi.POST("/api/v1/me/telegram/link", {});
     setRequesting(false);
     if (error || !data) {
-      setProblem(apiErrorText(t, errorCode(error)));
+      setProblem({ code: errorCode(error), text: apiErrorText(t, errorCode(error)), retry: () => void start() });
       return void refresh();
     }
     show({ ...data, link: null });
@@ -103,7 +105,7 @@ export function TelegramConnection({ initial, lang, t }: { initial: Connection; 
     const { data, error } = await browserApi.DELETE("/api/v1/me/telegram", {});
     setBusy(false);
     setConfirming(false);
-    if (error || !data) return setProblem(apiErrorText(t, errorCode(error)));
+    if (error || !data) return setProblem({ code: errorCode(error), text: apiErrorText(t, errorCode(error)), retry: () => void remove() });
     show(data);
   }
 
@@ -169,7 +171,7 @@ export function TelegramConnection({ initial, lang, t }: { initial: Connection; 
       ) : null}
 
       <p role="status" aria-live="polite" className="font-semibold">{announcement ?? ""}</p>
-      {problem ? <p role="alert" className="font-semibold text-clay">{problem}</p> : null}
+      {problem ? <ProblemNotice code={problem.code} text={problem.text} retry={problem.retry} busy={locked} /> : null}
       {checkFailed && shown.poll ? <p role="alert" className="text-sm font-semibold text-clay">{g.checkFailed}</p> : null}
     </section>
   );

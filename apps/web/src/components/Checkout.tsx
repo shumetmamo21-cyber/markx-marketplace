@@ -8,6 +8,8 @@ import type { components } from "@/lib/api/schema";
 import { formatPrice } from "@/lib/format";
 import { apiErrorText, fill, type Locale, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "./Resilience";
+
 type Schemas = components["schemas"];
 type Address = Schemas["AddressOut"];
 type Zone = Schemas["ZoneOut"];
@@ -37,7 +39,10 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
   const [quote, setQuote] = useState<Quote | null>(null);
   const [key, setKey] = useState(newKey);
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  // What went wrong, in words, and (for a dropped connection) how to try again.
+  const [problem, setProblem] = useState<{ code: string; text: string; retry?: () => void } | null>(null);
+  // The cart (and so the delivery choices) could not be read.
+  const [cartFailed, setCartFailed] = useState("");
 
   const zoneCode = useMemo(() => {
     const address = addresses.find((a) => a.id === addressId);
@@ -51,16 +56,23 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
 
   const loadCart = useCallback(async () => {
     if (!zoneCode) return;
-    const { data } = await browserApi.GET("/api/v1/cart", { params: { query: { lang, zone: zoneCode } } });
-    if (data) showCart(data);
+    const { data, error } = await browserApi.GET("/api/v1/cart", { params: { query: { lang, zone: zoneCode } } });
+    if (data) {
+      setCartFailed("");
+      showCart(data);
+    } else setCartFailed(errorCode(error));
   }, [lang, zoneCode, showCart]);
 
   // The delivery choices depend on the address's zone: read them again when it changes.
   useEffect(() => {
     if (!zoneCode) return;
     let live = true;
-    browserApi.GET("/api/v1/cart", { params: { query: { lang, zone: zoneCode } } }).then(({ data }) => {
-      if (live && data) showCart(data);
+    browserApi.GET("/api/v1/cart", { params: { query: { lang, zone: zoneCode } } }).then(({ data, error }) => {
+      if (!live) return;
+      if (data) {
+        setCartFailed("");
+        showCart(data);
+      } else setCartFailed(errorCode(error));
     });
     return () => {
       live = false;
@@ -78,7 +90,10 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
     const deliveries = Object.entries(methods).map(([store_slug, method]) => ({ store_slug, method }));
     const { data, error } = await browserApi.POST("/api/v1/checkout/quote", { body: { address_id: addressId, deliveries } });
     setBusy(false);
-    if (error || !data) return setProblem(apiErrorText(t, errorCode(error)));
+    if (error || !data) {
+      const code = errorCode(error);
+      return setProblem({ code, text: apiErrorText(t, code), retry: () => void review() });
+    }
     setQuote(data);
     setKey(newKey());
   };
@@ -100,10 +115,12 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
     const code = errorCode(error);
     if (code === "total_changed" || code === "price_changed") {
       setQuote(null);
-      setProblem(c.totalChanged);
+      setProblem({ code, text: c.totalChanged });
       await loadCart();
     } else {
-      setProblem(apiErrorText(t, code));
+      // The same idempotency key is kept, so trying again after a dropped
+      // connection can never place the order twice (G.5, D-100).
+      setProblem({ code, text: apiErrorText(t, code), retry: () => void place() });
     }
   };
 
@@ -142,6 +159,12 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
           <button type="button" onClick={() => setAdding(true)} className="min-h-12 font-semibold underline">{c.newAddress}</button>
         )}
       </section>
+
+      {!cart && addressId && cartFailed ? (
+        <div className="space-y-2">
+          <ProblemNotice code={cartFailed} text={t.cart.failed} retry={() => void loadCart()} />
+        </div>
+      ) : null}
 
       {cart && addressId ? (
         <section className="space-y-3 rounded-card border border-line bg-white p-4" aria-labelledby="step2">
@@ -193,7 +216,11 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
         </section>
       ) : null}
 
-      {problem ? <p role="alert" className="font-semibold text-clay">{problem}</p> : null}
+      {problem ? (
+        <div className="space-y-2">
+          <ProblemNotice code={problem.code} text={problem.text} retry={problem.retry} busy={busy} />
+        </div>
+      ) : null}
 
       {quote ? (
         <section className="space-y-3 rounded-card border border-ink bg-white p-4" aria-labelledby="step4">
@@ -222,7 +249,7 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
 export function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<Messages, "checkout" | "apiErrors">; zones: Zone[]; onSaved: (address: Address) => void }) {
   const c = t.checkout;
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{ code: string; text: string } | null>(null);
   return (
     <form
       className="grid gap-3"
@@ -242,7 +269,10 @@ export function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<
           },
         });
         setBusy(false);
-        if (error || !data) return setFailed(apiErrorText(t, errorCode(error)));
+        if (error || !data) {
+          const code = errorCode(error);
+          return setFailed({ code, text: apiErrorText(t, code) });
+        }
         onSaved(data);
       }}
     >
@@ -276,7 +306,7 @@ export function NewAddress({ lang, t, zones, onSaved }: { lang: Locale; t: Pick<
         <span className="block text-sm font-semibold">{c.notes}</span>
         <input name="notes" className="min-h-12 w-full rounded-card border border-line bg-white px-3" />
       </label>
-      {failed ? <p role="alert" className="text-clay">{failed}</p> : null}
+      {failed ? <ProblemNotice code={failed.code} text={failed.text} retry="submit" busy={busy} className="text-clay" /> : null}
       <button type="submit" disabled={busy} className="min-h-12 rounded-card bg-ink font-bold text-paper disabled:opacity-60">{c.saveAddress}</button>
     </form>
   );
