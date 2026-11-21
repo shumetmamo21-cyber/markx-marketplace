@@ -16,6 +16,12 @@ It answers, in words and never with a value:
    without the flag.
 4. Do both file stores answer with MarkX's keys?
 
+`--deploying` (D-103): deploy.sh passes it for every check of a new
+release. A deployment never runs with MARKX_ALLOW_NEWER_SCHEMA on: if it
+failed after its migration, the setting would make the older release it
+returns to say yes to a database it does not accept. The release itself
+refuses, wherever the setting comes from.
+
 Exit 0 when everything holds, 1 when a check fails, 2 when the
 configuration itself is refused. It changes nothing.
 """
@@ -45,6 +51,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="check the configuration only; reach no database and no file store",
     )
+    parser.add_argument(
+        "--deploying",
+        action="store_true",
+        help="a deployment: refuse MARKX_ALLOW_NEWER_SCHEMA=true (D-103)",
+    )
     arguments = parser.parse_args(argv)
 
     try:
@@ -63,6 +74,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         _say(f"  warning: {warning}")
     if not config.is_real_environment:
         _say("  note: not a real environment; staging and production rules were not applied")
+    if arguments.deploying and config.allow_newer_schema:
+        _say(
+            "deployment: REFUSED: MARKX_ALLOW_NEWER_SCHEMA is on (left from a compatible rollback)."
+        )
+        _say("  Remove it from api.env, then deploy again (docs/runbooks/rollback.md).")
+        _say("preflight: FAILED")
+        return 1
     if arguments.config_only:
         return 0
 
@@ -77,7 +95,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ok = database == "up" and storage != "down"
     if schema == "ahead" and config.allow_newer_schema:
         _say("  warning: the database is newer than this release (MARKX_ALLOW_NEWER_SCHEMA=true:")
-        _say("  an acknowledged rollback; remove the setting when rolling forward)")
+        _say("  an acknowledged rollback; remove the setting before the next deploy)")
     elif schema != "current":
         if schema == "behind" and arguments.allow_pending_migrations:
             _say("  note: migrations are pending; run the one-time migration step next")

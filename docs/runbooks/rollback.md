@@ -2,7 +2,8 @@
 
 **Never carried out on a real server.** `deploy.sh rollback`, the automatic
 return after a failed deployment and the safe stop were rehearsed locally
-(`rehearse.sh`, "rollback" and "a failed update", D-103).
+and on GitHub's machines (`rehearse.sh`, "rollback", "a failed update" and
+"the setting left on", D-103).
 
 Rolling back means **starting an earlier release's images again**. It never
 migrates the database down; there is no down-migration on a server.
@@ -13,7 +14,8 @@ migrates the database down; there is no down-migration on a server.
    commits' `apps/api/migrations/versions/`): a code rollback is safe.
 2. **Migrations ran, and the newer release's notes say they are
    backward-compatible** with the release you go back to: a code rollback
-   is allowed, acknowledged with one setting (below).
+   is allowed, acknowledged with one setting and one word on the command
+   line (below).
 3. **Migrations ran and are not backward-compatible, or nobody knows**: do
    not run old code against the new schema. Roll **forward** with a fix
    instead. If data is damaged and a fix cannot wait, restore the database
@@ -37,15 +39,31 @@ release is no longer on the server (then
 `git checkout` that commit and `deploy.sh deploy` it: a deploy never
 migrates down either, so it is the same as a rollback with a rebuild).
 
-It runs the earlier release's preflight first. **If the database is newer
-than that release** (case 2 above), the preflight says "the database is
-newer than this release: do not start it" and stops. Only for case 2:
+It runs the earlier release's preflight first, **with
+`MARKX_ALLOW_NEWER_SCHEMA` forced off** (D-103: the founder's rule, go back
+only to a release that truly accepts the database). **If the database is
+newer than that release** (case 2 above), the preflight says "the database
+is newer than this release: do not start it" and nothing is started. Only
+for case 2:
 
 1. Add `MARKX_ALLOW_NEWER_SCHEMA=true` to `/etc/markx/api.env`.
-2. Run the rollback again. Readiness reports `"schema": "ahead"` and is
-   ready.
-3. **Remove the line again** with the next deploy forward, which always
-   brings the schema back to `current`.
+2. Run `infra/production/deploy.sh rollback <earlier-release> --accept-newer-schema`.
+   Both are needed: the setting alone (for example one left on from an
+   earlier rollback) never starts an older release, and the word alone
+   is refused too. Readiness reports `"schema": "ahead"` and is ready.
+3. **Remove the line again before the next deploy.** `deploy.sh deploy`
+   refuses to start while it is on ("MARKX_ALLOW_NEWER_SCHEMA is on …
+   Nothing was changed"), and the new release refuses it too, wherever it
+   is set. `deploy.sh check` and `status` warn while it is on. Remove it
+   just before deploying: the running release keeps the value it started
+   with, but if it restarts without the line it stops being ready (safe,
+   not silent).
+
+Why the setting must not stay on: if a later deployment failed after its
+migration, the automatic return would go back to an older release. It
+checks that release with the setting forced off, so it would refuse and
+stop safely; but the setting would have made the older release accept any
+newer database.
 
 Then the post-deployment verification (`checklists.md`) against the old
 release, and a line in `docs/DEVELOPMENT_STATUS.md` saying what happened.
@@ -58,8 +76,10 @@ start, or the readiness of the API, web app and proxy), it never leaves the
 new release half-running against the migrated database:
 
 1. **Back on the last working release, automatically**, when that release
-   accepts the migrated database (no migration in the failed release, or
-   one the old release already knows). Every service, the backup service
+   truly accepts the migrated database (no migration in the failed release,
+   or one the old release already knows). It is checked with
+   `MARKX_ALLOW_NEWER_SCHEMA` **forced off**, whatever `api.env` says, and
+   once started it must report the schema as `current` (D-103). Every service, the backup service
    included, runs the last working release again, verified; the log of
    releases says `auto-rollback`; `deploy` exits with an error saying so.
    Fix the release and deploy again.
@@ -76,9 +96,11 @@ release), or there is no earlier release, or it did not start either.
 `deploy.sh status` and `/etc/markx/deploy-halted` say which release failed
 and which was the last working one. In this state:
 
-- PostgreSQL and the backup service run; the database was backed up just
-  before the migration (`python -m markx.backup list` in the backup
-  service shows the set).
+- PostgreSQL and the backup service run; the backup service runs **as the
+  failed release**, the one that migrated the database, never as an older
+  one (D-103). The database was backed up just before the migration
+  (`python -m markx.backup list` in the backup service shows the set);
+  `deploy.sh backup` takes another, also as the failed release.
 - Nothing that serves or changes data runs; the proxy answers 502 or 504 (no application answers).
 
 What to do, in this order of preference:
@@ -86,9 +108,10 @@ What to do, in this order of preference:
 1. **Roll forward**: fix the release, then `deploy.sh deploy <fixed release>`.
 2. **Only if the failed release's notes say its migrations are
    backward-compatible** (case 2 above): add `MARKX_ALLOW_NEWER_SCHEMA=true`
-   to `/etc/markx/api.env`, then `deploy.sh rollback <last working release>`;
-   readiness reports `"schema": "ahead"`. Remove the line with the next
-   deploy forward.
+   to `/etc/markx/api.env`, then
+   `deploy.sh rollback <last working release> --accept-newer-schema`;
+   readiness reports `"schema": "ahead"`. **Remove the line before the next
+   deploy**, which refuses to start while it is on.
 3. **Only with the founder's written approval, if data is damaged**: restore
    the database from the backup taken before the deployment
    (`backup-and-restore.md`, "Recovering the database").

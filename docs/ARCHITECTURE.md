@@ -331,7 +331,8 @@ on the web app) says the process answers and touches nothing else.
 **Readiness** (`/api/v1/healthz/ready`) says the database answers as the
 application role, the schema is exactly this code's migration head
 (`behind` or `ahead` otherwise; `ahead` is accepted only with
-`MARKX_ALLOW_NEWER_SCHEMA`, for an acknowledged rollback), and both file
+`MARKX_ALLOW_NEWER_SCHEMA`, for an acknowledged rollback; `deploy.sh`
+never lets that setting decide a return to an older release, D-103), and both file
 stores answer (probed at most every 15 seconds). Public answers are fixed
 words; details go to the log. `python -m markx.ops.preflight` runs the same
 checks plus the configuration, in words, for `deploy.sh`. The worker

@@ -155,7 +155,7 @@ never a value, if a rule below is broken (**Tested**:
 | `MARKX_TELEGRAM_BOT_USERNAME` | no | the bot's username without `@`; required when linking is on |
 | `MARKX_TELEGRAM_WEBHOOK_SECRET` | **yes** | 32 to 256 of `A-Z a-z 0-9 _ -`, repeated by Telegram in `X-Telegram-Bot-Api-Secret-Token`; required when linking is on; test or development values refused (D-093) |
 | `MARKX_TELEGRAM_LINK_TTL_MINUTES` | no | `10` (2 to 30): how long a connection link works |
-| `MARKX_ALLOW_NEWER_SCHEMA` | no | only during an acknowledged rollback (`docs/runbooks/rollback.md`; new) |
+| `MARKX_ALLOW_NEWER_SCHEMA` | no | only during an acknowledged compatible rollback, together with `deploy.sh rollback RELEASE --accept-newer-schema`; remove it before the next deploy, which refuses to start while it is on (`docs/runbooks/rollback.md`; D-103) |
 | `MARKX_WORKER_HEARTBEAT_FILE` | no | set by the Compose file for the worker (new) |
 | `MARKX_DB_POOL_SIZE`, `MARKX_DB_MAX_OVERFLOW`, `MARKX_STORAGE_*_TIMEOUT_SECONDS`, `MARKX_STORAGE_MAX_OBJECT_BYTES`, `MARKX_STORAGE_SERVER_SIDE_ENCRYPTION`, `MARKX_SMS_TIMEOUT_SECONDS`, `MARKX_TURNSTILE_TIMEOUT_SECONDS`, `MARKX_*_SESSION_*_MINUTES`, `MARKX_TOTP_ISSUER`, `MARKX_WORKER_POLL_SECONDS` | no | defaults are the intended values |
 | `MARKX_STORAGE_DIR` | no | set by the Compose file to a `tmpfs`; nothing writes there on a real server any more: the fake push sender is refused there (D-092) |
@@ -263,6 +263,27 @@ migrated database; otherwise the API, the worker and the web app are
 stopped, `/etc/markx/deploy-halted` records it, and the script prints what
 to do (`docs/runbooks/rollback.md`, "A deployment halted"). Both outcomes
 are **Tested** by the rehearsal with a deliberately broken release.
+
+**Only to a release that truly accepts the database** (D-103, the founder's
+rule). `MARKX_ALLOW_NEWER_SCHEMA=true` lets an older release accept a newer
+database; it is for one compatible rollback, vouched for by a person, and
+never decides anything by itself:
+
+- the automatic return checks the old release with the setting **forced
+  off**, whatever `api.env` says, and requires the started release to
+  report the schema as `current`;
+- `deploy` **refuses to start while the setting is on** (and the new
+  release refuses it itself, wherever it is set), saying what to do;
+- `rollback` to a release older than the database needs the setting **and**
+  `--accept-newer-schema` on the command line;
+- in a safe stop the backup service, and `deploy.sh backup`, run as the
+  release that migrated the database, never an older one.
+
+**Tested**: `tests/deployment/test_deploy_newer_schema.py` (the real
+`deploy.sh` against a stand-in for `docker`) and the rehearsal's "the
+setting left on", including the reviewer's case (a database with a later
+change, the setting on, a failed update: the return refuses and stops
+safely). The rehearsal ends with the setting off.
 
 ## Migrations
 

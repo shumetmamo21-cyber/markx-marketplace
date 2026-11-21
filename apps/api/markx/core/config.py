@@ -198,8 +198,10 @@ class Config(BaseSettings):
     # A code rollback (docs/runbooks/rollback.md; D-091): an older release
     # finds a schema a newer release migrated, which readiness reports as
     # "ahead" and refuses. Set to true ONLY for a rollback to a release the
-    # newer release's notes call compatible with its migrations; remove it
-    # when rolling forward again.
+    # newer release's notes call compatible with its migrations, together
+    # with `deploy.sh rollback RELEASE --accept-newer-schema`; remove it
+    # before the next deploy, which refuses while it is on. The automatic
+    # return after a failed deploy checks with it forced off (D-103).
     allow_newer_schema: bool = False
     # A file the running worker touches after every pass (D-091), so a
     # container check can tell a live loop from a hung one without a

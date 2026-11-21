@@ -8,6 +8,9 @@
 #   infra/production/deploy.sh check              the server is set up correctly
 #   infra/production/deploy.sh deploy RELEASE     build, check, back up, migrate, start, verify
 #   infra/production/deploy.sh rollback RELEASE   start an earlier release's images again
+#   infra/production/deploy.sh rollback RELEASE --accept-newer-schema
+#                                                 the same, for a COMPATIBLE rollback to a release
+#                                                 older than the database (docs/runbooks/rollback.md)
 #   infra/production/deploy.sh backup             one verified, encrypted backup set now
 #   infra/production/deploy.sh status             containers and health
 #   infra/production/deploy.sh certificate install DIR
@@ -31,6 +34,15 @@
 # database; otherwise it stops the API, the worker and the web app, so no
 # half-working site runs, writes $MARKX_CONFIG_DIR/deploy-halted and says
 # what to do. It never migrates down.
+#
+# MARKX_ALLOW_NEWER_SCHEMA (D-103, the founder's rule: go back to an older
+# release only when it truly accepts the database). The setting lets an
+# older release accept a newer database; only an operator, for one
+# compatible rollback, ever turns it on. So: the automatic return checks the
+# old release with the setting FORCED OFF, whatever api.env says; deploy
+# refuses to start while it is on; rollback to a release older than the
+# database needs --accept-newer-schema on the command line as well, so a
+# setting left on never decides a rollback by itself.
 #
 # Settings: MARKX_COMPOSE_ENV (default /etc/markx/compose.env) and the files
 # it points to in MARKX_CONFIG_DIR. MARKX_COMPOSE_OVERRIDE adds more Compose
@@ -123,6 +135,20 @@ last_release() {
   awk '$2 == "deploy" || $2 == "rollback" || $2 == "auto-rollback" { r = $3 } END { print r }' \
     "$releases_log" 2>/dev/null || true
 }
+
+# Is MARKX_ALLOW_NEWER_SCHEMA on in this settings file? Anything but an
+# explicit false (0, off, f, false, n, no) counts as on: the safe reading.
+newer_schema_setting_in() { # file
+  [[ -r "$1" ]] || return 1
+  local value
+  while IFS= read -r value; do
+    value="${value//[[:space:]\"\']/}"; value="${value,,}"
+    case "$value" in 0|off|f|false|n|no) ;; *) return 0 ;; esac
+  done < <(sed -n -E 's/^[[:space:]]*(export[[:space:]]+)?MARKX_ALLOW_NEWER_SCHEMA[[:space:]]*=(.*)$/\2/p' "$1")
+  return 1
+}
+
+newer_schema_setting_on() { newer_schema_setting_in "$config_dir/api.env"; }
 
 # -- check ------------------------------------------------------------------------------
 
@@ -232,6 +258,10 @@ cmd_check() {
   if [[ -f "$halt_file" ]]; then
     say "  note     the last deployment HALTED ($halt_file): see deploy.sh status"
   fi
+  if newer_schema_setting_on; then
+    say "  WARNING  MARKX_ALLOW_NEWER_SCHEMA is on in $config_dir/api.env (a compatible rollback):"
+    say "           remove the line before the next deploy; deploy refuses to start while it is on"
+  fi
   (( bad == 0 )) || fail "the server is not ready; fix the lines above"
   say "check: PASSED"
 }
@@ -240,6 +270,21 @@ cmd_check() {
 
 preflight() { # extra arguments for markx.ops.preflight
   compose run --rm --no-deps -T api python -m markx.ops.preflight "$@"
+}
+
+# Does $MARKX_RELEASE TRULY accept the database (D-103)? Its preflight with
+# MARKX_ALLOW_NEWER_SCHEMA forced off, whatever api.env or anything else
+# says: `run -e` wins over every settings file, and every release reads it,
+# including one built before this rule. Used wherever an older release would
+# be started without an operator vouching for it on the command line.
+preflight_strict() {
+  compose run --rm --no-deps -T -e MARKX_ALLOW_NEWER_SCHEMA=false api python -m markx.ops.preflight
+}
+
+# The schema word the running API reports ("current", "ahead", ...).
+running_schema() {
+  compose exec -T api python -c "import json, urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz/ready', timeout=5)).get('schema', 'unknown'))" 2>/dev/null \
+    || echo unknown
 }
 
 backup_now() {
@@ -298,16 +343,22 @@ recover() { # failed release, previous release (may be empty)
     say "   the images of the last working release, $previous, are no longer on this server"
   else
     say "== going back to the last working release, $previous"
+    say "   (checked with MARKX_ALLOW_NEWER_SCHEMA forced off: only a release that truly accepts"
+    say "   the database is started again, whatever api.env says)"
     export MARKX_RELEASE="$previous"
-    if ! preflight; then
+    local schema
+    if ! preflight_strict; then
       say "   $previous refuses the migrated database (it is newer than that release)"
-    elif start_built_release; then
+    elif ! start_built_release; then
+      say "   $previous did not start cleanly either"
+    elif schema="$(running_schema)"; [[ "$schema" != current ]]; then
+      # It accepted the database a moment ago; it must still say so now.
+      say "   $previous started but reports the schema as '$schema', not current"
+    else
       record auto-rollback "$previous"
       rm -f "$halt_file"
       verified
       fail "deployment of $failed FAILED after its migration; $previous is running again, verified. The database keeps the migration. Fix the release and deploy again (docs/runbooks/rollback.md)."
-    else
-      say "   $previous did not start cleanly either"
     fi
   fi
   halt "$failed" "$previous"
@@ -319,6 +370,13 @@ halt() { # failed release, previous release
   local failed="$1" previous="$2"
   say "== stopping the API, the worker and the web app: no half-working site"
   compose stop api worker web || say "   (stopping did not complete; check deploy.sh status)"
+  # The backup service keeps running, as the release that migrated the
+  # database (D-103): an older release's backup code may not know the new
+  # schema (a new table of file references, say), so it is never left
+  # running against it.
+  say "== the backup service runs as $failed, the release that migrated the database"
+  MARKX_RELEASE="$failed" compose up -d --no-build --no-deps backup \
+    || say "   (the backup service did not start as $failed; check deploy.sh status)"
   {
     printf 'halted_at=%s\n' "$(date -u +%FT%TZ)"
     printf 'failed_release=%s\n' "$failed"
@@ -336,7 +394,9 @@ halt() { # failed release, previous release
   say "  1. Roll forward: fix the release, then  deploy.sh deploy <fixed release>"
   if [[ -n "$previous" ]]; then
     say "  2. Only if the new release's notes say its migrations are backward-compatible: add"
-    say "     MARKX_ALLOW_NEWER_SCHEMA=true to $config_dir/api.env, then  deploy.sh rollback $previous"
+    say "     MARKX_ALLOW_NEWER_SCHEMA=true to $config_dir/api.env, then"
+    say "     deploy.sh rollback $previous --accept-newer-schema"
+    say "     and REMOVE that line again before the next deploy (deploy refuses while it is on)."
   fi
   say "  3. Only with the founder's written approval, if data is damaged: restore the database"
   say "     from the backup taken before this deployment (docs/runbooks/backup-and-restore.md)."
@@ -346,6 +406,12 @@ halt() { # failed release, previous release
 cmd_deploy() {
   require_release "${1:-}"
   local release="$MARKX_RELEASE" previous
+  # D-103: never deploy with the setting on. If this deployment failed after
+  # its migration, the setting would make an older release say yes to a
+  # database it does not accept.
+  if newer_schema_setting_on; then
+    fail "MARKX_ALLOW_NEWER_SCHEMA is on in $config_dir/api.env (left from a compatible rollback). A deployment never runs with it on. Remove that line from $config_dir/api.env, then run  deploy.sh deploy $release  again. Nothing was changed."
+  fi
   previous="$(last_release)"
   [[ "$previous" == "$release" ]] && previous=""
   if [[ -f "$halt_file" ]]; then say "note: the last deployment halted ($halt_file); this one replaces it"; fi
@@ -353,13 +419,15 @@ cmd_deploy() {
   say "== build release $release"
   compose build api web backup
   say "== the new release's configuration check"
-  preflight --config-only
+  # --deploying: the new release itself refuses MARKX_ALLOW_NEWER_SCHEMA,
+  # wherever it is set (D-103).
+  preflight --config-only --deploying
   say "== the database"
   # Production's file stores are outside (S3 or R2); the rehearsal adds its
   # MinIO here (MARKX_DEPENDENCY_SERVICES="postgres minio").
   # shellcheck disable=SC2086
   compose up -d --wait ${MARKX_DEPENDENCY_SERVICES:-postgres}
-  preflight --allow-pending-migrations
+  preflight --allow-pending-migrations --deploying
   backup_now
   say "== the one-time migration step"
   # PostgreSQL runs the migrations in one transaction: a failed migration
@@ -368,7 +436,7 @@ cmd_deploy() {
     || fail "the migration failed; the database is as it was and the running release was not touched"
   # From here on the database is migrated: any failure goes to recover.
   say "== the new release against the migrated database"
-  if ! preflight; then
+  if ! preflight --deploying; then
     say "   the new release's preflight refused the migrated database"
     recover "$release" "$previous"
   fi
@@ -386,19 +454,47 @@ cmd_deploy() {
 }
 
 cmd_rollback() {
-  require_release "${1:-}"
+  local release="" accept=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --accept-newer-schema) accept=1 ;;
+      *) [[ -z "$release" ]] || fail "rollback: one release, then optionally --accept-newer-schema"
+         release="$arg" ;;
+    esac
+  done
+  require_release "$release"
   local images; mapfile -t images < <(release_images "$MARKX_RELEASE")
   images_present "$MARKX_RELEASE" \
     || fail "the images of $MARKX_RELEASE (${images[*]}) are not all on this server; rebuild it with deploy (it never migrates down)"
   say "== roll back to $MARKX_RELEASE (no migration runs; the database stays as it is)"
-  # Refuses if the database is newer than that release, unless the operator
-  # set MARKX_ALLOW_NEWER_SCHEMA=true in api.env for this compatible rollback.
-  preflight
+  # D-103: first, does that release truly accept the database (the setting
+  # forced off)? If it does, nothing else is needed.
+  local out status=0
+  out="$(preflight_strict 2>&1)" || status=$?
+  printf '%s\n' "$out"
+  if (( status != 0 )); then
+    grep -qx "schema: ahead" <<< "$out" \
+      || fail "the preflight of $MARKX_RELEASE failed; nothing was started (see above)"
+    # The database is newer than that release. Only a compatible rollback,
+    # vouched for twice: the setting in api.env (which the release needs to
+    # stay ready) AND this command line. A setting left on is not enough.
+    (( accept )) || fail "the database is newer than $MARKX_RELEASE: nothing was started. Only if the newer release's notes say its migrations are backward-compatible: add MARKX_ALLOW_NEWER_SCHEMA=true to $config_dir/api.env and run  deploy.sh rollback $MARKX_RELEASE --accept-newer-schema  (docs/runbooks/rollback.md)"
+    newer_schema_setting_on \
+      || fail "--accept-newer-schema also needs MARKX_ALLOW_NEWER_SCHEMA=true in $config_dir/api.env; nothing was started"
+    say "== a COMPATIBLE rollback: the database is newer than $MARKX_RELEASE, acknowledged"
+    preflight || fail "$MARKX_RELEASE refuses the database even with MARKX_ALLOW_NEWER_SCHEMA=true; nothing was started"
+  elif (( accept )); then
+    say "   (--accept-newer-schema is not needed: $MARKX_RELEASE accepts the database as it is)"
+  fi
   start_built_release || fail "the rollback to $MARKX_RELEASE did not start cleanly; see docs/runbooks/rollback.md"
   record rollback "$MARKX_RELEASE"
   rm -f "$halt_file"
   verified
   say "rolled back to $MARKX_RELEASE (API, worker, web app, proxy and backup service)"
+  if newer_schema_setting_on; then
+    say "REMEMBER: MARKX_ALLOW_NEWER_SCHEMA is on in $config_dir/api.env. Remove it before the next"
+    say "deploy (deploy refuses to start while it is on)."
+  fi
 }
 
 cmd_status() {
@@ -406,6 +502,11 @@ cmd_status() {
     say "!! THE LAST DEPLOYMENT HALTED ($halt_file):"
     sed 's/^/   /' "$halt_file"
     say "   docs/runbooks/rollback.md, \"A deployment halted\", says what to do."
+    say ""
+  fi
+  if newer_schema_setting_on; then
+    say "!! MARKX_ALLOW_NEWER_SCHEMA is on in $config_dir/api.env (a compatible rollback): remove it"
+    say "   before the next deploy, which refuses to start while it is on."
     say ""
   fi
   compose ps
@@ -550,13 +651,19 @@ cmd_certificate() {
   esac
 }
 
+# Sourced (the tests call the functions one by one), it stops here.
+[[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
+
 command="${1:-}"; shift || true
 case "$command" in
   check) MARKX_RELEASE="${MARKX_RELEASE:-check}" cmd_check ;;
   deploy) cmd_deploy "$@" ;;
   rollback) cmd_rollback "$@" ;;
-  # The running release's backup image.
-  backup) export MARKX_RELEASE="${MARKX_RELEASE:-$(last_release)}"
+  # The running release's backup image. After a halt (D-103), the release
+  # that migrated the database, never the older one.
+  backup) [[ -z "${MARKX_RELEASE:-}" && -f "$halt_file" ]] \
+            && MARKX_RELEASE="$(sed -n 's/^failed_release=//p' "$halt_file" | tail -1)"
+          export MARKX_RELEASE="${MARKX_RELEASE:-$(last_release)}"
           [[ -n "$MARKX_RELEASE" ]] || fail "no release deployed yet; give MARKX_RELEASE"
           backup_now ;;
   status) export MARKX_RELEASE="${MARKX_RELEASE:-$(last_release)}"; cmd_status ;;

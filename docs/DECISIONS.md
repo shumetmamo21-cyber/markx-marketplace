@@ -4634,8 +4634,9 @@ release's preflight, its start or the readiness checks goes to recovery:
 
 Recovery never sets `MARKX_ALLOW_NEWER_SCHEMA` itself: whether a migration
 is backward-compatible is a person's judgement (`docs/runbooks/rollback.md`).
-A failed migration changes nothing (PostgreSQL runs it in one transaction)
-and `deploy` now says so.
+Since the review fix (section 5 below) it also never *reads* it: it checks
+the old release with the setting forced off. A failed migration changes
+nothing (PostgreSQL runs it in one transaction) and `deploy` now says so.
 
 ### 4. Containers
 
@@ -4654,6 +4655,96 @@ and `deploy` now says so.
   build) and run as `999:999`; the web image checks that the base image's
   `node` user is 1000:1000 and runs as `1000:1000`. CI and the rehearsal
   check the ids.
+
+### 5. The founder's rule: go back to an older release only when it truly accepts the database
+
+**Added on 21 November 2026, after an independent review of pull request
+#11 at `9d0c888`.** The defect it found: the compatible rollback told the
+operator to switch on `MARKX_ALLOW_NEWER_SCHEMA` and to switch it off "with
+the next deploy", but nothing made sure of that, and the rehearsal itself
+ended with it on. Left on, the next failed deployment's automatic return
+asked the old release whether it accepted the database; the setting made
+it say yes to any newer database, and `deploy.sh` started old code against
+an unchecked change and reported it as "verified". That can lose data.
+
+**The rule (the founder's):** return to an older release only when it truly
+accepts the database. `MARKX_ALLOW_NEWER_SCHEMA` exists for one thing only:
+an operator, for one compatible rollback, vouching that a newer database's
+migrations are backward-compatible with that release. It never decides
+anything by itself. So:
+
+1. **The automatic return checks the old release with the setting forced
+   off**, whatever `api.env`, a Compose file or anything else says
+   (`preflight_strict` in `deploy.sh`: the old release's preflight with
+   `docker compose run -e MARKX_ALLOW_NEWER_SCHEMA=false`, which wins over
+   every settings file and works with every release, including one built
+   before this rule). A database newer than the old release is refused and
+   the deployment stops safely. After starting the old release it also
+   checks that the running API reports the schema as `current`; anything
+   else is stopped as well.
+2. **A deployment refuses to start while the setting is on**, before it
+   builds, backs up or migrates anything, with the message "MARKX_ALLOW_NEWER_SCHEMA
+   is on in …/api.env (left from a compatible rollback). A deployment never
+   runs with it on. Remove that line …, then run deploy again. Nothing was
+   changed." Any value but an explicit false (`0`, `off`, `f`, `false`,
+   `n`, `no`) counts as on. **And the new release refuses it itself**,
+   wherever it is set: `deploy.sh` runs every preflight of the new release
+   with `--deploying`, which fails while the setting is on
+   (`markx/ops/preflight.py`).
+3. **Other ways closed the same way** (found while looking for any other
+   way an old release could be started against a database it does not
+   truly accept):
+   - **A rollback by hand with the setting left on.** `deploy.sh rollback
+     RELEASE` now also checks the release with the setting forced off. If
+     the database is newer than that release, it starts nothing unless the
+     operator vouches **twice**: `MARKX_ALLOW_NEWER_SCHEMA=true` in
+     `api.env` (which the release needs to stay ready) **and**
+     `--accept-newer-schema` on the command line. A setting left on from an
+     earlier rollback is no longer enough.
+   - **The backup service in a safe stop.** When the deployment failed
+     before the new release started, the old release's backup service kept
+     running against the migrated database; an older backup may not know a
+     new table of file references. The safe stop now restarts the backup
+     service as the release that migrated the database.
+   - **`deploy.sh backup` after a safe stop** ran the last *working*
+     release's backup image, which is the older one. It now uses the
+     release that migrated the database (`failed_release` in
+     `deploy-halted`) unless `MARKX_RELEASE` names another.
+   - `check` and `status` warn while the setting is on; `rollback` reminds
+     the operator to remove it.
+4. **Not changed, and why** (UNKNOWN whether the founder wants more): during
+   every deployment the running release keeps serving while the migration
+   runs, until the new release replaces it. That is the normal window of a
+   deploy without downtime, it does not *start* an older release, and it
+   relies on migrations being written so the running code still works
+   (`docs/runbooks/migrations.md`). Closing it would mean stopping the site
+   for every deployment: the founder's decision, not this fix's.
+
+The way out of a safe stop for a compatible migration is now: add
+`MARKX_ALLOW_NEWER_SCHEMA=true` to `api.env`, run `deploy.sh rollback
+<release> --accept-newer-schema`, and **remove the line again before the
+next deploy** (which refuses until it is gone).
+
+**Proof.** New `tests/deployment/test_deploy_newer_schema.py` (17 tests)
+runs the real `deploy.sh` against a stand-in for `docker`, and
+`tests/deployment/test_preflight_and_worker_heartbeat.py` has 3 new tests
+of `--deploying`. On `9d0c888` all 20 new tests except 2 fail (the 2 that
+pass check that what must still work does: a rollback to a release that
+accepts the database, and a backup with no safe stop); with only a line
+added to let the old script be loaded by the tests, the reviewer's case
+still fails there with "rehearsal… running again, verified", the defect
+itself. The rehearsal's new checks (section "the setting left on"): the
+setting alone never decides a rollback; `deploy` refuses while it is on and
+changes nothing; `check` warns; the new release refuses it when it is set
+outside `api.env`; **the reviewer's case** (a database carrying a later
+change, the setting on for every container, a failed update of a release
+made before this rule): the automatic return checks the old release with
+the setting forced off, refuses and stops safely, with the backup service
+running as the release that migrated; then a roll forward (schema
+`current`); and **the rehearsal ends with the setting off** (not in
+`api.env`, not in the running API or worker). No existing test or check was
+weakened or removed; the existing compatible-rollback check now also
+passes `--accept-newer-schema`.
 
 ### PROVISIONAL values (the engineer's guess; the founder confirms or changes them before going live)
 

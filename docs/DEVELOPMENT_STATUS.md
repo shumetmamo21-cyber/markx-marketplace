@@ -13,6 +13,40 @@ staff conflict and phone digits session (D-098, pull request #6) as
 `d01fef7`, and the backup trust hardening session (D-096, pull request #4)
 as `773bbb6`.
 
+## Fix before merging pull request #11: an older release started against a database it does not accept (21 November 2026, D-103 section 5)
+
+On the pull request's own branch, `claude/pr10-review-server-readiness-y7novo`,
+on top of `9d0c888` (nobody had pushed since; checked first). **Not
+merged**: another independent review follows. **No migration. Nothing
+deployed; no server, domain, account or paid resource.**
+
+**The defect** (independent review): after a failed update, MarkX could go
+back to the old release even when that release does not truly accept the
+database. The compatible rollback tells the operator to switch on
+`MARKX_ALLOW_NEWER_SCHEMA`; nothing made sure it was switched off, and the
+rehearsal itself ended with it on. Left on, the automatic return asked the
+old release whether it accepted the database, the setting made it say yes
+to any newer database, and `deploy.sh` started old code against an
+unchecked change and reported it as "verified".
+
+**The rule applied** (the founder's: go back to an older release only when
+it truly accepts the database), in `infra/production/deploy.sh` and
+`markx/ops/preflight.py`:
+
+| | Fixed by | Proof |
+| --- | --- | --- |
+| The automatic return | checks the old release with the setting **forced off** (`run -e MARKX_ALLOW_NEWER_SCHEMA=false`, works with every release); the started release must report the schema `current` | the reviewer's case, in the tests and the rehearsal |
+| An update while the setting is on | `deploy` refuses before it changes anything, saying what to do; the new release's preflight refuses it too (`--deploying`), wherever it is set | tests; rehearsal |
+| Other way: a rollback by hand with the setting left on | the setting alone is no longer enough: `rollback RELEASE --accept-newer-schema` as well | tests; rehearsal |
+| Other way: the backup service in a safe stop | runs as the release that migrated the database, never the older one | tests; rehearsal |
+| Other way: `deploy.sh backup` after a safe stop | uses the release that migrated the database | tests |
+| The rehearsal's end | the setting is off (not in `api.env`, not in the running API or worker), after a roll forward | rehearsal |
+
+Not changed (D-103 section 5, point 4): the running release keeps serving
+while a deployment's migration runs; closing that window means downtime on
+every deploy, the founder's decision. **Test results:** see "Tests
+executed", 21 November 2026 (fix before merging pull request #11).
+
 ## Server readiness: certificates, rollback, failed deployments, containers (21 November 2026, D-103)
 
 Infrastructure, one operations check, tests and documents. **No migration.
@@ -1843,6 +1877,15 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Fix before merging pull request #11** (D-103 section 5), on 21 November
+2026, branch `claude/pr10-review-server-readiness-y7novo` on top of
+`9d0c888` (complete history). PostgreSQL 17.12 and MinIO in containers,
+with `MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1`.
+
+```text
+(the results are added in the next commit, once the runs have finished)
+```
 
 **Server readiness** (D-103), on 21 November 2026, branch
 `claude/pr10-review-server-readiness-y7novo` from `main` at `9b3658f`

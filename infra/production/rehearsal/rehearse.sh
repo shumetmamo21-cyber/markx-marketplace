@@ -43,6 +43,13 @@
 #                  migration: back on the last working release; and when that
 #                  release refuses the migrated database, a safe stop with
 #                  instructions, then the documented way out
+#   the setting    (D-103) MARKX_ALLOW_NEWER_SCHEMA left on: a rollback needs
+#   left on        --accept-newer-schema as well; deploy refuses to start, and
+#                  the new release refuses it wherever it is set; the
+#                  reviewer's case (a database with a later change, the
+#                  setting on, a failed update): the automatic return checks
+#                  the old release with the setting forced off and refuses;
+#                  then a roll forward, and the run ends with the setting off
 #   shutdown       every service stops on SIGTERM within its grace period
 #
 # Everything is local: no account, domain, certificate authority or bucket
@@ -102,7 +109,7 @@ cleanup() {
   export MARKX_RELEASE=rehearsal-1
   compose --profile migrate down -v --remove-orphans >/dev/null 2>&1 || true
   local r i
-  for r in 1 2 3 4; do
+  for r in 1 2 3 4 5 6 7; do
     for i in api web backup; do docker image rm -f "$prefix/$i:rehearsal-$r" >/dev/null 2>&1 || true; done
   done
   rm -rf "$work"
@@ -606,14 +613,16 @@ echo "== a failed update"
 # A broken release: the same code, except that its API never becomes ready.
 # Only its build context differs (a copy of apps/api, given to deploy.sh as
 # one more Compose file), so the running services are not touched by it.
-broken_release() { # name, with a newer migration (yes/no)
+broken_release() { # name, with a newer migration (yes/no), broken (default) or healthy
   local dir="$work/$1"
   mkdir -p "$dir"
   tar -C "$repo/apps" --exclude=.venv --exclude=.mypy_cache --exclude=.ruff_cache \
     --exclude=.pytest_cache --exclude=__pycache__ -cf - api | tar -C "$dir" -xf -
-  sed -i 's/return self.schema == "current" or (self.schema == "ahead" and self.newer_schema_allowed)/return False  # rehearsal: a broken release/' \
-    "$dir/api/markx/ops/health.py"
-  grep -q "rehearsal: a broken release" "$dir/api/markx/ops/health.py" || return 1
+  if [[ "${3:-broken}" == broken ]]; then
+    sed -i 's/return self.schema == "current" or (self.schema == "ahead" and self.newer_schema_allowed)/return False  # rehearsal: a broken release/' \
+      "$dir/api/markx/ops/health.py"
+    grep -q "rehearsal: a broken release" "$dir/api/markx/ops/health.py" || return 1
+  fi
   if [[ "$2" == yes ]]; then
     cat > "$dir/api/migrations/versions/29991231_0000_rehearsal_newer_schema.py" <<MIGRATION
 """The rehearsal's own migration: the database becomes newer than every real release."""
@@ -696,7 +705,15 @@ if broken_release broken-b yes; then
     "$prod/deploy.sh" rollback rehearsal-2
   # The documented way out for a backward-compatible migration (rollback.md).
   echo "MARKX_ALLOW_NEWER_SCHEMA=true" >> "$config/api.env"
-  if "$prod/deploy.sh" rollback rehearsal-2 > "$work/rollback-ack.txt" 2>&1 \
+  # D-103: the setting alone, as if left on, never decides a rollback.
+  "$prod/deploy.sh" rollback rehearsal-2 > "$work/rollback-setting-only.txt" 2>&1 && st=0 || st=$?
+  if [[ $st -ne 0 ]] && grep -q "the database is newer than rehearsal-2: nothing was started" "$work/rollback-setting-only.txt" \
+    && [[ -e "$config/deploy-halted" ]] && [[ -z "$(compose ps --status running -q api)" ]]; then
+    pass "with the setting on but without --accept-newer-schema, rollback still refuses the newer database"
+  else
+    fail "a rollback decided by the setting alone (exit $st)"; tail -20 "$work/rollback-setting-only.txt"
+  fi
+  if "$prod/deploy.sh" rollback rehearsal-2 --accept-newer-schema > "$work/rollback-ack.txt" 2>&1 \
     && [[ "$(https "$url/api/v1/healthz/ready")" == *'"schema":"ahead"'* ]] \
     && [[ ! -e "$config/deploy-halted" ]] && [[ "$(release_images_of)" == "$(images_of_release rehearsal-2)" ]]; then
     pass "with MARKX_ALLOW_NEWER_SCHEMA=true the rollback ends the safe stop (schema: ahead)"
@@ -705,6 +722,107 @@ if broken_release broken-b yes; then
   fi
 else
   fail "making the broken release with a newer migration"
+fi
+
+# -- 9b. the setting left on (D-103, the founder's rule) --------------------------------
+# Go back to an older release only when it truly accepts the database. The
+# compatible rollback above left MARKX_ALLOW_NEWER_SCHEMA=true in api.env and
+# the database carries a change rehearsal-2 does not know (rehearsal_newer).
+
+echo "== the setting left on"
+running_release_line="$(tail -1 "$config/releases.log" | cut -d' ' -f2-)"
+"$prod/deploy.sh" deploy rehearsal-5 > "$work/deploy-5.txt" 2>&1 && st=0 || st=$?
+if [[ $st -ne 0 ]] && grep -q "MARKX_ALLOW_NEWER_SCHEMA is on in $config/api.env" "$work/deploy-5.txt" \
+  && grep -q "Remove that line from $config/api.env" "$work/deploy-5.txt" \
+  && grep -q "Nothing was changed" "$work/deploy-5.txt" \
+  && [[ "$(tail -1 "$config/releases.log" | cut -d' ' -f2-)" == "$running_release_line" ]] \
+  && [[ "$(release_images_of)" == "$(images_of_release rehearsal-2)" ]]; then
+  pass "deploy refuses to start while MARKX_ALLOW_NEWER_SCHEMA is on, saying what to do, and changes nothing"
+else
+  fail "deploy with the setting left on (exit $st)"; tail -20 "$work/deploy-5.txt"
+fi
+"$prod/deploy.sh" check > "$work/check-setting.txt" 2>&1 || true
+grep -q "WARNING  MARKX_ALLOW_NEWER_SCHEMA is on" "$work/check-setting.txt" \
+  && pass "deploy.sh check warns while the setting is on" || { fail "check with the setting on"; tail -10 "$work/check-setting.txt"; }
+
+# The same setting where deploy.sh cannot read it (Compose's own environment
+# for the API and the worker, not api.env): the containers see it exactly as
+# if api.env held it.
+sed -i '/^MARKX_ALLOW_NEWER_SCHEMA=/d' "$config/api.env"
+cat > "$work/setting-elsewhere.yaml" <<'OVERRIDE'
+services:
+  api:
+    environment:
+      MARKX_ALLOW_NEWER_SCHEMA: "true"
+  worker:
+    environment:
+      MARKX_ALLOW_NEWER_SCHEMA: "true"
+OVERRIDE
+MARKX_COMPOSE_OVERRIDE="$MARKX_COMPOSE_OVERRIDE:$work/setting-elsewhere.yaml" "$prod/deploy.sh" deploy rehearsal-5 \
+  > "$work/deploy-5b.txt" 2>&1 && st=0 || st=$?
+if [[ $st -ne 0 ]] && grep -q "deployment: REFUSED: MARKX_ALLOW_NEWER_SCHEMA is on" "$work/deploy-5b.txt" \
+  && ! grep -q "the one-time migration step" "$work/deploy-5b.txt" \
+  && [[ "$(tail -1 "$config/releases.log" | cut -d' ' -f2-)" == "$running_release_line" ]]; then
+  pass "the new release itself refuses a deployment with the setting on, wherever it is set (before any migration)"
+else
+  fail "the new release's own refusal (exit $st)"; tail -20 "$work/deploy-5b.txt"
+fi
+
+# The reviewer's case. A failed update, the database carrying a later change,
+# the setting on for every container. The new release here is one made
+# before the rule (its own refusal taken out), so the deployment gets as far
+# as the automatic return: only the forced-off check stands in the way.
+if broken_release broken-c yes; then
+  sed -i 's/    if arguments.deploying and config.allow_newer_schema:/    if False:  # rehearsal: a release made before D-103/' \
+    "$work/broken-c/api/markx/ops/preflight.py"
+  if grep -q "rehearsal: a release made before D-103" "$work/broken-c/api/markx/ops/preflight.py"; then
+    MARKX_COMPOSE_OVERRIDE="$MARKX_COMPOSE_OVERRIDE:$work/broken-c.yaml:$work/setting-elsewhere.yaml" \
+      "$prod/deploy.sh" deploy rehearsal-6 > "$work/deploy-6.txt" 2>&1 && st=0 || st=$?
+    stopped=1
+    for s in api worker web; do
+      [[ -z "$(compose ps --status running -q "$s")" ]] || stopped=0
+    done
+    if [[ $st -ne 0 ]] && grep -q "checked with MARKX_ALLOW_NEWER_SCHEMA forced off" "$work/deploy-6.txt" \
+      && grep -q "rehearsal-2 refuses the migrated database" "$work/deploy-6.txt" \
+      && grep -q "DEPLOYMENT HALTED in a safe state" "$work/deploy-6.txt" \
+      && ! grep -q "running again, verified" "$work/deploy-6.txt" \
+      && ! grep -q "auto-rollback" "$config/releases.log" \
+      && [[ "$(psql_markx "select version_num from alembic_version")" == rehearsal_newer ]] \
+      && (( stopped )); then
+      pass "the reviewer's case: a newer database and the setting on; the automatic return checks rehearsal-2 with it forced off, refuses, and stops safely"
+    else
+      fail "the automatic return with the setting left on (exit $st, stopped=$stopped)"; tail -40 "$work/deploy-6.txt"
+    fi
+    [[ "$(image_of backup)" == "$prefix/backup:rehearsal-6" ]] \
+      && pass "in the safe stop the backup service runs as the release that migrated the database" \
+      || fail "backup service in the safe stop: $(image_of backup)"
+  else
+    fail "making the release without the deploy-time refusal"
+  fi
+else
+  fail "making the broken release for the reviewer's case"
+fi
+
+# The way out the runbook prefers: roll forward. The run ends with the
+# setting off everywhere and the schema current.
+if broken_release fixed yes healthy; then
+  if "$prod/deploy.sh" deploy rehearsal-7 > "$work/deploy-7.txt" 2>&1 \
+    && [[ "$(https "$url/api/v1/healthz/ready")" == *'"schema":"current"'* ]] \
+    && [[ "$(release_images_of)" == "$(images_of_release rehearsal-7)" ]] \
+    && [[ ! -e "$config/deploy-halted" ]]; then
+    pass "a roll forward ends the safe stop (schema: current)"
+  else
+    fail "the roll forward"; tail -30 "$work/deploy-7.txt"
+  fi
+else
+  fail "making the fixed release"
+fi
+if ! grep -q "MARKX_ALLOW_NEWER_SCHEMA" "$config/api.env" \
+  && [[ "$(compose exec -T api printenv MARKX_ALLOW_NEWER_SCHEMA 2>/dev/null)" == "" ]] \
+  && [[ "$(compose exec -T worker printenv MARKX_ALLOW_NEWER_SCHEMA 2>/dev/null)" == "" ]]; then
+  pass "the rehearsal ends with MARKX_ALLOW_NEWER_SCHEMA off: not in api.env, not in the running API or worker"
+else
+  fail "MARKX_ALLOW_NEWER_SCHEMA is still on at the end"
 fi
 
 # -- 10. shutdown ------------------------------------------------------------------
