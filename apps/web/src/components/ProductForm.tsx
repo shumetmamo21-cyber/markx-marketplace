@@ -7,6 +7,8 @@ import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { apiErrorText, fill, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "./Resilience";
+
 type Schemas = components["schemas"];
 type Attribute = Schemas["AttributeOut"];
 
@@ -51,7 +53,7 @@ export function ProductForm({ lang, mode, category, brands, t }: Props) {
   const c = t.catalogue;
   const [lines, setLines] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   const details = category.attributes.filter((a) => !a.is_variant_defining);
   const defining = category.attributes.filter((a) => a.is_variant_defining);
 
@@ -94,14 +96,14 @@ export function ProductForm({ lang, mode, category, brands, t }: Props) {
         if (mode.kind === "staff") {
           const { data, error } = await browserApi.POST("/api/v1/admin/catalog/products", { body });
           setBusy(false);
-          if (error || !data) return setMessage({ ok: false, text: apiErrorText(t, errorCode(error)) });
+          if (error || !data) return setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
           router.push(`/${lang}/admin/products/${data.id}`);
           return;
         }
         const { error } = await browserApi.POST("/api/v1/seller/{seller_id}/product-proposals", { params: { path: { seller_id: mode.sellerId } }, body });
         setBusy(false);
-        if (error) return setMessage({ ok: false, text: apiErrorText(t, errorCode(error)) });
-        setMessage({ ok: true, text: c.proposed });
+        if (error) return setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
+        setMessage({ ok: true, text: c.proposed, code: "" });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -161,7 +163,8 @@ export function ProductForm({ lang, mode, category, brands, t }: Props) {
         <label className="flex min-h-12 items-center gap-3"><input type="checkbox" name="publish" className="h-5 w-5" />{c.publishNow}</label>
       ) : null}
       <button type="submit" disabled={busy} className="min-h-12 rounded-card bg-ink px-5 font-bold text-paper disabled:opacity-60">{mode.kind === "staff" ? c.create : c.propose}</button>
-      {message ? <p role={message.ok ? "status" : "alert"} className={message.ok ? "font-semibold" : "font-semibold text-clay"}>{message.text}</p> : null}
+      {message?.ok ? <p role="status" className="font-semibold">{message.text}</p> : null}
+      {message && !message.ok ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
     </form>
   );
 }

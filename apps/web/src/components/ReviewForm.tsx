@@ -6,6 +6,8 @@ import { useId, useState } from "react";
 import { browserApi, errorCode } from "@/lib/api/browser";
 import { apiErrorText, fill, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "./Resilience";
+
 type Props = {
   /** A new review of one item of a completed order, or a change to one. */
   target:
@@ -38,7 +40,7 @@ export function ReviewForm({ target, t }: Props) {
   const router = useRouter();
   const id = useId();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   const r = t.reviews;
   const editing = target.kind === "edit";
   return (
@@ -62,9 +64,9 @@ export function ReviewForm({ target, t }: Props) {
               })
             : await browserApi.PUT("/api/v1/me/reviews/{review_id}", { params: { path: { review_id: target.reviewId } }, body });
         setBusy(false);
-        if (error) setMessage({ ok: false, text: apiErrorText(t, errorCode(error)) });
+        if (error) setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
         else {
-          setMessage({ ok: true, text: r.saved });
+          setMessage({ ok: true, text: r.saved, code: "" });
           router.refresh();
         }
       }}
@@ -74,7 +76,8 @@ export function ReviewForm({ target, t }: Props) {
       <label htmlFor={`${id}-body`} className="block font-semibold">{r.body}</label>
       <textarea id={`${id}-body`} name="body" maxLength={2000} rows={3} defaultValue={editing ? target.body : ""} className="w-full rounded-card border border-line bg-white p-3" />
       <button type="submit" disabled={busy} className="min-h-12 rounded-card bg-adey px-5 font-bold disabled:opacity-60">{editing ? r.save : r.send}</button>
-      {message ? <p role={message.ok ? "status" : "alert"} className={message.ok ? "font-semibold" : "font-semibold text-clay"}>{message.text}</p> : null}
+      {message?.ok ? <p role="status" className="font-semibold">{message.text}</p> : null}
+      {message && !message.ok ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
     </form>
   );
 }

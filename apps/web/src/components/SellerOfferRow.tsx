@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { browserApi } from "@/lib/api/browser";
+import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { apiErrorText, fill, type Messages } from "@/lib/i18n";
+
+import { ProblemNotice } from "./Resilience";
 
 type Offer = components["schemas"]["SellerOfferOut"];
 
@@ -16,7 +18,7 @@ export function SellerOfferRow({ sellerId, offer, t, confirmedText, photosHref }
   const s = t.seller;
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string; code: string; retry?: () => void } | null>(null);
   const path = { params: { path: { seller_id: sellerId, offer_id: offer.id } } };
 
   const run = async (call: () => Promise<{ error?: unknown }>) => {
@@ -25,10 +27,11 @@ export function SellerOfferRow({ sellerId, offer, t, confirmedText, photosHref }
     const { error } = await call();
     setBusy(false);
     if (error) {
-      setNote({ ok: false, text: apiErrorText(t, (error as { error?: { code?: string } }).error?.code ?? "unknown") });
+      const code = errorCode(error);
+      setNote({ ok: false, text: apiErrorText(t, code), code, retry: () => void run(call) });
       return;
     }
-    setNote({ ok: true, text: s.saved });
+    setNote({ ok: true, text: s.saved, code: "" });
     router.refresh();
   };
 
@@ -90,7 +93,8 @@ export function SellerOfferRow({ sellerId, offer, t, confirmedText, photosHref }
       </form>
       {offer.reserved > 0 ? <p className="text-sm text-slate">{fill(s.held, { count: offer.reserved })}</p> : null}
       <p><Link href={photosHref} className="inline-flex min-h-12 items-center text-sm font-semibold underline">{s.photosLink}</Link></p>
-      {note ? <p role={note.ok ? "status" : "alert"} className={note.ok ? "text-sm font-semibold" : "text-sm font-semibold text-clay"}>{note.text}</p> : null}
+      {note?.ok ? <p role="status" className="text-sm font-semibold">{note.text}</p> : null}
+      {note && !note.ok ? <ProblemNotice code={note.code} text={note.text} retry={note.retry} busy={busy} className="text-sm font-semibold text-clay" /> : null}
     </li>
   );
 }

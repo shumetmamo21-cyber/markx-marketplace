@@ -3,9 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { browserApi } from "@/lib/api/browser";
+import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { apiErrorText, fill, type Messages } from "@/lib/i18n";
+
+import { ProblemNotice } from "./Resilience";
 
 type Order = components["schemas"]["SellerOrderOut"];
 type Payment = components["schemas"]["PaymentRecordIn"]["method"];
@@ -35,7 +37,7 @@ export function SellerOrderActions({ sellerId, order, t }: { sellerId: string; o
   const router = useRouter();
   const [open, setOpen] = useState<Kind | null>(null);
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ code: string; text: string; retry: () => void } | null>(null);
   const path = { params: { path: { seller_id: sellerId, seller_order_id: order.id } } };
 
   const run = async (call: () => Promise<{ error?: unknown }>) => {
@@ -49,10 +51,12 @@ export function SellerOrderActions({ sellerId, order, t }: { sellerId: string; o
       return;
     }
     const body = (error as { error?: { code?: string; details?: { attempts_left?: number } } }).error;
-    const code = body?.code ?? "unknown";
-    if (code === "handover_code_wrong") setProblem(fill(s.codeWrong, { left: body?.details?.attempts_left ?? 0 }));
-    else if (code === "handover_code_locked") setProblem(s.codeLocked);
-    else setProblem(fill(s.actionFailed, { reason: apiErrorText(t, code) }));
+    const code = errorCode(error);
+    // Shown with "try again" only when the connection or the server failed.
+    const retry = () => void run(call);
+    if (code === "handover_code_wrong") setProblem({ code, text: fill(s.codeWrong, { left: body?.details?.attempts_left ?? 0 }), retry });
+    else if (code === "handover_code_locked") setProblem({ code, text: s.codeLocked, retry });
+    else setProblem({ code, text: fill(s.actionFailed, { reason: apiErrorText(t, code) }), retry });
   };
 
   const actions = nextActions(order);
@@ -186,7 +190,7 @@ export function SellerOrderActions({ sellerId, order, t }: { sellerId: string; o
         </form>
       ) : null}
 
-      {problem ? <p role="alert" className="font-semibold text-clay">{problem}</p> : null}
+      {problem ? <ProblemNotice code={problem.code} text={problem.text} retry={problem.retry} busy={busy} /> : null}
     </section>
   );
 }

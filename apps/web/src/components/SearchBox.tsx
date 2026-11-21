@@ -57,7 +57,9 @@ export function SearchBox({ lang, query, labels }: { lang: string; query: string
         placeholder={labels.placeholder}
         autoComplete="off"
         enterKeyHint="search"
-        aria-controls="q-suggestions"
+        // Only while the list exists: a reference to a missing element is
+        // invalid ARIA (axe: aria-valid-attr-value, D-100).
+        aria-controls={shown ? "q-suggestions" : undefined}
         className="min-h-12 w-full min-w-0 rounded-card border border-line bg-white px-4 text-base text-ink placeholder:text-slate"
       />
       {shown ? (

@@ -1,13 +1,34 @@
 # Development status
 
-**Last updated:** 20 November 2026, by the **order life-cycle hardening
-session** (D-099), on branch `claude/order-lifecycle-hardening-1djdof`,
-from `main` at `c70b338` with the complete history (not merged; the
-founder approves a merge). See "Order life-cycle hardening" just below.
-Before it, the staff conflict and phone digits session (D-098, pull request
-#6) was merged into `main` on 20 November 2026 as `c70b338`; the checks and
+**Last updated:** 20 November 2026, by the **frontend resilience session**
+(D-100), on branch `claude/frontend-resilience-errors-g4z33c`, from `main`
+at `fae2514` with the complete history. See "Frontend resilience" just
+below. Before it, the order life-cycle hardening session (D-099, pull
+request #7) was merged into `main` as `fae2514`; the staff conflict and
+phone digits session (D-098, pull request #6) as `c70b338`; the checks and
 secret-scan session (D-097, pull request #5) as `d01fef7`, and the backup
 trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## Frontend resilience (20 November 2026, D-100)
+
+The website, its tests, one step of the browser-journeys workflow and
+documents. **The API is not changed. Nothing deployed; no account; no
+money.** Details: `docs/DECISIONS.md`, D-100. New founder question F-23
+(OPEN).
+
+| Finding | State | Proof |
+| --- | --- | --- |
+| **Defect e** / audit §10: about 20 parts of the website freeze with no message when the connection drops; no proper error pages | **Fixed.** One safe way to call the API that never throws (30 s limit, uploads 120 s, PROVISIONAL); a dropped connection or a server failure shows clear words and a "Try again" button in every one of the 22 component files that call the server (104 calls); no button or form stays stuck. Error pages for the whole site and each section (shop, seller, staff), in Amharic and English, never showing technical details | `src/lib/api/browser.test.ts` (14), `src/components/error-pages.test.ts` (26); `e2e/network-recovery.mjs` cuts the network halfway through a purchase and recovers, exactly one order placed; **on `main` (`fae2514`) it fails at step 1**: "Add to cart" stays "Adding…", disabled, no message, 20 s offline and 5 s after the connection returns |
+| No automated accessibility check (audit §10) | **Added to the new journey.** axe-core 4.14.0, WCAG 2.1 A and AA, on every page it visits (notices and error pages included) and the main public pages in both languages; any violation fails. Two problems on every storefront page found and fixed | `e2e/a11y.mjs`; on `main` the first page fails with both |
+
+**For later:** the 404 page for an address matching no route has no `lang`
+on `<html>` (axe; the fix needs an experimental Next.js setting); the
+other journeys do not call the accessibility check yet; losing the
+connection while moving to another page shows the browser's own offline
+page (only a PWA could change that); the time limits on real Ethiopian
+networks are UNKNOWN until measured; native review of the new Amharic.
+
+**Test results:** see "Tests executed", 20 November 2026 (D-100).
 
 ## Order life-cycle hardening (20 November 2026, D-099)
 
@@ -197,7 +218,7 @@ needs a code change, none is fixed):
 | b | The "not your own store" check exists only in seller verification: staff who belong to a store can still decide its disputes, reviews, reports and takedowns (**fixed by D-098**, H1: one shared check in every such staff action) | [state report §5 b](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | c | Orders out for delivery or with a failed delivery never expire (**fixed by D-099**, M6: past a time limit they go to staff and free the buyer's open-order place; their stock stays held until the shop settles them) | [state report §5 c](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | d | A buyer can keep a competitor's stock held by ordering and cancelling (limited, not removed; **limited further by D-099**, H2: per-buyer limits on unanswered holds per offer and per shop, and a cool-down after three cancellations in a day; many accounts with many phone numbers are still possible) | [state report §5 d](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
-| e | About 22 parts of the website freeze with no message when the connection drops; no proper error pages | [state report §5 e](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
+| e | About 22 parts of the website freeze with no message when the connection drops; no proper error pages (**fixed by D-100**: one safe API call with "try again" in every part that calls the server, error pages in both languages, a network-cut journey) | [state report §5 e](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | f | Certificates do not renew automatically; rollback breaks when an image prefix is set | [state report §5 f](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | g | The picomatch audit warning is allowed until 31 December 2026; the web CSP allows inline scripts | [state report §5 g](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
 | h1 | The server's storage key can delete every backup (**fixed by D-096**, BK-1; merged, pull request #4) | [state report §5 h1](reports/2026-11-19-markx-readonly-audit-report.md#5-earlier-findings) |
@@ -1624,6 +1645,39 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Frontend resilience** (D-100), on 20 November 2026, branch
+`claude/frontend-resilience-errors-g4z33c`, from `main` at `fae2514` with
+the complete history (`git fetch --unshallow`; not shallow). PostgreSQL
+17.12 and MinIO in containers, with the CI job's settings. The API code is
+unchanged; its suite was run to confirm it.
+
+```text
+uv run pytest -q -p no:cacheprovider                     ->  1905 passed, in 16 min 7 s
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  245 files already formatted
+uv run mypy markx                                        ->  no issues found in 147 source files
+uv run alembic upgrade head && uv run alembic check      ->  no new upgrade operations detected
+check_openapi_copy --exact openapi.json; web copy        ->  both match the API exactly
+apps/web: npm run lint; npm run typecheck                ->  passed; passed
+apps/web: npm test                                       ->  142 passed (102 before; 40 new)
+apps/web: npm run build; gen:api diff; npm audit gate    ->  passed; no change; passed
+
+# Browser journeys, in CI's order, on a fresh demo database (API with uvicorn, web with next start)
+page-weight, seller-dashboard, buyer-journey, staff-journey,
+admin-queues, shop-screens, setup-and-account            ->  all passed, "console errors: none"
+network-recovery (new; axe on 16 pages)                  ->  passed, no accessibility violations
+sign-in-cooldown, telegram off, telegram on, turnstile   ->  all passed
+
+# The new journey against the old website (main, fae2514)
+network-recovery (axe on)                                ->  fails on the first page: the two header problems
+network-recovery (axe stubbed, proof copy only)          ->  fails at step 1: no message after "Add to cart" offline
+"Add to cart" offline on main                            ->  still "Adding…" and disabled after 20 s, and 5 s after reconnecting
+```
+
+The first local runs of sign-in-cooldown and Telegram "on" failed because
+of the engineer's own commands (the cool-down setting run from the wrong
+folder; the journey not given its test-only values); run as CI runs them,
+both passed.
 
 **Order life-cycle hardening** (D-099), on 20 November 2026, branch
 `claude/order-lifecycle-hardening-1djdof`, from `main` at `c70b338` with

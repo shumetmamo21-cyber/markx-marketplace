@@ -15,7 +15,9 @@ export function SiteHeader({ lang, t, query, signedIn = false }: { lang: Locale;
       </a>
       <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center">
         <div className="flex items-center justify-between gap-3">
-          <Link href={`/${lang}`} className="rounded-md" aria-label={t.brand.wordmark}>
+          {/* Named by its own words ("MarkX", the tagline), not by a label that
+              differs from them (axe: label-content-name-mismatch, D-100). */}
+          <Link href={`/${lang}`} className="rounded-md">
             <Wordmark label={t.brand.tagline} />
           </Link>
           <div className="flex items-center gap-2 md:hidden">

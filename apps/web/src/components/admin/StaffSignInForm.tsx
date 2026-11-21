@@ -6,11 +6,13 @@ import { useState } from "react";
 import { browserApi, errorCode } from "@/lib/api/browser";
 import { apiErrorText, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "../Resilience";
+
 // Staff sign in with a password and an authenticator code (blueprint F.4, H.2).
 export function StaffSignInForm({ next, t }: { next: string; t: Pick<Messages, "admin" | "apiErrors"> }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ code: string; text: string } | null>(null);
   const field = "min-h-12 w-full rounded-card border border-line bg-white px-4";
   return (
     <form
@@ -29,7 +31,7 @@ export function StaffSignInForm({ next, t }: { next: string; t: Pick<Messages, "
         });
         if (error) {
           setBusy(false);
-          setProblem(apiErrorText(t, errorCode(error)));
+          setProblem({ code: errorCode(error), text: apiErrorText(t, errorCode(error)) });
           return;
         }
         router.replace(next);
@@ -48,7 +50,7 @@ export function StaffSignInForm({ next, t }: { next: string; t: Pick<Messages, "
         <span className="font-semibold">{t.admin.totp}</span>
         <input name="totp" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" required className={field} />
       </label>
-      {problem ? <p role="alert" className="text-clay">{problem}</p> : null}
+      {problem ? <ProblemNotice code={problem.code} text={problem.text} retry="submit" busy={busy} className="text-clay" /> : null}
       <button type="submit" disabled={busy} className="min-h-12 w-full rounded-card bg-ink font-bold text-paper disabled:opacity-60">
         {t.admin.signIn}
       </button>

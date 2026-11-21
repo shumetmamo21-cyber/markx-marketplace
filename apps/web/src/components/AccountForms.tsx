@@ -8,6 +8,8 @@ import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { apiErrorText, type Locale, type Messages } from "@/lib/i18n";
 
+import { ProblemNotice } from "./Resilience";
+
 // The buyer's account (blueprint I.5, C-08, H.5): each form sends the
 // person's choice and shows the API's answer in words.
 
@@ -20,7 +22,7 @@ const button = "min-h-12 rounded-card bg-ink px-5 font-bold text-paper disabled:
 function AccountForm({ t, onSubmit, children, label, done, quiet = false }: { t: T; onSubmit: (form: FormData) => Promise<{ error?: unknown }>; children?: ReactNode; label: string; done?: string; quiet?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   return (
     <form
       className="space-y-3"
@@ -31,15 +33,16 @@ function AccountForm({ t, onSubmit, children, label, done, quiet = false }: { t:
         setMessage(null);
         const { error } = await onSubmit(new FormData(element));
         setBusy(false);
-        if (error) return setMessage({ ok: false, text: apiErrorText(t, errorCode(error)) });
+        if (error) return setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
         element.reset();
-        setMessage({ ok: true, text: done ?? t.account.saved });
+        setMessage({ ok: true, text: done ?? t.account.saved, code: "" });
         router.refresh();
       }}
     >
       {children}
       <button type="submit" disabled={busy} className={quiet ? "min-h-12 rounded-card border border-ink px-4 font-semibold disabled:opacity-60" : button}>{label}</button>
-      {message ? <p role={message.ok ? "status" : "alert"} className={message.ok ? "font-semibold" : "font-semibold text-clay"}>{message.text}</p> : null}
+      {message?.ok ? <p role="status" className="font-semibold">{message.text}</p> : null}
+      {message && !message.ok ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
     </form>
   );
 }
@@ -118,25 +121,27 @@ export function DataRequestForm({ t, kinds }: { t: T; kinds: Messages["labels"][
 export function SignOutEverywhere({ home, t }: { home: string; t: T }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<{ code: string; text: string } | null>(null);
+  const signOut = async () => {
+    setBusy(true);
+    setProblem(null);
+    const { error } = await browserApi.POST("/api/v1/auth/sign-out-everywhere", {});
+    setBusy(false);
+    if (error) return setProblem({ code: errorCode(error), text: apiErrorText(t, errorCode(error)) });
+    router.push(home);
+    router.refresh();
+  };
   return (
     <div className="space-y-1">
       <button
         type="button"
         disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          const { error } = await browserApi.POST("/api/v1/auth/sign-out-everywhere", {});
-          setBusy(false);
-          if (error) return setProblem(apiErrorText(t, errorCode(error)));
-          router.push(home);
-          router.refresh();
-        }}
+        onClick={signOut}
         className="min-h-12 rounded-card border border-clay px-4 font-semibold text-clay disabled:opacity-60"
       >
         {t.account.signOutEverywhere}
       </button>
-      {problem ? <p role="alert" className="font-semibold text-clay">{problem}</p> : null}
+      {problem ? <ProblemNotice code={problem.code} text={problem.text} retry={() => void signOut()} busy={busy} /> : null}
     </div>
   );
 }

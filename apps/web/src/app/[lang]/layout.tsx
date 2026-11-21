@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 
 import "../globals.css";
+import { ResilienceProvider } from "@/components/Resilience";
+import { resilienceText } from "@/lib/fallback-text";
 import { LOCALES, isLocale } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
 
@@ -31,9 +33,13 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children, params }: LayoutProps<"/[lang]">) {
   const { lang } = await params;
   if (!isLocale(lang)) notFound();
+  const t = await getMessages(lang);
   return (
     <html lang={lang}>
-      <body className="min-h-dvh bg-paper text-ink antialiased">{children}</body>
+      <body className="min-h-dvh bg-paper text-ink antialiased">
+        {/* The words for a failed call and the error pages (D-100). */}
+        <ResilienceProvider text={resilienceText(lang, t)}>{children}</ResilienceProvider>
+      </body>
     </html>
   );
 }

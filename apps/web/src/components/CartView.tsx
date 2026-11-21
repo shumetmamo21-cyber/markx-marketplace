@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { browserApi } from "@/lib/api/browser";
+import { browserApi, errorCode, isConnectionProblem } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { formatPrice } from "@/lib/format";
 import { fill, type Locale, type Messages } from "@/lib/i18n";
+
+import { ProblemNotice } from "./Resilience";
 
 type Cart = components["schemas"]["CartOut"];
 type Item = components["schemas"]["CartItemOut"];
@@ -21,20 +23,26 @@ function problemText(t: Messages["cart"], problem: string): string {
 // visitor's cart by a cookie it sets on these very responses (D-036).
 export function CartView({ lang, t, conditions }: { lang: Locale; t: Messages["cart"]; conditions: Messages["condition"] }) {
   const [cart, setCart] = useState<Cart | null>(null);
-  const [failed, setFailed] = useState(false);
+  // The code of a failed read ("" while none): the cart cannot be shown.
+  const [failed, setFailed] = useState("");
   const [busy, setBusy] = useState(false);
+  // A change that did not reach the server: the cart stays as it was shown.
+  const [problem, setProblem] = useState<{ code: string; retry: () => void } | null>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await browserApi.GET("/api/v1/cart", { params: { query: { lang } } });
-    if (error || !data) setFailed(true);
-    else setCart(data);
+    if (error || !data) setFailed(errorCode(error));
+    else {
+      setFailed("");
+      setCart(data);
+    }
   }, [lang]);
 
   useEffect(() => {
     let live = true;
     browserApi.GET("/api/v1/cart", { params: { query: { lang } } }).then(({ data, error }) => {
       if (!live) return;
-      if (error || !data) setFailed(true);
+      if (error || !data) setFailed(errorCode(error));
       else setCart(data);
     });
     return () => {
@@ -44,13 +52,22 @@ export function CartView({ lang, t, conditions }: { lang: Locale; t: Messages["c
 
   const change = async (run: () => Promise<{ data?: Cart; error?: unknown }>) => {
     setBusy(true);
-    const { data } = await run();
+    setProblem(null);
+    const { data, error } = await run();
+    const code = errorCode(error);
     if (data) setCart(data);
+    else if (isConnectionProblem(code)) setProblem({ code, retry: () => void change(run) });
     else await load();
     setBusy(false);
   };
 
-  if (failed) return <p role="alert" className="text-clay">{t.failed}</p>;
+  if (failed) {
+    return (
+      <div className="space-y-3">
+        <ProblemNotice code={failed} text={t.failed} retry={() => void load()} className="text-clay" />
+      </div>
+    );
+  }
   if (!cart) return <p role="status" className="text-slate">{t.loading}</p>;
   if (cart.line_count === 0) {
     return (
@@ -118,6 +135,11 @@ export function CartView({ lang, t, conditions }: { lang: Locale; t: Messages["c
           >
             {t.acceptChanges}
           </button>
+        </div>
+      ) : null}
+      {problem ? (
+        <div className="space-y-2">
+          <ProblemNotice code={problem.code} retry={problem.retry} busy={busy} />
         </div>
       ) : null}
       <p className="text-sm text-slate">{t.perSeller}</p>

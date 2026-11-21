@@ -147,6 +147,17 @@ jobs:
         working-directory: apps/web
         run: node e2e/setup-and-account.mjs "$RUNNER_TEMP/shots"
 
+      # D-100: a purchase with the network cut halfway (offline, a proxy's
+      # 502 page, an answer lost after the server took the order), then the
+      # API stopped and started again by the journey itself (the error page in
+      # both languages, then "try again"). axe checks every page on the way.
+      - name: Network cut halfway through a purchase, error pages, accessibility
+        working-directory: apps/web
+        env:
+          MARKX_E2E_STOP_API: docker compose -f ../../infra/compose/compose.yaml -f ../../infra/compose/compose.ci.yaml stop api
+          MARKX_E2E_START_API: docker compose -f ../../infra/compose/compose.yaml -f ../../infra/compose/compose.ci.yaml up -d --wait api
+        run: node e2e/network-recovery.mjs "$RUNNER_TEMP/shots"
+
       # D-089: the resend cooldown, end to end. It is switched back on (60
       # seconds, the default) for this step only, then off again for the next.
       - name: Resend cooldown on the sign-in page

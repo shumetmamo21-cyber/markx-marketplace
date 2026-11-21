@@ -3,8 +3,10 @@
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
-import { browserApi, errorCode, sendForm } from "@/lib/api/browser";
+import { browserApi, errorCode, getSafely, sendForm } from "@/lib/api/browser";
 import { apiErrorText, fill, type Messages } from "@/lib/i18n";
+
+import { ProblemNotice } from "../Resilience";
 
 type T = Pick<Messages, "admin" | "apiErrors">;
 type Result = { error?: unknown };
@@ -16,7 +18,7 @@ const button = "min-h-12 rounded-card bg-ink px-5 font-bold text-paper disabled:
 function StaffForm({ t, onSubmit, children, label }: { t: T; onSubmit: (form: FormData) => Promise<Result>; children: ReactNode; label: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
   return (
     <form
       className="space-y-3"
@@ -27,16 +29,17 @@ function StaffForm({ t, onSubmit, children, label }: { t: T; onSubmit: (form: Fo
         setMessage(null);
         const { error } = await onSubmit(form);
         setBusy(false);
-        if (error) setMessage({ ok: false, text: apiErrorText(t, errorCode(error)) });
+        if (error) setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
         else {
-          setMessage({ ok: true, text: t.admin.done });
+          setMessage({ ok: true, text: t.admin.done, code: "" });
           router.refresh();
         }
       }}
     >
       {children}
       <button type="submit" disabled={busy} className={button}>{label}</button>
-      {message ? <p role={message.ok ? "status" : "alert"} className={message.ok ? "font-semibold" : "font-semibold text-clay"}>{message.text}</p> : null}
+      {message?.ok ? <p role="status" className="font-semibold">{message.text}</p> : null}
+      {message && !message.ok ? <ProblemNotice code={message.code} text={message.text} retry="submit" busy={busy} /> : null}
     </form>
   );
 }
@@ -113,23 +116,29 @@ export function ReissueCodeForm({ sellerOrderId, t }: { sellerOrderId: string; t
 export function DocumentReview({ sellerId, documentId, t }: { sellerId: string; documentId: string; t: T }) {
   const a = t.admin;
   const [opening, setOpening] = useState(false);
+  // Before D-100 a link that could not be made said nothing.
+  const [failed, setFailed] = useState<{ code: string; text: string } | null>(null);
+  const view = async () => {
+    setOpening(true);
+    setFailed(null);
+    const { data, error } = await browserApi.POST("/api/v1/admin/sellers/{seller_id}/documents/{document_id}/link", {
+      params: { path: { seller_id: sellerId, document_id: documentId } },
+    });
+    setOpening(false);
+    if (data) window.open(data.url, "_blank", "noopener,noreferrer");
+    else setFailed({ code: errorCode(error), text: apiErrorText(t, errorCode(error)) });
+  };
   return (
     <div className="space-y-2">
       <button
         type="button"
         disabled={opening}
-        onClick={async () => {
-          setOpening(true);
-          const { data } = await browserApi.POST("/api/v1/admin/sellers/{seller_id}/documents/{document_id}/link", {
-            params: { path: { seller_id: sellerId, document_id: documentId } },
-          });
-          setOpening(false);
-          if (data) window.open(data.url, "_blank", "noopener,noreferrer");
-        }}
-        className="min-h-12 rounded-card border border-ink px-4 font-semibold"
+        onClick={view}
+        className="min-h-12 rounded-card border border-ink px-4 font-semibold disabled:opacity-60"
       >
         {a.viewDocument}
       </button>
+      {failed ? <ProblemNotice code={failed.code} text={failed.text} retry={() => void view()} busy={opening} /> : null}
       <StaffForm
         t={t}
         label={a.accept}
@@ -210,17 +219,24 @@ export function AddSynonymForm({ t }: { t: T }) {
 
 export function RemoveSynonymButton({ id, t }: { id: string; t: T }) {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  // Before D-100 a failed removal said nothing.
+  const [failed, setFailed] = useState<{ code: string; text: string } | null>(null);
+  const remove = async () => {
+    setBusy(true);
+    setFailed(null);
+    const { error } = await browserApi.DELETE("/api/v1/admin/search/synonyms/{synonym_id}", { params: { path: { synonym_id: id } } });
+    setBusy(false);
+    if (error) return setFailed({ code: errorCode(error), text: apiErrorText(t, errorCode(error)) });
+    router.refresh();
+  };
   return (
-    <button
-      type="button"
-      onClick={async () => {
-        await browserApi.DELETE("/api/v1/admin/search/synonyms/{synonym_id}", { params: { path: { synonym_id: id } } });
-        router.refresh();
-      }}
-      className="min-h-12 px-3 font-semibold underline"
-    >
-      {t.admin.remove}
-    </button>
+    <span className="inline-flex flex-col gap-1">
+      <button type="button" disabled={busy} onClick={remove} className="min-h-12 px-3 font-semibold underline disabled:opacity-60">
+        {t.admin.remove}
+      </button>
+      {failed ? <ProblemNotice code={failed.code} text={failed.text} retry={() => void remove()} busy={busy} className="text-sm font-semibold text-clay" /> : null}
+    </span>
   );
 }
 
@@ -375,7 +391,7 @@ export function CreateStaffForm({ t, roleLabels }: { t: T; roleLabels: Record<St
   const a = t.admin;
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ code: string; text: string } | null>(null);
   // Shown once, from the API's answer; never stored or sent anywhere else.
   const [secret, setSecret] = useState<{ secret: string; uri: string } | null>(null);
   return (
@@ -392,7 +408,7 @@ export function CreateStaffForm({ t, roleLabels }: { t: T; roleLabels: Record<St
             body: { phone: text(form, "phone"), name: text(form, "name"), role: text(form, "role") as StaffRole, password: String(form.get("password") ?? "") },
           });
           setBusy(false);
-          if (refused || !data) setError(apiErrorText(t, errorCode(refused)));
+          if (refused || !data) setError({ code: errorCode(refused), text: apiErrorText(t, errorCode(refused)) });
           else {
             setSecret({ secret: data.totp_secret, uri: data.provisioning_uri });
             router.refresh();
@@ -411,7 +427,7 @@ export function CreateStaffForm({ t, roleLabels }: { t: T; roleLabels: Record<St
           <label className="space-y-1"><span className="block text-sm font-semibold">{a.staffPassword}</span><input name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={200} className={field} /></label>
         </div>
         <button type="submit" disabled={busy} className={button}>{a.createStaff}</button>
-        {error ? <p role="alert" className="font-semibold text-clay">{error}</p> : null}
+        {error ? <ProblemNotice code={error.code} text={error.text} retry="submit" busy={busy} /> : null}
       </form>
       {secret ? (
         <section role="status" className="space-y-2 rounded-card border-2 border-ink bg-white p-4">
@@ -449,36 +465,36 @@ export function StaffActiveForm({ staffId, active, t }: { staffId: string; activ
 
 export function ExportButton({ kind, firstDay, lastDay, t }: { kind: string; firstDay: string; lastDay: string; t: T }) {
   const a = t.admin;
-  const [state, setState] = useState<{ busy: boolean; text: string | null; ok: boolean }>({ busy: false, text: null, ok: true });
+  const [state, setState] = useState<{ busy: boolean; text: string | null; ok: boolean; code: string }>({ busy: false, text: null, ok: true, code: "" });
+  const download = async () => {
+    setState({ busy: true, text: a.downloading, ok: true, code: "" });
+    const query = new URLSearchParams({ first_day: firstDay, last_day: lastDay });
+    // A GET with the staff cookie; the API decides the period and the role.
+    // The whole file is read inside the guarded call, so a connection that
+    // drops halfway is reported, not left "downloading" (D-100).
+    const got = await getSafely(`/api/v1/admin/exports/${kind}?${query}`, async (response) => ({
+      name: /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? `markx-${kind}.csv`,
+      blob: await response.blob(),
+    }));
+    if (!got.ok) {
+      setState({ busy: false, text: apiErrorText(t, errorCode(got.body)), ok: false, code: errorCode(got.body) });
+      return;
+    }
+    const url = URL.createObjectURL(got.value.blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = got.value.name;
+    link.click();
+    URL.revokeObjectURL(url);
+    setState({ busy: false, text: fill(a.downloaded, { file: got.value.name }), ok: true, code: "" });
+  };
   return (
     <div className="space-y-1">
-      <button
-        type="button"
-        disabled={state.busy}
-        className={button}
-        onClick={async () => {
-          setState({ busy: true, text: a.downloading, ok: true });
-          const query = new URLSearchParams({ first_day: firstDay, last_day: lastDay });
-          // A GET with the staff cookie; the API decides the period and the role.
-          const response = await fetch(`/api/v1/admin/exports/${kind}?${query}`, { credentials: "same-origin" });
-          if (!response.ok) {
-            const body: unknown = await response.json().catch(() => null);
-            setState({ busy: false, text: apiErrorText(t, errorCode(body)), ok: false });
-            return;
-          }
-          const name = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? `markx-${kind}.csv`;
-          const url = URL.createObjectURL(await response.blob());
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = name;
-          link.click();
-          URL.revokeObjectURL(url);
-          setState({ busy: false, text: fill(a.downloaded, { file: name }), ok: true });
-        }}
-      >
+      <button type="button" disabled={state.busy} className={button} onClick={download}>
         {a.download}
       </button>
-      {state.text ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "text-sm" : "text-sm font-semibold text-clay"}>{state.text}</p> : null}
+      {state.text && state.ok ? <p role="status" className="text-sm">{state.text}</p> : null}
+      {state.text && !state.ok ? <ProblemNotice code={state.code} text={state.text} retry={() => void download()} busy={state.busy} className="text-sm font-semibold text-clay" /> : null}
     </div>
   );
 }
