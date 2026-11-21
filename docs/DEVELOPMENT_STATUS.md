@@ -1774,6 +1774,56 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Telegram for orders** (D-102), on 21 November 2026, branch
+`claude/markx-telegram-pr9-completion-nneqom` from `main` at `fe4546f`
+(complete history). PostgreSQL 17.12 and MinIO in containers, with
+`MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1` (the CI
+settings: a missing service fails instead of skipping).
+
+```text
+uv run pytest -q -p no:cacheprovider -rs (final code)    ->  2034 passed, 0 skipped, in 21 min 48 s (2010 + the 24 new)
+GitHub on f46fc83 (pull request #10)                     ->  CI #167 success (all 8 checks), Browser journeys #43 success
+  an earlier full run, before the last fix               ->  1 failed, 2033 passed: tests/worker/test_worker.py compares
+                                                             the fake sender's record field by field and the new code
+                                                             had added the words to it; fixed in the code, the test
+                                                             is unchanged
+tests/api/test_telegram_bot.py (new, 24)                 ->  24 passed
+the same 24 on fe4546f (worktree, the file only)         ->  cannot load (no markx.telegram_bot); with the new imports
+                                                             replaced by stand-ins: 24 failed (no answer to a press or
+                                                             command, no buttons, no Telegram words, the weekly message
+                                                             reaching someone who left the store)
+existing Telegram, notification, performance and seller
+permission files with the new code                       ->  301 passed
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  256 files already formatted
+uv run mypy markx                                        ->  no issues found in 152 source files
+uv run alembic check                                     ->  no new upgrade operations detected (no migration)
+check_openapi_copy --exact, both copies                  ->  match the API exactly
+npm run lint / typecheck / test (apps/web)               ->  passed / passed / 146 passed
+npm run gen:api, then git diff                           ->  schema.d.ts regenerated for the webhook's description
+git diff 7eabf93 -- apps/api/tests apps/web/src          ->  only the new test file (and the generated types): no
+                                                             existing test changed
+```
+
+**Review of pull request #9** (21 November 2026), read-only at `7eabf93`,
+complete history (the clone was made complete first; it had been shallow).
+
+```text
+uv run pytest -q -p no:cacheprovider -rs                 ->  2010 passed, 0 skipped, in 20 min 50 s (MinIO and backup
+                                                             tools required, as in CI)
+tests/api/test_telegram_recycled_number.py on 7eabf93    ->  13 passed
+the same file on b89aeff (worktree, the file only)       ->  12 failed, 1 passed (a guard)
+  with every bound_telegram_id assertion removed         ->  7 failed with the takeover itself (the stranger "✅ signed
+                                                             in" or "✅ connected" by sign-in, bot link and Mini App;
+                                                             a new empty account; phone_in_use), 4 guards passed
+ruff / format / mypy / alembic upgrade + check / both
+OpenAPI copies (7eabf93)                                 ->  all passed; 0020 -> 0021
+apps/web: lint, typecheck, unit tests                    ->  passed, passed, 146 passed
+a scratch database: the 0021 check constraint            ->  accepts (telegram_id 4242, bound_telegram_id NULL);
+                                                             refuses (5, 6)
+GitHub on 7eabf93                                        ->  CI #163 success (all 8 checks), Browser journeys #39 success
+GitHub on main fe4546f after the merge                   ->  CI #164 success, Browser journeys #40 success
+```
+
 **Recycled-number fix** (D-101 section 2a), on 21 November 2026, branch
 `claude/telegram-signin-audit-fixes-q318w6` (pull request #9), from
 `b89aeff` with the complete history (not shallow; nobody had pushed since
