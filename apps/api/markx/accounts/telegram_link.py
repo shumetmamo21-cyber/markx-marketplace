@@ -503,9 +503,19 @@ def _parse(body: bytes) -> dict[str, Any]:
 def handle_update(db: DbSession, body: bytes) -> dict[str, Any]:
     """One authenticated Telegram update. Returns the webhook's answer.
 
-    Anything but `/start` in a private chat from a person is acknowledged
-    and ignored, so Telegram does not send it again and nothing changes.
+    `/start` in a private chat from a person links or signs in (D-093,
+    D-101); the seller bot's commands and buttons (D-102) are answered by
+    `markx.telegram_bot`. Anything else is acknowledged and ignored, so
+    Telegram does not send it again and nothing changes.
+
+    An update is handled once: its id is stored in the same transaction as
+    whatever it changed. A repeated bot update changes nothing and is
+    answered with the current state, so an answer lost on the way back to
+    Telegram is not lost for good (D-102).
     """
+    # Imported here: the bot builds on the accounts package.
+    from markx.telegram_bot import service as bot
+
     data = _parse(body)
     update_id = int(data["update_id"])
     first_time = db.execute(
@@ -516,7 +526,12 @@ def handle_update(db: DbSession, body: bytes) -> dict[str, Any]:
     ).first()
     if first_time is None:
         logger.info("telegram update ignored", extra={"outcome": "duplicate"})
-        return WebhookReply.nothing()
+        again = bot.handle(db, data, replay=True)
+        return again if again is not None else WebhookReply.nothing()
+
+    if isinstance(data.get("callback_query"), dict):
+        answer = bot.handle(db, data, replay=False)
+        return answer if answer is not None else _ignored("not_a_bot_button")
 
     message = data.get("message")
     if not isinstance(message, dict):
@@ -546,6 +561,12 @@ def handle_update(db: DbSession, body: bytes) -> dict[str, Any]:
         return answer if answer is not None else _ignored("rate_limited")
     assert isinstance(text, str)
     match = _START.fullmatch(text) if len(text) <= 4096 else None
+    if match is None or match.group(1) is None:
+        # A seller bot command, or `/start` alone (the commands, for a
+        # connected person), D-102.
+        answer = bot.handle(db, data, replay=False)
+        if answer is not None:
+            return answer
     if match is None:
         return _ignored("not_start")
     payload = match.group(1)

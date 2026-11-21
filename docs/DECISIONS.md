@@ -4384,6 +4384,174 @@ step (F-25); a staff tool to move a number between Telegram accounts
 (F-24); sign-in from inside the Mini App with the contact step; a native
 speaker's review of the new Amharic (website and bot).
 
+## D-102 Telegram finished for orders: alerts with buttons, the seller bot's inbox and commands, buyer updates, the weekly message
+
+**Date:** 21 November 2026. **Branch:** `claude/markx-telegram-pr9-completion-nneqom`,
+from `main` at `fe4546f` (pull request #9 merged after an independent
+review). **Blueprint:** S-07, S-24, S-26, C-10, D.16, S-08. **Nothing
+deployed; no bot, token or account; nothing sent to or received from
+Telegram; no SMS; no money.** Everything is behind the switches that already
+exist: the webhook exists only with Telegram linking on (D-093), and
+messages leave only with a push provider configured (D-092). No migration.
+
+### What a seller and a buyer now get in Telegram
+
+1. **New-order alert with buttons (D.16, S-07).** "MarkX: new order
+   MX-…. Tap Accept or Decline below before the deadline." with ✅ Accept,
+   ✖ Decline, 📥 Orders waiting and "Open in MarkX". **The reminder before
+   the order expires** (the existing job, `orders.response_reminder_minutes`,
+   10 minutes, D-092) now says so with the same buttons. Sent once (its
+   database row) and in the person's language.
+2. **The order inbox in the bot (S-07).** `/orders` (or the 📥 button)
+   lists up to 10 orders with a next step, the soonest deadline first:
+   waiting for an answer (with minutes left), accepted (to pack), paid (to
+   pack), packed (to send), delivery failed (to send again). Each opens a
+   card with the buttons its state allows: Accept / Decline (then one of
+   three reasons), 📦 Packed and ready, 🛵 On its way. A pressed button turns
+   the message into the result ("✅ You accepted order MX-…") and the next
+   step. A collection order and an order on its way say: enter the buyer's
+   handover code **in MarkX, never here** (D-044).
+3. **Commands (S-24, S-08).** `/help`, `/orders`, `/offers` (the store's
+   listings: a six-character reference, product, price, available stock,
+   "price to confirm" or "paused"), `/price REF AMOUNT` (birr, up to two
+   decimals), `/stock REF COUNT`, `/checkin` (every live listing is still
+   right today). `/start` alone shows the commands to a connected person.
+4. **Order updates to buyers (C-10).** Every update the buyer already got
+   in the app now has its own words in Telegram, in English and Amharic
+   (before, eight of them said only "You have a new message from MarkX"):
+   placed, accepted, declined, not answered, another shop has it, packed, ready to collect, on
+   its way, delivery failed, returned, delivered, payment recorded, new
+   handover code, completed, problem received, shop answered, decision,
+   refunded, cancelled. Each has a button: the "order placed" message
+   opens the **secure tracking link** made for it (no sign-in, never the
+   handover code, D.14); later ones open the order page, which asks the
+   buyer to sign in.
+5. **The weekly message (S-26).** "MarkX weekly report, week from
+   2026-11-16: 4 orders received, 3 accepted, 2 completed. 1 of your prices
+   need checking: send /checkin if they are all still right." with a ✔ All
+   still right button. Before, Telegram said only "You have a new message".
+
+### The rules, and how each is kept
+
+- **The same permissions as the website, checked again on the server at
+  every press.** The website's seller check is now one function,
+  `accounts.deps.seller_membership` (an active member of a store that is
+  not closed, whose role holds the capability, blueprint C.3); every
+  `/seller/{seller_id}/...` route and every bot action call it. Then the
+  bot calls the very service function the website's button calls
+  (`orders.seller_respond`, `mark_ready`, `seller_dispatch`,
+  `offers.update_offer`, `set_stock`, `confirm_offers`), which locks the
+  row and checks the order's state, deadline and the store's status. So:
+  only `owner`, `manager` and `orders` answer and move orders; only
+  `owner`, `manager` and `catalogue` change prices, stock and the
+  check-in; any member lists offers. Another store's order answers "That
+  order was not found." exactly like a missing one. Nothing in a button or
+  a command is trusted: a button carries an action and an order id only.
+- **Who is pressing.** The webhook secret proves the call is Telegram's
+  (D-093); Telegram proves the sender. The sender must be the Telegram
+  account **connected now** to an **active** account (`users.telegram_id`).
+  A disconnected one (remembered in `bound_telegram_id`, D-101 section 2a)
+  or a blocked account is told how to connect and can do nothing. Groups,
+  channels, bots and someone else's chat are ignored. A stranger's unknown
+  command stays ignored (D-093).
+- **Never twice, never lost after a restart.** Each Telegram update's id is
+  stored in the same transaction as what it changed (`telegram_updates`,
+  D-093). A press Telegram delivers again (after a restart, a timeout or an
+  answer lost on the way back) changes nothing a second time, and is
+  answered with the *current* state of what was pressed, so the seller
+  still sees the outcome. Messages MarkX starts itself are written to the
+  outbox with the change that caused them, so a restart never loses one,
+  and a delivery recorded as `accepted` is never sent again (D-092). **The
+  one case left, said plainly:** if the worker dies in the instant between
+  Telegram accepting a message and MarkX recording it, MarkX cannot know
+  and sends it again, marked as a possible duplicate (at-least-once,
+  D-034, unchanged): Telegram offers no way to refuse a repeat, and an
+  order alert seen twice is safer than one never seen.
+- **Every new text in English and Amharic**, the person's language
+  (Amharic unless they chose English). A test checks every key and that
+  both languages fill the same fields. Native review of the Amharic:
+  **UNKNOWN** (not done).
+- **Nothing personal leaves the server.** Notification texts still carry
+  only the order code (D-092); the weekly one adds only its week and whole
+  counts, each checked (`texts.render_telegram`). The bot's own answers name
+  only the order code, its state, its number of items and minutes left,
+  and, for listings, the store's own public listing. Never a buyer's name,
+  phone number or address, never the handover code, never what a buyer
+  ordered (F-26).
+- **The weekly message is re-checked when it is sent:** only to an active
+  member who may still see the store's performance, of a store that is not
+  closed (before, someone who had left the store still received it).
+
+### PROVISIONAL values and rules
+
+| # | What | Value | Why |
+| --- | --- | --- | --- |
+| P-102-1 | Bot presses and commands per Telegram account | 120 an hour, then silence for the hour | A busy shop answers a few dozen orders a day; the limit only stops a runaway script |
+| P-102-2 | Decline reasons in the bot | Three: "Out of stock", "The price has changed", "Cannot deliver to this area in time", stored in the seller's language | The website takes free text (at least 3 characters); in Telegram a button is quicker and always passes that rule |
+| P-102-3 | Orders in one inbox message | 10, the soonest deadline first, then "…and N more: open MarkX" | Fits a phone screen and Telegram's message limit |
+| P-102-4 | Listings shown by `/offers` | 20 | The same reason |
+| P-102-5 | Buyer's buttons | The "order placed" message opens the secure tracking link; the others the signed-in order page | The tracking link was made for exactly that message (D.14); a newer one is not issued per message |
+| P-102-6 | What the bot shows about an order | Code, state, items, minutes left; not the products, prices or buyer | The D-092 rule for anything that leaves the server; see F-26 |
+| P-102-7 | Weekly message in Telegram | Counts only: received, accepted, completed, prices to confirm; no money | Earnings are the store's own, but money figures stay inside MarkX until the founder says otherwise |
+| P-102-8 | Handover in the bot | Not offered: the code is entered on the website only; "On its way" from the bot records no rider name or number (the website can add them) | The handover code is never stored, logged or shown outside MarkX (D-044); Telegram keeps every message |
+| P-102-9 | A listing's reference | The last six characters of its id, for example `4F2A9C` | Random in a UUIDv7, so short and almost never alike; if two of one person's listings ever match, the bot says it found none and the website still works |
+
+Each is marked in the code where it lives. **The engineer's guesses; the
+founder must confirm or change them before MarkX goes live.**
+
+### What changed in the code
+
+- `markx/telegram_bot/` (new): `service.py` (the inbox, the buttons, the
+  commands), `keyboards.py` (buttons), `texts.py` (the bot's words).
+- `markx/accounts/deps.py`: `seller_membership`, the one seller check, now
+  shared; `load_seller_context` calls it (no change for the website).
+- `markx/accounts/telegram_link.py`: button presses and bot commands go to
+  the bot; a repeated update is answered with the current state.
+- `markx/notifications/push.py`: `send(..., reply_markup=None)`; the fake
+  also records the buttons and the words a real bot would send.
+- `markx/notifications/texts.py`: `TELEGRAM_TEXTS` and `render_telegram`
+  (Telegram only: SMS still uses `ORDER_TEXTS` alone, so no new paid SMS).
+- `markx/notifications/delivery.py`: the buttons; the weekly message's
+  recipient check.
+- `markx/performance/service.py`: the weekly notification also carries
+  `orders_confirmed` and `prices_to_confirm`.
+- The webhook's description (both copies of `openapi.json`).
+- `docs/runbooks/telegram-linking.md`: `allowed_updates` must include
+  `callback_query` (with `message` alone every button would do nothing);
+  a new step 9 for the bot.
+
+### Tests
+
+`tests/api/test_telegram_bot.py`, 24 tests. On `main` at `fe4546f`, with
+only this file added, it cannot load (the bot does not exist); with the new
+imports replaced by stand-ins, **all 24 fail** for the missing behaviour:
+the webhook answers nothing to a press or a command (`{"ok": true}`),
+alerts carry no buttons, buyer updates never move on because the seller
+cannot press, Telegram's words do not exist, and the weekly message reaches
+someone who left the store. They cover: the alert and its buttons; the
+reminder, once, after repeated runs; accept, ready, on its way; decline
+with a reason, the stock back; **refusals in the bot: the `catalogue` and
+`finance` roles, another store, a member removed after the alert, a
+disconnected and a blocked Telegram account, a closed store, too late,
+already answered, a forbidden move, a collection order**; a press and a
+price change delivered twice (once); the commands and the website's limits
+(no zero price, no stock below what open orders hold); the `orders` role
+may not change prices; a stranger and malformed updates; the buyer's
+updates in Amharic with their buttons (the tracking link opens); the weekly
+message's words, once, and not to someone who left; every text in both
+languages; only codes, dates and whole numbers in a Telegram text; every
+button within Telegram's 64 bytes; and every order message the order code
+sends (27, read from the code itself) has its own Telegram words.
+
+No existing test or check was weakened, removed or changed.
+
+**Not done or not verified:** a real bot and a real phone (UNKNOWN: the Bot
+API shapes in the runbook, step 9, and how Telegram shows a pressed button
+without `answerCallbackQuery`); a native speaker's review of the Amharic;
+the website does not show anything new (none was needed); the bot cannot
+answer a reported problem or record a direct payment (the website does);
+staff alerts in Telegram are not part of this.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -4828,6 +4996,22 @@ deciding, but product pages are shared by every seller."
 - **Engineer's recommendation:** not before launch; decide once real
   sign-in numbers and any abuse are seen.
 - **Founder's approval required: yes** (one more step for every person).
+
+### F-26 May the seller bot show what was ordered? (D-102)
+
+- **Today (P-102-6):** no. An order in the bot shows its code, state,
+  number of items and minutes left. To see the products, the seller taps
+  "Open in MarkX".
+- **Why:** the rule for everything that leaves the server (D-092): a
+  Telegram message sits on Telegram's servers. A seller deciding in the
+  bot whether to accept would decide faster knowing what was ordered.
+- **Options:** (a) keep it as it is; (b) show the product names and
+  quantities (the buyer's name, number and address never); (c) (b) plus
+  the price.
+- **Engineer's recommendation:** (b) before launch: the products are the
+  store's own public listings, and a seller who cannot see them will open
+  the website for every order anyway.
+- **Founder's approval required: yes** (what leaves MarkX).
 
 ## Open questions carried over from session 1
 

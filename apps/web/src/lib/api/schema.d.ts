@@ -3027,10 +3027,12 @@ export interface paths {
         put?: never;
         /**
          * Telegram Webhook
-         * @description Updates from MarkX's Telegram bot (D-093). Only `/start <token>` in a
-         *     private chat does anything. Authenticated by the secret Telegram sends in
-         *     X-Telegram-Bot-Api-Secret-Token; switched off unless Telegram linking is
-         *     configured and enabled.
+         * @description Updates from MarkX's Telegram bot (D-093). In a private chat:
+         *     `/start <token>` links or signs in (D-093, D-101); the seller bot's
+         *     commands and buttons answer orders and change listings, with the same
+         *     checks as the website (D-102). Everything else is ignored. Authenticated
+         *     by the secret Telegram sends in X-Telegram-Bot-Api-Secret-Token; switched
+         *     off unless Telegram linking is configured and enabled.
          */
         post: operations["telegram_webhook_api_v1_telegram_webhook_post"];
         delete?: never;

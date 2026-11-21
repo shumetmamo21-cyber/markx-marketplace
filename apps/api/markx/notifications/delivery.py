@@ -80,8 +80,11 @@ from markx.notifications.push import (
 )
 from markx.orders.models import SellerOrder
 from markx.sellers.models import Seller, SellerMember, SellerStatus
+from markx.telegram_bot import keyboards
 
 logger = logging.getLogger("markx.notifications.delivery")
+
+WEEKLY_REPORT = "seller.weekly_report"
 
 # Fewer than the outbox's own eight, so a delivery always ends with its own
 # explicit status before the outbox would give the row up.
@@ -264,6 +267,29 @@ def recipient_may_receive(db: Session, notification: Notification, user: User) -
             role, SellerCapability.HANDLE_ORDERS
         ):
             return Reason.NOT_AUTHORIZED
+    elif notification.template == WEEKLY_REPORT and "seller_id" in params:
+        # The weekly message (S-26, D-102): only to a member who may still see
+        # the store's performance, of a store that is not closed, when sent.
+        try:
+            seller_id = uuid.UUID(str(params["seller_id"]))
+        except ValueError:
+            return Reason.NOT_AUTHORIZED
+        found = db.execute(
+            select(SellerMember.role, Seller.status)
+            .join(Seller, Seller.id == SellerMember.seller_id)
+            .where(
+                SellerMember.seller_id == seller_id,
+                SellerMember.user_id == user.id,
+                SellerMember.is_active,
+            )
+        ).first()
+        if found is None:
+            return Reason.NOT_AUTHORIZED
+        role, store_status = found
+        if store_status == SellerStatus.CLOSED or not seller_can(
+            role, SellerCapability.SEE_PERFORMANCE
+        ):
+            return Reason.NOT_AUTHORIZED
     return None
 
 
@@ -321,6 +347,11 @@ def _telegram(
             params=dict(notification.params),
             language=user.language,
             idempotency_key=str(row.id),
+            # Accept and Decline under a new order, a link to the order page
+            # (D-102). Pressed later, each is checked again on the server.
+            reply_markup=keyboards.for_notification(
+                notification.template, dict(notification.params), user.language
+            ),
         )
     except PushSendError as exc:
         ambiguous = exc.status is PushStatus.UNKNOWN

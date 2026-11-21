@@ -36,6 +36,7 @@ apps/
       audit/                the append-only audit log
       notifications/        outbox, in-app notifications, SMS and Telegram adapters,
                             delivery to outside channels, their texts (D-092)
+      telegram_bot/         the seller bot: order inbox, buttons, commands (D-102)
       delivery/             zones, areas, flat fees
       catalog/              categories, attributes, brands, products, variants
       sellers/              invitations, applications, documents, staff review,
@@ -508,6 +509,20 @@ is off unless `MARKX_TELEGRAM_LINKING_ENABLED` and its two settings are set.
 Linking changes no notification already recorded; delivery reads
 `users.telegram_id` at each attempt, so a disconnect stops the next message.
 The protocol and the activation steps: `docs/runbooks/telegram-linking.md`.
+
+### The seller bot (D-102)
+
+`markx/telegram_bot/`. `telegram_link.handle_update` stores the update id,
+then sends a button press (`callback_query`) or a command other than
+`/start <token>` to `telegram_bot.service.handle`. The sender must be the
+Telegram account connected now to an active account. Every action calls
+`accounts.deps.seller_membership` (the check behind `require_seller`) and
+then the website's own service function, so the bot can never do what the
+website refuses. A repeated update is answered with the current state and
+changes nothing (`replay=True`). Answers are one Bot API method in the
+webhook's response. Alerts get their buttons in `notifications.delivery`
+(`telegram_bot.keyboards.for_notification`) and their words from
+`notifications.texts.render_telegram`.
 
 ## Outside services
 

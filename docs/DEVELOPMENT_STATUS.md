@@ -1,17 +1,78 @@
 # Development status
 
-**Last updated:** 21 November 2026, by the **recycled-number fix session**
-(D-101 section 2a), and before it by the **Telegram sign-in session**
-(D-101, decision SI-1), both on branch `claude/telegram-signin-audit-fixes-q318w6`
-(pull request #9, not merged),
-from `main` at `b79caab` with the complete history. See "Sign-in with
-Telegram" just below. Before it, the frontend resilience session (D-100,
-pull request #8) was merged into `main` as `b79caab`; the order life-cycle
-hardening session (D-099, pull request #7) as `fae2514`; the staff
-conflict and phone digits session (D-098, pull request #6) as `c70b338`;
-the checks and secret-scan session (D-097, pull request #5) as `d01fef7`,
-and the backup trust hardening session (D-096, pull request #4) as
-`773bbb6`.
+**Last updated:** 21 November 2026, by the **Telegram completion session**
+(D-102) on branch `claude/markx-telegram-pr9-completion-nneqom` (pull
+request open into `main`, **not merged**: an independent review follows),
+from `main` at `fe4546f` with the complete history. That session first
+reviewed pull request #9 independently and merged it (below). Before it,
+the frontend resilience session (D-100, pull request #8) was merged into
+`main` as `b79caab`; the order life-cycle hardening session (D-099, pull
+request #7) as `fae2514`; the staff conflict and phone digits session
+(D-098, pull request #6) as `c70b338`; the checks and secret-scan session
+(D-097, pull request #5) as `d01fef7`, and the backup trust hardening
+session (D-096, pull request #4) as `773bbb6`.
+
+## Telegram for orders: alerts with buttons, the seller bot, buyer updates, the weekly message (21 November 2026, D-102)
+
+Product code, tests, the runbook and documents. **No migration. Nothing
+deployed; no bot, token or account; nothing sent to or received from
+Telegram; no SMS; no money.** It works only once the founder's bot exists
+and Telegram linking and a push provider are switched on (D-092, D-093).
+Details, nine PROVISIONAL values (P-102-1 to P-102-9) and founder question
+F-26: `docs/DECISIONS.md`, D-102.
+
+| Item | State | Proof (tests in `tests/api/test_telegram_bot.py`, 24; all fail on `fe4546f`) |
+| --- | --- | --- |
+| **1** New-order alerts to sellers; a reminder before an order expires | **Built.** The alert and the reminder (10 minutes before, D-092) carry ✅ Accept, ✖ Decline, 📥 Orders waiting, "Open in MarkX"; sent once, in the person's language | `test_a_new_order_reaches_the_shop…`, `test_the_reminder_before_an_order_expires…` |
+| **2** S-07 the order inbox in the bot: confirm, decline, move on | **Built.** `/orders`; each order's card has the buttons its state allows: Accept, Decline (three reasons), Packed and ready, On its way. Handover codes only on the website | `test_the_owner_accepts_marks_ready_and_sends…`, `test_declining_from_telegram…`, `test_a_collection_order…` |
+| **3** S-24 the bot commands | **Built.** `/help`, `/orders`, `/offers`, `/price`, `/stock`, `/checkin` (S-08) | `test_the_commands_list_listings_and_change_price_and_stock` |
+| **4** C-10 order updates to buyers | **Built.** Every order message has its own words in Telegram (eight said only "You have a new message"), with a button: the secure tracking link for "order placed", the order page for the rest | `test_the_buyer_follows_the_order…`, `test_every_order_message_has_its_own_words_in_telegram` |
+| **5** S-26 the weekly message | **Built.** Figures in Telegram (received, accepted, completed, prices to check) with a check-in button; re-checked at sending, so someone who left the store no longer gets it | `test_the_weekly_message_reads_as_figures…`, `test_the_weekly_message_is_not_sent_to_someone_who_left…` |
+| Same permissions and order rules as the website, checked again at every press | **Yes:** the website's own seller check (`deps.seller_membership`, now shared) and its own service functions | the refusal tests: `catalogue` and `finance` roles, another store, a removed member, a disconnected or blocked Telegram, a closed store, too late, already answered, a forbidden move; the `orders` role may not change prices |
+| No message lost or sent twice after a restart | **Yes, with one stated exception:** a repeated update acts once and is answered with the current state; outbox messages are never lost and never resent once accepted; a worker dying in the instant Telegram accepts a message makes it be sent again, marked (D-034) | `test_a_press_telegram_delivers_twice…`, `test_a_price_change_telegram_delivers_twice…`, the reminder and weekly tests |
+| English and Amharic | **Every new text in both**; native review UNKNOWN | `test_every_bot_text_exists_in_english_and_amharic` |
+
+**For later:** a real bot and phone (the runbook's step 9 lists the Bot
+API shapes to re-read; `allowed_updates` must include `callback_query`);
+F-26 (whether the bot shows what was ordered); answering a reported
+problem and recording a direct payment from the bot; staff alerts in
+Telegram; a native speaker's review of the Amharic.
+
+**Test results:** see "Tests executed", 21 November 2026 (D-102).
+
+## Pull request #9 reviewed independently and merged (21 November 2026)
+
+Reviewed read-only at `7eabf93` (nothing changed, commented or pushed on
+its branch). **No problem that had to be fixed first.** Merged with a
+normal merge commit, pinned to `7eabf93`: **`main` is `fe4546f`**, with
+exactly the files of `7eabf93`; the branch is kept.
+
+- The commits after `b89aeff` (`ce7b9b4`, `34bc777`, `7eabf93`) change only
+  the fix: two account modules, the model, migration `0021`, the new test
+  file, two words on the website (and one web test), documents.
+- The recycled-number takeover is closed by signing in, connecting from
+  the account page (the bot's link), and the Mini App: a different
+  Telegram account bringing the same number is refused; the owner's own
+  still signs in. All 13 new tests pass; on `b89aeff` 12 fail. With the
+  new-column checks removed, 7 still fail on `b89aeff` with the takeover
+  itself ("✅ signed in" or "✅ connected" for the stranger) and 4 are
+  guards that pass on both.
+- No existing test or check was changed by those commits.
+- **Three things to know, none blocking:** (1) the database rule
+  `telegram_id is null or telegram_id = bound_telegram_id` also accepts a
+  connected account with *no* remembered Telegram account (SQL treats a
+  NULL check as passing), so the database alone does not force every
+  connection to be remembered; every code path does set both, and some
+  existing tests rely on the gap; a stricter rule would be
+  `bound_telegram_id is not null and telegram_id = bound_telegram_id`.
+  (2) No delete or anonymise feature exists today, so nothing conflicts;
+  when one is built, the trigger will refuse to clear
+  `bound_telegram_id`, so erasure will need its own migration (as F-24
+  says for moving a number), and a deleted account will keep its Telegram
+  account from signing up again. (3) After "Disconnect Telegram", opening
+  the Mini App alone does not sign the owner in; signing in on the website
+  with Telegram connects it again. That is not a takeover.
+- Results: see "Tests executed", 21 November 2026 (review of pull request #9).
 
 ## Fix before merging pull request #9: a recycled number could take over an account (21 November 2026, D-101 section 2a)
 
@@ -19,7 +80,8 @@ An independent review found that after "Disconnect Telegram" MarkX forgot
 which Telegram account an account had, so a stranger later given the same
 (recycled) phone number could sign in with their own Telegram account and
 land in the old owner's account. **Fixed on the same branch, in pull
-request #9, not merged.** Product code, one migration (`0021`), tests and
+request #9, merged into `main` as `fe4546f` on 21 November 2026 after an
+independent review.** Product code, one migration (`0021`), tests and
 documents. **Nothing deployed; no bot, account or SMS; no money.**
 
 | Item | State | Proof (tests) |
@@ -1711,6 +1773,56 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Telegram for orders** (D-102), on 21 November 2026, branch
+`claude/markx-telegram-pr9-completion-nneqom` from `main` at `fe4546f`
+(complete history). PostgreSQL 17.12 and MinIO in containers, with
+`MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1` (the CI
+settings: a missing service fails instead of skipping).
+
+```text
+uv run pytest -q -p no:cacheprovider -rs (final code)    ->  2034 passed, 0 skipped, in 21 min 48 s (2010 + the 24 new)
+GitHub on f46fc83 (pull request #10)                     ->  CI #167 success (all 8 checks), Browser journeys #43 success
+  an earlier full run, before the last fix               ->  1 failed, 2033 passed: tests/worker/test_worker.py compares
+                                                             the fake sender's record field by field and the new code
+                                                             had added the words to it; fixed in the code, the test
+                                                             is unchanged
+tests/api/test_telegram_bot.py (new, 24)                 ->  24 passed
+the same 24 on fe4546f (worktree, the file only)         ->  cannot load (no markx.telegram_bot); with the new imports
+                                                             replaced by stand-ins: 24 failed (no answer to a press or
+                                                             command, no buttons, no Telegram words, the weekly message
+                                                             reaching someone who left the store)
+existing Telegram, notification, performance and seller
+permission files with the new code                       ->  301 passed
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  256 files already formatted
+uv run mypy markx                                        ->  no issues found in 152 source files
+uv run alembic check                                     ->  no new upgrade operations detected (no migration)
+check_openapi_copy --exact, both copies                  ->  match the API exactly
+npm run lint / typecheck / test (apps/web)               ->  passed / passed / 146 passed
+npm run gen:api, then git diff                           ->  schema.d.ts regenerated for the webhook's description
+git diff 7eabf93 -- apps/api/tests apps/web/src          ->  only the new test file (and the generated types): no
+                                                             existing test changed
+```
+
+**Review of pull request #9** (21 November 2026), read-only at `7eabf93`,
+complete history (the clone was made complete first; it had been shallow).
+
+```text
+uv run pytest -q -p no:cacheprovider -rs                 ->  2010 passed, 0 skipped, in 20 min 50 s (MinIO and backup
+                                                             tools required, as in CI)
+tests/api/test_telegram_recycled_number.py on 7eabf93    ->  13 passed
+the same file on b89aeff (worktree, the file only)       ->  12 failed, 1 passed (a guard)
+  with every bound_telegram_id assertion removed         ->  7 failed with the takeover itself (the stranger "✅ signed
+                                                             in" or "✅ connected" by sign-in, bot link and Mini App;
+                                                             a new empty account; phone_in_use), 4 guards passed
+ruff / format / mypy / alembic upgrade + check / both
+OpenAPI copies (7eabf93)                                 ->  all passed; 0020 -> 0021
+apps/web: lint, typecheck, unit tests                    ->  passed, passed, 146 passed
+a scratch database: the 0021 check constraint            ->  accepts (telegram_id 4242, bound_telegram_id NULL);
+                                                             refuses (5, 6)
+GitHub on 7eabf93                                        ->  CI #163 success (all 8 checks), Browser journeys #39 success
+GitHub on main fe4546f after the merge                   ->  CI #164 success, Browser journeys #40 success
+```
 
 **Recycled-number fix** (D-101 section 2a), on 21 November 2026, branch
 `claude/telegram-signin-audit-fixes-q318w6` (pull request #9), from
