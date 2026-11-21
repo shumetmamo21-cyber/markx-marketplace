@@ -43,7 +43,10 @@ the founder.
    install -d -o 999 -g 999 -m 700 /var/backups/markx
    install -d -m 755 /var/lib/markx/acme
    ```
-5. The certificate: `tls-certificates.md`.
+5. The certificate: `tls-certificates.md` (the first start uses
+   `deploy.sh certificate temporary`), then
+   `infra/production/deploy.sh certificate install-timer` (D-103: renewal
+   twice a day once the founder turns it on; the check every day already).
 6. `infra/production/deploy.sh check` until it says `check: PASSED`.
 
 ## Every release
@@ -58,10 +61,16 @@ infra/production/deploy.sh deploy "$(git rev-parse --short HEAD)"
 
 What it does, and stops at the first failure:
 
+0. **Refuses to start while `MARKX_ALLOW_NEWER_SCHEMA` is on** in
+   `/etc/markx/api.env` (left from a compatible rollback, `rollback.md`):
+   remove the line and run it again. Nothing is changed (D-103).
 1. `check` (as above).
-2. Builds `markx/api:<release>` and `markx/web:<release>` from the commit.
+2. Builds `<prefix>/api`, `<prefix>/web` and `<prefix>/backup:<release>` from the
+   commit (`MARKX_IMAGE_PREFIX`, default `markx`).
 3. Runs the new image's configuration check (`python -m markx.ops.preflight
-   --config-only`): every refused setting is named, never its value.
+   --config-only --deploying`): every refused setting is named, never its
+   value; `--deploying` also refuses `MARKX_ALLOW_NEWER_SCHEMA`, wherever
+   it is set.
 4. Starts PostgreSQL if needed; checks the database and the file stores,
    accepting pending migrations.
 5. **Takes an encrypted backup** into `/var/backups/markx`.
@@ -75,10 +84,16 @@ What it does, and stops at the first failure:
 
 Then the post-deployment verification in `checklists.md`, from outside.
 
-If it stops: nothing after the failing step ran. Before step 6 the old
-release is still running untouched. After step 6 the database is migrated
-and the old release may no longer be ready (its schema is "ahead"): roll
-forward with a fix, or follow `rollback.md`.
+If it stops before step 6, nothing after the failing step ran and the old
+release is still running untouched; a failed migration (step 6) changes
+nothing either. **After step 6** the database is migrated, and a failure in
+steps 7 to 9 is handled at once (D-103): the last working release runs
+again, automatically, when it truly accepts the migrated database (checked
+with `MARKX_ALLOW_NEWER_SCHEMA` forced off, whatever `api.env` says); otherwise the
+API, the worker and the web app are stopped (a safe stop, recorded in
+`/etc/markx/deploy-halted`, shown by `deploy.sh status`) and the script
+prints what to do. Either way `deploy` exits with an error.
+`rollback.md` ("When a deployment fails after its migration") explains both.
 
 ## The first deploy
 

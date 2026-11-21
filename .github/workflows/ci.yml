@@ -100,7 +100,7 @@ jobs:
     services:
       postgres:
         # BK-17: a pinned PostgreSQL 17 release, the production image's own.
-        image: postgres:17.12
+        image: postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c
         env:
           # A throwaway database inside the runner; the same development-only
           # password as docs/SETUP.md. Not a secret.
@@ -142,9 +142,9 @@ jobs:
       # D-094: the backup tests need PostgreSQL 17's client tools; the runner's
       # own are older, so the server's image runs them. Missing tools fail the
       # run instead of skipping the tests. BK-17: pinned to 17.12.
-      MARKX_TEST_PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_dump
-      MARKX_TEST_PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_restore
-      MARKX_TEST_PSQL: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 psql
+      MARKX_TEST_PG_DUMP: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c pg_dump
+      MARKX_TEST_PG_RESTORE: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c pg_restore
+      MARKX_TEST_PSQL: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c psql
       # Also requires the least-privilege MinIO users (made in a step below).
       MARKX_TEST_BACKUP_REQUIRED: "1"
     defaults:
@@ -202,9 +202,9 @@ jobs:
           MARKX_STORAGE_PUBLIC_BUCKET: markx-public
           MARKX_RELEASE: ${{ github.sha }}
           MARKX_BACKUP_DATABASE: markx
-          MARKX_BACKUP_PG_DUMP_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_dump
-          MARKX_BACKUP_PG_RESTORE_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 pg_restore
-          MARKX_BACKUP_PSQL_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12 psql
+          MARKX_BACKUP_PG_DUMP_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c pg_dump
+          MARKX_BACKUP_PG_RESTORE_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c pg_restore
+          MARKX_BACKUP_PSQL_COMMAND: docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c psql
           MARKX_BACKUP_DESTINATION: minio
           MARKX_BACKUP_DESTINATION_ENDPOINT_URL: http://127.0.0.1:9000
           MARKX_BACKUP_DESTINATION_BUCKET: markx-backups
@@ -353,6 +353,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # D-103: every image pulled from outside is pinned to its digest.
+      - name: Every outside image is pinned to its exact content (digest)
+        run: infra/check-image-pins.sh
       - name: The Compose file is valid
         run: |
           docker compose -f infra/compose/compose.yaml config --quiet
@@ -363,6 +366,9 @@ jobs:
       - name: The image runs as an unprivileged user and holds no dev tools
         run: |
           test "$(docker run --rm markx-api:ci id -un)" = markx
+          # D-103: the user id is set in the Dockerfile, not assumed.
+          test "$(docker run --rm markx-api:ci id -u):$(docker run --rm markx-api:ci id -g)" = 999:999
+          test "$(docker image inspect markx-api:ci --format '{{.Config.User}}')" = 999:999
           ! docker run --rm markx-api:ci python -c "import pytest"
       # SEC-3 (D-084): forwarded headers are read by the app, from the
       # configured proxies only, never by uvicorn's own default.
@@ -379,6 +385,7 @@ jobs:
         run: |
           docker build --target backup -t markx-backup:ci apps/api
           [[ "$(docker run --rm markx-backup:ci id -u)" != 0 ]]
+          test "$(docker run --rm markx-backup:ci id -u):$(docker run --rm markx-backup:ci id -g)" = 999:999
           docker run --rm markx-backup:ci pg_dump --version | grep -q "PostgreSQL) 17\."
           docker run --rm markx-backup:ci pg_restore --version | grep -q "PostgreSQL) 17\."
           docker run --rm markx-backup:ci python -m markx.backup --help > /dev/null
@@ -395,6 +402,7 @@ jobs:
       - name: The web image runs as an unprivileged user, without sources or development tools
         run: |
           test "$(docker run --rm --entrypoint id markx-web:ci -un)" = node
+          test "$(docker image inspect markx-web:ci --format '{{.Config.User}}')" = 1000:1000
           docker run --rm --entrypoint sh markx-web:ci -c 'test ! -e /app/src && test ! -e /app/node_modules/vitest && test -f /app/server.js'
       - name: The web image refuses to start as production without its settings
         run: |

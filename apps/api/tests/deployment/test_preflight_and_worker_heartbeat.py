@@ -174,3 +174,29 @@ def test_preflight_accepts_a_newer_database_only_for_an_acknowledged_rollback(
     finally:
         monkeypatch.undo()
         get_config.cache_clear()
+
+
+@pytest.mark.parametrize("arguments", [["--config-only", "--deploying"], ["--deploying"]])
+def test_preflight_refuses_a_deployment_while_newer_schema_is_allowed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], arguments: list[str]
+) -> None:
+    """D-103: a deployment never runs with MARKX_ALLOW_NEWER_SCHEMA on; the new
+    release refuses it itself, wherever the setting comes from."""
+    monkeypatch.setenv("MARKX_ALLOW_NEWER_SCHEMA", "true")
+    get_config.cache_clear()
+    try:
+        assert preflight.main(arguments) == 1
+        out = capsys.readouterr().out
+        assert "deployment: REFUSED: MARKX_ALLOW_NEWER_SCHEMA is on" in out
+        assert "preflight: FAILED" in out
+    finally:
+        monkeypatch.undo()
+        get_config.cache_clear()
+
+
+def test_preflight_for_a_deployment_passes_with_the_setting_off(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    health.storage_probe.reset()
+    assert preflight.main(["--deploying"]) == 0
+    assert "preflight: PASSED" in capsys.readouterr().out

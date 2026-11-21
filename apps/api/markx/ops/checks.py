@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+from cryptography import x509
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -764,6 +765,64 @@ def _unreachable(store: str, reason: str) -> Finding:
     )
 
 
+# -- the site's certificate (D-103) -------------------------------------------------------
+#
+# Renewal runs on the host (deploy.sh certificate renew, on a timer); this is
+# the safety net that does not trust it: whatever renews the certificate, or
+# fails to, the watch reads the date the proxy's certificate really expires.
+
+TLS_CRITICAL_DAYS = 7
+
+
+def tls_certificate(db: Session, now: datetime) -> list[Finding]:
+    """The site's certificate has expired, expires within
+    `tls_certificate_warn_days` (critical in the last week), or cannot be
+    read. Nothing to check where no certificate file is configured."""
+    config = get_config()
+    path = config.tls_certificate_file
+    if path is None:
+        return []
+    try:
+        # The first certificate of fullchain.pem is the site's own.
+        certificate = x509.load_pem_x509_certificate(path.read_bytes())
+    except (OSError, ValueError) as exc:
+        return [
+            Finding(
+                key="tls.certificate_unreadable",
+                severity="critical",
+                summary="The site's certificate cannot be read, so its expiry cannot be "
+                "watched. Check MARKX_TLS_DIR (docs/runbooks/tls-certificates.md).",
+                details={"reason": type(exc).__name__},
+            )
+        ]
+    expires = certificate.not_valid_after_utc
+    left = expires - now
+    facts = {"expires_at": expires.isoformat(), "days_left": int(left.total_seconds() // 86400)}
+    if left <= timedelta(0):
+        return [
+            Finding(
+                key="tls.certificate_expiring",
+                severity="critical",
+                summary=f"The site's certificate EXPIRED on {expires:%Y-%m-%d %H:%M} UTC: "
+                "browsers refuse the site. Renew it now (docs/runbooks/tls-certificates.md).",
+                details=facts,
+            )
+        ]
+    if left > timedelta(days=config.tls_certificate_warn_days):
+        return []
+    critical = left <= timedelta(days=TLS_CRITICAL_DAYS)
+    return [
+        Finding(
+            key="tls.certificate_expiring",
+            severity="critical" if critical else "warning",
+            summary=f"The site's certificate expires on {expires:%Y-%m-%d} "
+            f"({facts['days_left']} day(s) left) and has not been renewed. Renew it "
+            "(docs/runbooks/tls-certificates.md).",
+            details=facts,
+        )
+    ]
+
+
 # -- backups (D-094) ----------------------------------------------------------------------
 #
 # The backup service records every attempt in `backup_runs`; these checks turn
@@ -914,6 +973,7 @@ WATCH: tuple[Check, ...] = (
     file_storage,
     backups,
     restore_drills,
+    tls_certificate,
 )
 
 

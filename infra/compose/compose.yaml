@@ -29,7 +29,8 @@ x-api-environment: &api-environment
 
 services:
   postgres:
-    image: postgres:17
+    # D-103: the same PostgreSQL as production, by its exact content.
+    image: postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c
     environment:
       POSTGRES_PASSWORD: postgres_dev_only
       POSTGRES_INITDB_ARGS: --locale-provider=builtin --builtin-locale=C.UTF-8 --encoding=UTF8

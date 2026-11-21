@@ -58,7 +58,10 @@ x-hardening: &hardening
 
 services:
   postgres:
-    image: postgres:17.12
+    # D-103: every outside image by its exact content (the digest of its
+    # multi-platform index) as well as its version; infra/check-image-pins.sh
+    # refuses a tag alone.
+    image: postgres:17.12@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c
     restart: unless-stopped
     env_file:
       # POSTGRES_PASSWORD and the three MARKX_DB_*_PASSWORD values.
@@ -82,10 +85,17 @@ services:
       start_period: 30s
     security_opt:
       - no-new-privileges:true
+    # D-103: memory, CPU and process limits on every service, sized for a
+    # small server (PROVISIONAL, P-103-2: no CPU is above 1.0, so they start
+    # on a one-CPU server; the founder confirms them with the server's size,
+    # in compose.env). A runaway process or a fork loop in one container can
+    # no longer starve the others.
     deploy:
       resources:
         limits:
           memory: ${MARKX_POSTGRES_MEMORY:-768m}
+          cpus: ${MARKX_POSTGRES_CPUS:-1.0}
+          pids: ${MARKX_POSTGRES_PIDS:-256}
     logging: *logging
 
   # The one-time migration step (D-091). Never started by `up`: it belongs
@@ -109,6 +119,12 @@ services:
       postgres:
         condition: service_healthy
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: ${MARKX_MIGRATE_MEMORY:-640m}
+          cpus: ${MARKX_MIGRATE_CPUS:-1.0}
+          pids: ${MARKX_MIGRATE_PIDS:-64}
 
   api:
     <<: [*api-image, *hardening]
@@ -149,6 +165,8 @@ services:
       resources:
         limits:
           memory: ${MARKX_API_MEMORY:-640m}
+          cpus: ${MARKX_API_CPUS:-1.0}
+          pids: ${MARKX_API_PIDS:-256}
 
   # The background worker is also the scheduler: every scheduled job is a
   # row it locks (D-035), so a second worker is safe and needs no change.
@@ -161,6 +179,15 @@ services:
     environment:
       <<: *api-environment
       MARKX_WORKER_HEARTBEAT_FILE: /run/markx/worker.heartbeat
+      # D-103: the watch alerts before the site's certificate expires.
+      MARKX_TLS_CERTIFICATE_FILE: /run/markx-tls/fullchain.pem
+      MARKX_TLS_CERTIFICATE_WARN_DAYS: ${MARKX_TLS_WARN_DAYS:-21}
+    volumes:
+      # The certificate folder, read-only, for its expiry date: the folder,
+      # not the file, so a renewed certificate (a new file put in place) is
+      # seen. The private key in it belongs to uid 101 with mode 400; the
+      # worker (uid 999, no capabilities) cannot read it.
+      - ${MARKX_TLS_DIR:-/etc/markx/tls}:/run/markx-tls:ro
     networks:
       backend: {}
       egress: {}
@@ -185,6 +212,8 @@ services:
       resources:
         limits:
           memory: ${MARKX_WORKER_MEMORY:-512m}
+          cpus: ${MARKX_WORKER_CPUS:-0.5}
+          pids: ${MARKX_WORKER_PIDS:-128}
 
   web:
     <<: *hardening
@@ -219,10 +248,12 @@ services:
       resources:
         limits:
           memory: ${MARKX_WEB_MEMORY:-512m}
+          cpus: ${MARKX_WEB_CPUS:-0.5}
+          pids: ${MARKX_WEB_PIDS:-128}
 
   proxy:
     <<: *hardening
-    image: nginxinc/nginx-unprivileged:1.28.2-alpine
+    image: nginxinc/nginx-unprivileged:1.28.2-alpine@sha256:7377697a821c131a924a7105fafbe7414db4e9fcc77a6f08f776f33f141ec3f8
     restart: unless-stopped
     ports:
       - "${MARKX_PUBLIC_BIND:-0.0.0.0}:${MARKX_HTTP_PORT:-80}:8080"
@@ -261,6 +292,8 @@ services:
       resources:
         limits:
           memory: ${MARKX_PROXY_MEMORY:-128m}
+          cpus: ${MARKX_PROXY_CPUS:-0.5}
+          pids: ${MARKX_PROXY_PIDS:-64}
 
   # The backup service (D-094): at start-up and daily at MARKX_BACKUP_HOUR_UTC,
   # one backup SET (the database dump and every stored file), encrypted to the
@@ -326,6 +359,8 @@ services:
       resources:
         limits:
           memory: ${MARKX_BACKUP_MEMORY:-384m}
+          cpus: ${MARKX_BACKUP_CPUS:-0.5}
+          pids: ${MARKX_BACKUP_PIDS:-128}
 
 networks:
   # The only network with published ports: the proxy alone is on it.

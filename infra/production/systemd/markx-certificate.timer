@@ -1,0 +1,13 @@
+# Twice a day, at a random minute, as Let's Encrypt asks (PROVISIONAL, P-103-3,
+# D-103: the founder confirms it with the domain); a run missed while
+# the server was off happens at the next boot (D-103).
+[Unit]
+Description=MarkX: renew and check the site's certificate, twice a day
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

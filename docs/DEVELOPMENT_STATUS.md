@@ -1,16 +1,120 @@
 # Development status
 
-**Last updated:** 21 November 2026, by the **Telegram completion session**
-(D-102) on branch `claude/markx-telegram-pr9-completion-nneqom` (pull
+**Last updated:** 21 November 2026, by the **server readiness session**
+(D-103) on branch `claude/pr10-review-server-readiness-y7novo` (pull
 request open into `main`, **not merged**: an independent review follows),
-from `main` at `fe4546f` with the complete history. That session first
-reviewed pull request #9 independently and merged it (below). Before it,
-the frontend resilience session (D-100, pull request #8) was merged into
-`main` as `b79caab`; the order life-cycle hardening session (D-099, pull
-request #7) as `fae2514`; the staff conflict and phone digits session
-(D-098, pull request #6) as `c70b338`; the checks and secret-scan session
-(D-097, pull request #5) as `d01fef7`, and the backup trust hardening
-session (D-096, pull request #4) as `773bbb6`.
+from `main` at `9b3658f` with the complete history. That session first
+reviewed pull request #10 independently and merged it (below). Before it,
+pull request #9 (D-101) was merged into `main` as `fe4546f`; the frontend
+resilience session (D-100, pull request #8) as `b79caab`; the order
+life-cycle hardening session (D-099, pull request #7) as `fae2514`; the
+staff conflict and phone digits session (D-098, pull request #6) as
+`c70b338`; the checks and secret-scan session (D-097, pull request #5) as
+`d01fef7`, and the backup trust hardening session (D-096, pull request #4)
+as `773bbb6`.
+
+## Fix before merging pull request #11: an older release started against a database it does not accept (21 November 2026, D-103 section 5)
+
+On the pull request's own branch, `claude/pr10-review-server-readiness-y7novo`,
+on top of `9d0c888` (nobody had pushed since; checked first). **Not
+merged**: another independent review follows. **No migration. Nothing
+deployed; no server, domain, account or paid resource.**
+
+**The defect** (independent review): after a failed update, MarkX could go
+back to the old release even when that release does not truly accept the
+database. The compatible rollback tells the operator to switch on
+`MARKX_ALLOW_NEWER_SCHEMA`; nothing made sure it was switched off, and the
+rehearsal itself ended with it on. Left on, the automatic return asked the
+old release whether it accepted the database, the setting made it say yes
+to any newer database, and `deploy.sh` started old code against an
+unchecked change and reported it as "verified".
+
+**The rule applied** (the founder's: go back to an older release only when
+it truly accepts the database), in `infra/production/deploy.sh` and
+`markx/ops/preflight.py`:
+
+| | Fixed by | Proof |
+| --- | --- | --- |
+| The automatic return | checks the old release with the setting **forced off** (`run -e MARKX_ALLOW_NEWER_SCHEMA=false`, works with every release); the started release must report the schema `current` | the reviewer's case, in the tests and the rehearsal |
+| An update while the setting is on | `deploy` refuses before it changes anything, saying what to do; the new release's preflight refuses it too (`--deploying`), wherever it is set | tests; rehearsal |
+| Other way: a rollback by hand with the setting left on | the setting alone is no longer enough: `rollback RELEASE --accept-newer-schema` as well | tests; rehearsal |
+| Other way: the backup service in a safe stop | runs as the release that migrated the database, never the older one | tests; rehearsal |
+| Other way: `deploy.sh backup` after a safe stop | uses the release that migrated the database | tests |
+| The rehearsal's end | the setting is off (not in `api.env`, not in the running API or worker), after a roll forward | rehearsal |
+
+Not changed (D-103 section 5, point 4): the running release keeps serving
+while a deployment's migration runs; closing that window means downtime on
+every deploy, the founder's decision. **Test results:** see "Tests
+executed", 21 November 2026 (fix before merging pull request #11).
+
+## Server readiness: certificates, rollback, failed deployments, containers (21 November 2026, D-103)
+
+Infrastructure, one operations check, tests and documents. **No migration.
+No server exists: nothing deployed, no domain, certificate authority,
+account or paid resource used.** Each fix is proven in the production
+rehearsal (GitHub's machines and locally) and the alert by tests. Answers
+the independent audit of 19 November 2026, section 13. Details, three
+PROVISIONAL values (P-103-1 to P-103-3) and the settings left for the
+founder: `docs/DECISIONS.md`, D-103.
+
+| Audit defect | State | Proof |
+| --- | --- | --- |
+| **1** Certificate renewal missing; certificates expire silently | **Fixed.** `deploy.sh certificate install` (checked, atomic, proxy reload without restart, put back if refused), `issue`/`renew` with certbot, a systemd timer twice a day; **renewal off** (`MARKX_TLS_RENEWAL=none`) until the founder has a domain (F-17). The worker's watch alerts 21 days before expiry, critical in the last 7, whatever renews it | rehearsal "the certificate" (15 checks); `tests/api/test_tls_certificate_watch.py` (7) |
+| **2** Rollback hard-codes `markx/`; does not roll back the backup service | **Fixed.** `MARKX_IMAGE_PREFIX` everywhere; all three images required; the backup service rolled back too | the whole rehearsal runs with a prefix; rehearsal "rollback" (3) |
+| **3** A failed check after the migration leaves the site half-up | **Fixed.** Back on the last working release automatically when it accepts the migrated database; otherwise a safe stop (API, worker, web app stopped; recorded in `deploy-halted`; instructions printed) | rehearsal "a failed update" (10): a broken release, and a broken release with a newer migration |
+| **4** Tags not digests; memory-only limits; uid 999 assumed | **Fixed.** Every outside image by digest (`infra/check-image-pins.sh` in CI); CPU and process limits on every service; uid/gid 999 and 1000 set and checked in the Dockerfiles | rehearsal "containers" (16); CI "Containers" job |
+
+**Not done (unchanged from the audit):** a real server and certificate;
+single-copy services (a deploy drops requests for seconds); log shipping; a
+maintenance page during a safe stop (the proxy answers 502 or 504).
+
+## Pull request #10 reviewed independently and merged (21 November 2026)
+
+Reviewed read-only at `09136fa` (nothing changed, commented or pushed on
+its branch). **No problem that had to be fixed first.** Merged with a
+normal merge commit, pinned to `09136fa`: **`main` is `9b3658f`**, with
+exactly the files of `09136fa`; the branch is kept. `main` then passed CI
+#169 and Browser journeys #45.
+
+- Every press and command goes through `deps.seller_membership` (the one
+  check `require_seller` also uses) and the same service functions as the
+  website's routes (`seller_respond`, `mark_ready`, `seller_dispatch`,
+  `update_offer`, `set_stock`, `confirm_offers`), which lock the row and
+  check the role, the store's own order, the state and the deadline again.
+  The website's routes add nothing but the staff-session refusal, which a
+  Telegram account cannot have. The sender must be the account's
+  *connected* `telegram_id` (not the remembered one) of an active account,
+  in a private chat with a person; a group, a bot or a forged chat is
+  ignored.
+- Updates are proved to come from Telegram by the secret header (D-093,
+  unchanged, constant-time). A button carries only a verb and a seller
+  order id; changing it to another store's order gets "That order was not
+  found." A repeated update id changes nothing and is answered with the
+  current state.
+- The tracking link is the existing one: a 256-bit signature over the
+  order and its expiry, 60 days; its page leaves out the handover code, the
+  recipient's name, phones and pin, and every action. No Telegram text
+  carries a handover code or a personal detail: the texts accept only an
+  order code, a date and whole numbers (tested).
+- Every new text exists in English and Amharic (tested; a native review
+  is UNKNOWN).
+- The 24 new tests fail on `fe4546f` for the right reason (with stand-ins
+  for the new modules: the old webhook ignores presses and commands, and
+  the Telegram words do not exist). No existing test, check or workflow
+  was changed (the pull request adds one test file and no other file
+  under `tests`, `.github`, `infra` or `e2e`).
+- Locally on `09136fa`: **2034 passed, 0 skipped** (PostgreSQL 17.12 and
+  MinIO, both required); web 146 passed, lint, types and build passed;
+  ruff, mypy, `alembic check` and both API description checks passed. On
+  GitHub: CI #168 (all 8 checks) and Browser journeys #44 passed. **Journeys
+  #44 passed on its second attempt:** the first timed out in
+  "Reviews, reports, pictures and problem evidence" waiting for "Your review
+  is saved", the same flake recorded on 18 November ("Lessons"); the pull
+  request changes nothing on that page.
+- Observations, not blockers: a weekly message queued before this release
+  would lack the two new figures and be refused as unsafe (no server
+  exists, so none is queued); a pressed button may show a loading mark
+  without `answerCallbackQuery` (UNKNOWN, stated in D-102).
 
 ## Telegram for orders: alerts with buttons, the seller bot, buyer updates, the weekly message (21 November 2026, D-102)
 
@@ -1773,6 +1877,85 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Fix before merging pull request #11** (D-103 section 5), on 21 November
+2026, branch `claude/pr10-review-server-readiness-y7novo` on top of
+`9d0c888` (complete history). PostgreSQL 17.12 and MinIO in containers,
+with `MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1`.
+
+```text
+uv run pytest -q -p no:cacheprovider                     ->  2061 passed, 0 skipped, in 22 min 57 s (2041 + the 20 new)
+tests/deployment/test_deploy_newer_schema.py (new, 17)    ->  17 passed
+  + 3 new in test_preflight_and_worker_heartbeat.py       ->  3 passed
+the 20 new tests on 9d0c888 (worktree, the files only)    ->  18 failed, 2 passed (the two that check what must still work:
+                                                             a rollback to a release that accepts the database, a backup
+                                                             with no safe stop)
+  the same, with only a "may be sourced" line added       ->  the reviewer's case fails with "...running again, verified":
+    to the old deploy.sh                                     the defect itself
+uv run ruff check .  /  ruff format --check .            ->  passed  /  258 files already formatted
+uv run mypy markx                                        ->  no issues found in 152 source files
+check_openapi_copy --exact openapi.json                  ->  matches the API exactly (no API change)
+infra/check-image-pins.sh                                ->  every pulled image is pinned to its digest
+sudo infra/production/rehearsal/rehearse.sh (local; MARKX_BUILD_CA for this machine's proxy)
+  run 2 (final)                                          ->  rehearsal: 124 passed, 0 failed (was 116; 8 new checks)
+  run 1                                                  ->  122 passed, 2 failed, both in the new checks, not in deploy.sh:
+                                                             the reviewer's case looked for any "auto-rollback" in the log
+                                                             (an earlier check rightly wrote one) and the roll forward did
+                                                             not pass its release's Compose file; then the run broke because
+                                                             the script was edited while it ran (not a finding)
+  with the new rehearsal and the OLD deploy.sh (9d0c888)  ->  118 passed, 6 failed: the 6 new checks of the fix; the
+                                                             reviewer's case printed "rehearsal-2 is running again, verified"
+GitHub on 704d15e (pull request #11)                     ->  CI #173 success (all 8 checks; 2061 passed; rehearsal 124
+                                                             passed, 0 failed), Browser journeys #49 success
+  on 46ca31a                                             ->  CI #172 cancelled by the newer push; Browser journeys #48 success
+```
+
+**Server readiness** (D-103), on 21 November 2026, branch
+`claude/pr10-review-server-readiness-y7novo` from `main` at `9b3658f`
+(complete history). PostgreSQL 17.12 and MinIO in containers, with
+`MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1`.
+
+```text
+uv run pytest -q -p no:cacheprovider -rs                 ->  2041 passed, 0 skipped, in 21 min 5 s (2034 + the 7 new)
+tests/api/test_tls_certificate_watch.py (new, 7)         ->  7 passed; on 9b3658f all 7 fail (no such check;
+                                                             through the watch, no alert is raised)
+uv run ruff check .  /  ruff format --check .            ->  passed  /  257 files already formatted
+uv run mypy markx                                        ->  no issues found in 152 source files
+check_openapi_copy --exact openapi.json                  ->  matches the API exactly (no API change)
+infra/check-image-pins.sh                                ->  every pulled image is pinned to its digest
+  before the CI and laptop pins                          ->  FAILED: 10 references (CI's postgres:17.12, laptop postgres:17)
+sudo infra/production/rehearsal/rehearse.sh (local; MARKX_BUILD_CA for this machine's proxy)
+                                                         ->  rehearsal: 116 passed, 0 failed (main: 74)
+  two earlier local runs                                 ->  run 1: "certificate install" failed (the check read the
+                                                             served certificate before nginx's reload took effect; it
+                                                             now waits up to 15 s); the run then broke because the
+                                                             script was edited while running (not a finding).
+                                                             run 2: 114 passed, 2 failed, both in new checks: "status"
+                                                             piped into grep -q (a broken pipe under pipefail) and the
+                                                             safe stop answered 504 where only 502 was accepted; fixed
+                                                             in the checks, nothing in deploy.sh
+```
+
+The rehearsal's new checks, by section: **containers** (16): memory, CPU
+and process limits on all six services, uid 999 on api, worker and backup
+and 1000 on web, set by the images, postgres, proxy and minio by digest,
+the release's images under `MARKX_IMAGE_PREFIX`, the worker reads the
+certificate and cannot read its key. **The certificate** (15): the watch's
+critical alert for the 2-day certificate; `certificate check` fails inside
+the warning time; another hostname and a foreign key refused and the old
+certificate still served; install served without a proxy restart, with
+the required modes; `check` and `certificate check` pass after; the alert
+resolves; renewal off says so and `issue` refuses; renewal on, through a
+stand-in for certbot, installs via the deploy hook; the timer's units
+accepted by `systemd-analyze verify`. **Rollback** (3): every service
+including backup, under the prefix; a missing release refused; a missing
+backup image refused. **A failed update** (10): a broken release after its
+migration: deploy fails, the last working release runs again (every
+service), the site ready, never recorded as deployed; a broken release
+with a newer migration: API, worker and web app stopped with instructions,
+database and backup running, `deploy-halted` (600), `status` says so, the
+site answers 504 from the proxy, the old release still refused, then
+`MARKX_ALLOW_NEWER_SCHEMA=true` and `rollback` end the stop (schema ahead).
 
 **Telegram for orders** (D-102), on 21 November 2026, branch
 `claude/markx-telegram-pr9-completion-nneqom` from `main` at `fe4546f`

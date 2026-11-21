@@ -16,7 +16,11 @@ A.00000000000000 on 21 November 2026 by the Telegram sign-in session
 (D-101), Part A.000000000000000 the same day by the recycled-number
 fix session (D-101 section 2a), and Part A.0000000000000000 the same day
 by the session that reviewed and merged pull request #9 and finished
-Telegram for orders (D-102).
+Telegram for orders (D-102), and Part A.00000000000000000 the same day by
+the session that reviewed and merged pull request #10 and made the
+deployment ready for a server (D-103), and Part A.000000000000000000 the
+same day by the session that fixed the defect the independent review of
+pull request #11 found (D-103 section 5).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -25,6 +29,96 @@ Telegram for orders (D-102).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.000000000000000000 — Fix before merging pull request #11 (21 November 2026, D-103 section 5)
+
+On pull request #11's own branch (`claude/pr10-review-server-readiness-y7novo`),
+on top of `9d0c888`; nobody had pushed to it since (checked first).
+**Not merged**: another independent review follows. **No migration.
+Nothing deployed; no server, domain, account or paid resource.**
+
+**What was wrong, in plain words.** After a failed update MarkX goes back
+to the last working release by itself. For a rare kind of rollback, the
+runbook tells the operator to switch on a setting that lets an older
+release accept a newer database, and to switch it off later. Nothing made
+sure it was switched off. Left on, the automatic return asked the old
+release "do you accept this database?", the setting made it say yes to
+anything, and MarkX started old code against a database it may not
+understand, calling it "verified". That can lose data.
+
+**What changed** (your rule: go back to an old release only when it truly
+accepts the database):
+
+- The automatic return now asks the old release **with that setting
+  forced off**, whatever the settings file says. A database the old
+  release does not know is refused, and the site stops safely instead.
+- An update **refuses to start while the setting is on**, and says: remove
+  the line, then run it again. Nothing is changed.
+- A rollback by hand to a release older than the database now needs the
+  setting **and** a word on the command line (`--accept-newer-schema`), so
+  a setting left on can never decide a rollback by itself.
+- In a safe stop, backups run as the release that changed the database,
+  never as the older one.
+- The rehearsal now ends with the setting off, and proves all of this,
+  including the reviewer's exact case.
+
+**What needs you:** nothing new. One thing left as it was, for you to know:
+while an update's database change runs, the release already running keeps
+serving for those moments (stopping the site for every update instead is
+your choice, if you ever want it; D-103 section 5).
+
+**For the next engineer:** `deploy.sh` can now be loaded by a test
+(`source`), which stops before running a command;
+`tests/deployment/test_deploy_newer_schema.py` drives its functions with a
+stand-in for `docker`. Never let `MARKX_ALLOW_NEWER_SCHEMA` decide anything
+automatic: check with `preflight_strict`.
+
+---
+
+# Part A.00000000000000000 — Pull request #10 merged; server readiness (21 November 2026, D-103)
+
+**Part 1, the review.** Pull request #10 (Telegram for orders, D-102) was
+reviewed read-only at `09136fa` (not changed, commented on or pushed to),
+found to have **no problem that had to be fixed first**, and merged with a
+normal merge commit pinned to `09136fa`: **`main` is `9b3658f`**, its files
+exactly those of `09136fa`; the branch is kept; `main` passed CI #169 and
+Browser journeys #45. Evidence and two non-blocking observations:
+`docs/DEVELOPMENT_STATUS.md`, "Pull request #10 reviewed independently and
+merged".
+
+**Part 2, the work.** On `claude/pr10-review-server-readiness-y7novo`, from
+`9b3658f`; one pull request into `main`, **not merged** (an independent
+review follows). **No migration. No server exists: nothing deployed, no
+domain, certificate authority, account or paid resource.** In plain words,
+for the day a server exists:
+
+- **The site's certificate** can be put in place with one command, which
+  refuses a wrong one and keeps the site up while it switches. Renewal can
+  run on its own twice a day, but is **switched off until you choose a
+  domain** and how its certificate is made (F-17). Whatever happens to
+  renewal, MarkX itself warns three weeks before the certificate would
+  expire, urgently in the last week.
+- **Going back to an earlier release** now works with any image name and
+  takes the backup service back too.
+- **A release that breaks after it changed the database** no longer leaves
+  a half-working site: MarkX goes back to the last working release by
+  itself when that release accepts the changed database, and otherwise
+  stops the site safely, writes down what happened and prints what to do.
+- **Containers** run exactly the image versions tested (by fingerprint),
+  with limits on processor and processes as well as memory, under user ids
+  fixed in the build.
+
+**What needs you:** F-17 (the domain; then `MARKX_TLS_RENEWAL` and
+`MARKX_ACME_EMAIL`), and confirm or change P-103-1 to P-103-3
+(`docs/DECISIONS.md`, D-103): the warning time, the processor and process
+limits (they depend on the server's size), and the renewal times.
+
+**For the next engineer:** never edit `rehearse.sh` while it runs (bash
+reads it as it goes); `cmd | grep -q` under `pipefail` fails when `grep`
+stops reading first: capture, then search; nginx applies a reload a moment
+later, so wait for the new certificate rather than read it once.
 
 ---
 
