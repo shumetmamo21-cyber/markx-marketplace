@@ -382,6 +382,98 @@ _SPECS: tuple[SettingSpec, ...] = (
         0,
         3600,
     ),
+    # Sign-in with Telegram and the audit's sign-in findings M2, M3, M4
+    # (D-101, decision SI-1). PROVISIONAL (P-101-1 to P-101-8, D-101): every
+    # value below is the engineer's safe default, a business choice THE
+    # FOUNDER MUST CONFIRM OR CHANGE BEFORE MARKX GOES LIVE.
+    SettingSpec(
+        "auth.telegram_sign_in_minutes",
+        10,
+        "int",
+        "PROVISIONAL (P-101-1), to be confirmed before going live: minutes a Telegram sign-in "
+        "may take, from the moment the page shows the button until the browser is signed in. "
+        "Each sign-in link works once.",
+        2,
+        30,
+    ),
+    SettingSpec(
+        "auth.telegram_sign_ins_per_ip_per_hour",
+        60,
+        "int",
+        "PROVISIONAL (P-101-2), to be confirmed before going live: Telegram sign-ins one "
+        "network address may start per hour. Generous, because many mobile customers share one "
+        "address and a Telegram sign-in costs nothing to send.",
+        1,
+        10_000,
+    ),
+    SettingSpec(
+        "auth.telegram_init_data_max_age_seconds",
+        300,
+        "int",
+        "PROVISIONAL (P-101-3), to be confirmed before going live: seconds for which signed "
+        "start-up data from the Telegram Mini App is accepted; each is accepted only once "
+        "(audit M4).",
+        60,
+        3600,
+    ),
+    SettingSpec(
+        "auth.staff_failures_before_lock",
+        5,
+        "int",
+        "PROVISIONAL (P-101-4), to be confirmed before going live: failed staff sign-ins after "
+        "which that staff account is locked FOR THE NETWORK ADDRESS THEY CAME FROM, so an "
+        "outsider can lock out only themselves (audit M3).",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "auth.staff_lock_minutes",
+        15,
+        "int",
+        "PROVISIONAL (P-101-4), to be confirmed before going live: minutes such a lock lasts.",
+        1,
+        1440,
+    ),
+    SettingSpec(
+        "auth.staff_failure_alert_per_hour",
+        10,
+        "int",
+        "PROVISIONAL (P-101-5), to be confirmed before going live: failed sign-ins on one staff "
+        "account within an hour, from any addresses together, at which the founder is alerted.",
+        1,
+        1000,
+    ),
+    SettingSpec(
+        "auth.sms_daily_share_per_phone_percent",
+        2,
+        "int",
+        "PROVISIONAL (P-101-7), to be confirmed before going live: the largest share of the "
+        "daily SMS budget, in percent, that codes to one phone number may use in a day "
+        "(at least one message; audit M2).",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "auth.sms_daily_share_per_ip_percent",
+        5,
+        "int",
+        "PROVISIONAL (P-101-7), to be confirmed before going live: the largest share of the "
+        "daily SMS budget, in percent, that codes asked for from one network address may use "
+        "in a day (audit M2).",
+        1,
+        100,
+    ),
+    SettingSpec(
+        "auth.sms_daily_share_per_network_percent",
+        10,
+        "int",
+        "PROVISIONAL (P-101-7), to be confirmed before going live: the largest share of the "
+        "daily SMS budget, in percent, that codes asked for from one network (the same first "
+        "three parts of an IPv4 address, or the same /64 of an IPv6 address) may use in a day "
+        "(audit M2).",
+        1,
+        100,
+    ),
     SettingSpec(
         "sms.failure_alert_percent",
         20,

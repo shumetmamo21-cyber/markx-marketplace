@@ -25,7 +25,11 @@ Rules, each enforced here and backed by the database:
 * Completing re-checks the account (still active) and the sign-in session
   that asked (not signed out, not expired).
 * One Telegram account per MarkX account and one MarkX account per Telegram
-  account (`users.telegram_id` is unique). Every link to one Telegram
+  account (`users.telegram_id` is unique). The first Telegram account
+  attached is remembered for ever (`users.bound_telegram_id`, unique, never
+  changed or cleared: D-101, P-101-6); disconnecting clears only
+  `telegram_id`. An account can be connected again only to that Telegram
+  account, and a remembered Telegram account only to its own account. Every link to one Telegram
   account takes the same advisory lock, so two at once cannot both pass.
 * A refused link says the same thing whatever the reason, so nobody learns
   whether a Telegram account is linked elsewhere.
@@ -168,6 +172,11 @@ def linking_available() -> bool:
     return get_config().telegram_linking_ready
 
 
+def bot_username() -> str | None:
+    """The bot's public username, for t.me links (D-093, D-101)."""
+    return get_config().telegram_bot_username
+
+
 def _messages_on() -> bool:
     return push.get_push_sender() is not None
 
@@ -304,7 +313,12 @@ def start_link(db: DbSession, user: User, session: Session, actor: Actor) -> Con
 
 def disconnect(db: DbSession, user: User, actor: Actor) -> Connection:
     """Disconnect Telegram and cancel any link not used yet. Always allowed:
-    it only ever removes access. Signing in to MarkX never depended on it."""
+    it only ever removes access. Signing in to MarkX never depended on it.
+
+    It stops messages only: `bound_telegram_id`, the Telegram account the
+    account belongs to, is kept (D-101, P-101-6), so a stranger who is later
+    given the same phone number cannot sign in to this account with their
+    own Telegram account."""
     user = _lock_user(db, user.id)
     now = _now()
     _revoke_pending(db, user.id, now)
@@ -329,12 +343,24 @@ def _attach(
     if user.telegram_id is not None:
         # The same Telegram account again changes nothing.
         return None if user.telegram_id == telegram_id else TelegramLinkFailure.ALREADY_CONNECTED
-    owner = db.scalar(select(User.id).where(User.telegram_id == telegram_id))
+    if user.bound_telegram_id is not None and user.bound_telegram_id != telegram_id:
+        # The account belongs to another Telegram account, remembered even
+        # after "Disconnect Telegram" (D-101, P-101-6). It is never moved to
+        # a different one automatically; support decides (F-24).
+        return TelegramLinkFailure.ALREADY_CONNECTED
+    owner = db.scalar(
+        select(User.id).where(
+            (User.telegram_id == telegram_id) | (User.bound_telegram_id == telegram_id),
+            User.id != user.id,
+        )
+    )
     if owner is not None:
+        # Connected to, or remembered by, another MarkX account.
         return TelegramLinkFailure.TELEGRAM_IN_USE
     try:
         with db.begin_nested():
             user.telegram_id = telegram_id
+            user.bound_telegram_id = telegram_id
             user.telegram_linked_at = now
             user.telegram_unlinked_at = None
             db.flush()
@@ -425,8 +451,13 @@ class WebhookReply:
         return {"ok": True}
 
     @staticmethod
-    def message(chat_id: int, text: str) -> dict[str, Any]:
-        return {"method": "sendMessage", "chat_id": chat_id, "text": text}
+    def message(
+        chat_id: int, text: str, *, reply_markup: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        reply: dict[str, Any] = {"method": "sendMessage", "chat_id": chat_id, "text": text}
+        if reply_markup is not None:
+            reply["reply_markup"] = reply_markup
+        return reply
 
 
 def _int(value: Any, upper: int) -> int | None:
@@ -491,7 +522,11 @@ def handle_update(db: DbSession, body: bytes) -> dict[str, Any]:
     if not isinstance(message, dict):
         return _ignored("not_a_message")
     chat, sender, text = message.get("chat"), message.get("from"), message.get("text")
-    if not isinstance(chat, dict) or not isinstance(sender, dict) or not isinstance(text, str):
+    # A shared phone number carries no text (D-101: signing in with Telegram).
+    contact = isinstance(message.get("contact"), dict) and text is None
+    if not isinstance(chat, dict) or not isinstance(sender, dict):
+        return _ignored("not_a_text_message")
+    if not isinstance(text, str) and not contact:
         return _ignored("not_a_text_message")
     chat_id = _int(chat.get("id"), _MAX_TELEGRAM_ID)
     sender_id = _int(sender.get("id"), _MAX_TELEGRAM_ID)
@@ -503,12 +538,23 @@ def handle_update(db: DbSession, body: bytes) -> dict[str, Any]:
         or chat_id != sender_id
     ):
         return _ignored("not_a_private_chat_with_a_person")
+    # Imported here: the sign-in module builds on this one.
+    from markx.accounts import telegram_sign_in
+
+    if contact:
+        answer = telegram_sign_in.contact_from_telegram(db, message, sender_id)
+        return answer if answer is not None else _ignored("rate_limited")
+    assert isinstance(text, str)
     match = _START.fullmatch(text) if len(text) <= 4096 else None
     if match is None:
         return _ignored("not_start")
     payload = match.group(1)
     if payload is None:
         return WebhookReply.message(chat_id, REPLIES["help"])
+    sign_in = telegram_sign_in.PAYLOAD.fullmatch(payload)
+    if sign_in is not None:
+        answer = telegram_sign_in.open_from_telegram(db, sign_in.group(1), sender_id)
+        return answer if answer is not None else _ignored("rate_limited")
 
     try:
         ratelimit.hit(

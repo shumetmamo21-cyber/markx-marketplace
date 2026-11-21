@@ -441,6 +441,10 @@ class HttpSmsSender:
 
 def get_sms_sender() -> SmsSender:
     config = get_config()
+    if not config.sms_on:
+        # SMS switched off (D-101): every caller checks `sms_on` first; this
+        # is the barrier should one forget.
+        raise RuntimeError("SMS is switched off (MARKX_SMS_PROVIDER=off)")
     if config.sms_provider == "http":
         # The configuration has already refused to load without these.
         assert config.sms_api_url is not None

@@ -1178,6 +1178,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign In Methods
+         * @description The ways of signing in this server offers (D-101, decision SI-1).
+         */
+        get: operations["sign_in_methods_api_v1_auth_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/otp/request": {
         parameters: {
             query?: never;
@@ -1263,6 +1283,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/staff/step-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Staff Step Up
+         * @description The staff step on top of a Telegram sign-in (D-101): the password and
+         *     the authenticator code. The signed-in session becomes a staff session.
+         */
+        post: operations["staff_step_up_api_v1_auth_staff_step_up_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/telegram": {
         parameters: {
             query?: never;
@@ -1274,6 +1315,50 @@ export interface paths {
         put?: never;
         /** Telegram Sign In */
         post: operations["telegram_sign_in_api_v1_auth_telegram_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/telegram/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Telegram Sign In
+         * @description Start signing in with Telegram on the website (D-101): a one-time link
+         *     to MarkX's bot, and a private secret for this browser in a cookie. An
+         *     earlier sign-in this browser had not finished stops working.
+         */
+        post: operations["start_telegram_sign_in_api_v1_auth_telegram_sign_in_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/telegram/sign-in/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Telegram Sign In
+         * @description Where this browser's Telegram sign-in stands. Once Telegram confirmed
+         *     the person and their phone number, this answer signs the browser in,
+         *     exactly once (D-101).
+         */
+        post: operations["check_telegram_sign_in_api_v1_auth_telegram_sign_in_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2057,7 +2142,7 @@ export interface paths {
         /**
          * Disconnect Telegram
          * @description Disconnect Telegram and cancel any link not used yet (D-093). Always
-         *     allowed; signing in to MarkX does not depend on Telegram.
+         *     allowed; the next sign-in with Telegram connects it again (D-101).
          */
         delete: operations["disconnect_telegram_api_v1_me_telegram_delete"];
         options?: never;
@@ -5846,6 +5931,27 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * SignInMethodsOut
+         * @description Which ways of signing in this server offers (D-101, decision SI-1).
+         */
+        SignInMethodsOut: {
+            /**
+             * Sms
+             * @description Signing in with an SMS code is switched on (a backup).
+             */
+            sms: boolean;
+            /**
+             * Staff Phone Password
+             * @description Staff may sign in with phone, password and code without Telegram. False while SMS is switched off: staff sign in with Telegram, then add their step.
+             */
+            staff_phone_password: boolean;
+            /**
+             * Telegram
+             * @description Signing in with Telegram is set up and switched on.
+             */
+            telegram: boolean;
+        };
         /** SpecOut */
         SpecOut: {
             /** Code */
@@ -6030,6 +6136,17 @@ export interface components {
             /** Totp Code */
             totp_code: string;
         };
+        /**
+         * StaffStepUpIn
+         * @description The staff step on top of a Telegram sign-in (D-101): no phone number,
+         *     which comes from the signed-in account.
+         */
+        StaffStepUpIn: {
+            /** Password */
+            password: string;
+            /** Totp Code */
+            totp_code: string;
+        };
         /** StatusEventOut */
         StatusEventOut: {
             /** Actor Type */
@@ -6175,6 +6292,56 @@ export interface components {
         TelegramSignInIn: {
             /** Init Data */
             init_data: string;
+        };
+        /** TelegramWebSignInIn */
+        TelegramWebSignInIn: {
+            /**
+             * Language
+             * @default am
+             */
+            language: string;
+        };
+        /**
+         * TelegramWebSignInOut
+         * @description A new website sign-in with Telegram (D-101). The browser's private
+         *     secret travels in an HttpOnly cookie, never in this body.
+         */
+        TelegramWebSignInOut: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Link
+             * @description The one-time t.me link to open in Telegram.
+             */
+            link: string;
+        };
+        /**
+         * TelegramWebSignInStateOut
+         * @description Where this browser's Telegram sign-in stands (D-101).
+         */
+        TelegramWebSignInStateOut: {
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Is New Account
+             * @default false
+             */
+            is_new_account: boolean;
+            /** @description The signed-in account, once signed in. */
+            me?: components["schemas"]["MeOut"] | null;
+            /**
+             * Reason
+             * @description Why it was refused, in the person's own terms.
+             */
+            reason?: ("phone_not_ethiopian" | "phone_on_other_telegram" | "phone_in_use" | "account_inactive") | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "none" | "waiting" | "waiting_for_phone" | "signed_in" | "expired" | "refused";
         };
         /** TrackingEventOut */
         TrackingEventOut: {
@@ -8725,6 +8892,26 @@ export interface operations {
             };
         };
     };
+    sign_in_methods_api_v1_auth_methods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInMethodsOut"];
+                };
+            };
+        };
+    };
     request_otp_api_v1_auth_otp_request_post: {
         parameters: {
             query?: never;
@@ -8864,6 +9051,39 @@ export interface operations {
             };
         };
     };
+    staff_step_up_api_v1_auth_staff_step_up_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffStepUpIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     telegram_sign_in_api_v1_auth_telegram_post: {
         parameters: {
             query?: never;
@@ -8893,6 +9113,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_telegram_sign_in_api_v1_auth_telegram_sign_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramWebSignInIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramWebSignInOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_telegram_sign_in_api_v1_auth_telegram_sign_in_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramWebSignInStateOut"];
                 };
             };
         };

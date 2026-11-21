@@ -7,9 +7,10 @@
 # Uploaded files are in the Compose MinIO, which the runner reaches on
 # 127.0.0.1:9000 (D-090); the API container also shares the runner's
 # development folder (the fake SMS inbox and push outbox), as the runner's
-# own user. Telegram linking (D-093) stays OFF unless the one journey step
-# that tests it sets these three to test-only values and recreates the API.
-# Nothing else differs from a laptop.
+# own user. Telegram linking (D-093) stays OFF unless the journey steps
+# that test it set these three to test-only values and recreate the API;
+# the Telegram sign-in step (D-101) also switches SMS off, as a server where
+# everyone signs in with Telegram has it. Nothing else differs from a laptop.
 services:
   api:
     user: "${MARKX_UID:?set MARKX_UID to the runner's user id}:${MARKX_GID:?set MARKX_GID}"
@@ -17,5 +18,6 @@ services:
       MARKX_TELEGRAM_LINKING_ENABLED: ${MARKX_TELEGRAM_LINKING_ENABLED:-false}
       MARKX_TELEGRAM_BOT_USERNAME: ${MARKX_TELEGRAM_BOT_USERNAME:-}
       MARKX_TELEGRAM_WEBHOOK_SECRET: ${MARKX_TELEGRAM_WEBHOOK_SECRET:-}
+      MARKX_SMS_PROVIDER: ${MARKX_SMS_PROVIDER:-fake}
     volumes:
       - ${MARKX_HOST_STORAGE:?set MARKX_HOST_STORAGE to a folder on the runner}:/var/lib/markx/storage

@@ -193,6 +193,25 @@ jobs:
         if: always()
         run: $COMPOSE up -d --wait api
 
+      # D-101 (decision SI-1): signing in with Telegram and placing an order,
+      # with the API recreated as a server where everyone signs in with
+      # Telegram has it: SMS switched off and the bot set to TEST-ONLY values.
+      # The journey plays Telegram by calling the webhook with the secret.
+      # No bot exists and nothing reaches Telegram. The API is then recreated
+      # as before (SMS fake, Telegram off) for the steps that follow.
+      - name: Sign in with Telegram and place an order (SMS off; Telegram played by the journey)
+        env:
+          MARKX_SMS_PROVIDER: "off"
+          MARKX_TELEGRAM_LINKING_ENABLED: "true"
+          MARKX_TELEGRAM_BOT_USERNAME: markx_test_only_bot
+          MARKX_TELEGRAM_WEBHOOK_SECRET: test-only-journey-webhook-secret-0123456789abcdef
+        run: |
+          $COMPOSE up -d --wait api
+          cd apps/web && node e2e/telegram-sign-in.mjs "$RUNNER_TEMP/shots"
+      - name: SMS on and Telegram off again
+        if: always()
+        run: $COMPOSE up -d --wait api
+
       # D-085: the same build, served again with a Turnstile site key. The
       # journey answers every request to challenges.cloudflare.com itself, so
       # nothing reaches Cloudflare; the value is a placeholder, not a key.

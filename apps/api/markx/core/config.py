@@ -101,8 +101,13 @@ class Config(BaseSettings):
     # and the tests only; staging and production refuse it. "http" is the
     # provider-independent HTTPS adapter (markx/notifications/sms.py): it
     # needs every MARKX_SMS_* value below, or the API does not start. No
-    # provider has been chosen yet (blueprint O.23).
-    sms_provider: Literal["fake", "http"] = "fake"
+    # provider has been chosen yet (blueprint O.23). "off" switches SMS off
+    # entirely (D-101, decision SI-1: people sign in with Telegram, and SMS
+    # is kept as a later backup): no login code and no notification SMS is
+    # sent, and a real server may start without a provider. Switching SMS
+    # back on means choosing "http" with its settings; the fake is still
+    # refused on a real server.
+    sms_provider: Literal["off", "fake", "http"] = "fake"
     # The provider's fixed sending endpoint: an https:// URL set by the
     # operator, never taken from a request. Checked at start-up.
     sms_api_url: str | None = None
@@ -443,6 +448,11 @@ class Config(BaseSettings):
         if self.telegram_push_provider is not None:
             return self.telegram_push_provider
         return "none" if self.is_real_environment else "fake"
+
+    @property
+    def sms_on(self) -> bool:
+        """Whether MarkX sends SMS at all (D-101): login codes and notifications."""
+        return self.sms_provider != "off"
 
     @property
     def is_real_environment(self) -> bool:

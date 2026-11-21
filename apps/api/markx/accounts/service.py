@@ -1,13 +1,18 @@
 """Sign-in, sessions, profiles and addresses (blueprint D.2, F.4, H.2).
 
-Identity is the phone number. Customers and sellers sign in with a code;
-staff sign in with a password and an authenticator app.
+Identity is the phone number. Since decision SI-1 (D-101) everyone signs in
+with Telegram (`telegram_sign_in.py`), which also confirms the number; staff
+then add their password and authenticator code (`staff_step_up`). Sign-in by
+SMS code is kept, switched off unless an SMS provider is configured
+(`MARKX_SMS_PROVIDER`), as a later backup.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import math
@@ -32,6 +37,7 @@ from markx.accounts.models import (
     SessionKind,
     StaffMember,
     StaffRole,
+    TelegramInitDataUse,
     User,
     UserStatus,
 )
@@ -42,6 +48,7 @@ from markx.core import settings_store as settings
 from markx.core.botcheck import get_bot_check
 from markx.core.codes import new_numeric_code
 from markx.core.config import get_config
+from markx.core.db import get_session_factory
 from markx.core.errors import (
     AppError,
     Conflict,
@@ -73,9 +80,15 @@ logger = logging.getLogger("markx.accounts")
 OTP_TTL = timedelta(minutes=5)
 OTP_MAX_ATTEMPTS = 5
 OTP_LOCK = timedelta(minutes=15)
+# Failed sign-ins and the lock that follows are settings since D-101
+# (`auth.staff_failures_before_lock`, `auth.staff_lock_minutes`, PROVISIONAL
+# P-101-4), with these values as their defaults.
 STAFF_MAX_FAILED_LOGINS = 5
 STAFF_LOCK = timedelta(minutes=15)
 TOTP_STEP_SECONDS = 30
+# The oldest Mini App start-up data accepted is a setting since D-101
+# (`auth.telegram_init_data_max_age_seconds`, PROVISIONAL P-101-3, five
+# minutes); this ceiling is the most it may be set to.
 TELEGRAM_AUTH_MAX_AGE = timedelta(hours=1)
 SESSION_TOUCH_INTERVAL = timedelta(minutes=1)
 MAX_ACTIVE_ADDRESSES = 10
@@ -168,10 +181,77 @@ def _refuse_too_early_resend(db: DbSession, phone: str) -> datetime:
     return now
 
 
+def _refuse_while_sms_is_off() -> None:
+    """Decision SI-1 (D-101): sign-in by SMS is switched off unless an SMS
+    provider is configured. Checked first, so nothing is counted or sent."""
+    if not get_config().sms_on:
+        raise AppError(
+            "sms_sign_in_off",
+            "Signing in with an SMS code is switched off. Sign in with Telegram.",
+            status_code=403,
+        )
+
+
+def _network_of(ip: str | None) -> str:
+    """The network an address belongs to, for the per-network SMS share
+    (P-101-7): the first three parts of an IPv4 address, or the /64 of an
+    IPv6 address, which one subscriber usually holds whole."""
+    if not ip:
+        return "unknown"
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return "unknown"
+    prefix = 24 if address.version == 4 else 64
+    return str(ipaddress.ip_network(f"{address}/{prefix}", strict=False))
+
+
+def _share(budget: int, percent: int, hourly: int) -> int:
+    """A share of the daily budget. Never less than one hour's allowance
+    under the hourly limit, so a small budget does not lock an honest person
+    out of a retry; with the default budget (500) every share is larger."""
+    return max(1, hourly, budget * percent // 100)
+
+
+def _spend_sms_budget(db: DbSession, phone: str, ip: str | None) -> None:
+    """The daily SMS budget and the shares of it (audit M2, D-101). No one
+    phone number, address or network may use more than its share of the
+    day's budget, so nobody alone can spend it and stop everyone's codes;
+    the budget itself stays the final limit. The worker warns the founder
+    when 80% of it is spent (`ops.checks.sms_budget`)."""
+    day = timedelta(days=1)
+    budget = settings.get_int(db, "auth.sms_daily_budget")
+    per_phone = settings.get_int(db, "auth.otp_per_phone_per_hour")
+    per_ip = settings.get_int(db, "auth.otp_per_ip_per_hour")
+    for bucket, key, hourly in (
+        (f"sms:daily:phone:{phone}", "auth.sms_daily_share_per_phone_percent", per_phone),
+        (f"sms:daily:ip:{ip or 'unknown'}", "auth.sms_daily_share_per_ip_percent", per_ip),
+        (f"sms:daily:net:{_network_of(ip)}", "auth.sms_daily_share_per_network_percent", per_ip),
+    ):
+        try:
+            ratelimit.hit(bucket, _share(budget, settings.get_int(db, key), hourly), day)
+        except RateLimited as exc:
+            raise RateLimited(
+                "sms_share_spent",
+                "Too many codes were sent from here today. Please try again tomorrow.",
+                details=exc.details,
+            ) from exc
+    try:
+        ratelimit.hit("sms:daily", budget, day)
+    except RateLimited as exc:
+        logger.error("daily SMS budget is spent; sending stopped")
+        raise AppError(
+            "sms_budget_spent",
+            "Codes by SMS are paused for today. Please try again tomorrow.",
+            status_code=503,
+        ) from exc
+
+
 def request_login_code(
     db: DbSession, *, raw_phone: str, ip: str | None, bot_token: str | None, language: str = "am"
 ) -> str:
     """Send a six-digit login code. Returns the normalised phone number."""
+    _refuse_while_sms_is_off()
     phone = parse_phone(raw_phone)
     now = _now()
 
@@ -194,15 +274,7 @@ def request_login_code(
     ratelimit.hit(
         f"otp:ip:{ip or 'unknown'}", settings.get_int(db, "auth.otp_per_ip_per_hour"), hour
     )
-    try:
-        ratelimit.hit("sms:daily", settings.get_int(db, "auth.sms_daily_budget"), timedelta(days=1))
-    except RateLimited as exc:
-        logger.error("daily SMS budget is spent; sending stopped")
-        raise AppError(
-            "sms_budget_spent",
-            "Codes by SMS are paused for today. Please try again tomorrow.",
-            status_code=503,
-        ) from exc
+    _spend_sms_budget(db, phone, ip)
 
     # Only the newest code for a number is ever valid.
     db.execute(
@@ -279,6 +351,7 @@ def verify_login_code(
     previous_session_token: str | None = None,
 ) -> tuple[User, str, bool]:
     """Check a login code. Returns (user, session token, is_new_account)."""
+    _refuse_while_sms_is_off()
     phone = parse_phone(raw_phone)
     now = _now()
 
@@ -504,6 +577,92 @@ def _matching_totp_step(secret: str, code: str, now: datetime) -> int | None:
     return None
 
 
+def _staff_failure() -> AppError:
+    # One answer for every failure, a lock included (audit M3): it never
+    # says whether a number belongs to staff.
+    return AppError(
+        "staff_credentials_invalid", "Those sign-in details are not right.", status_code=401
+    )
+
+
+def _staff_lock_window(db: DbSession) -> timedelta:
+    return timedelta(minutes=settings.get_int(db, "auth.staff_lock_minutes"))
+
+
+def _address_lock_bucket(staff: StaffMember, ip: str | None) -> str:
+    return f"staff-login:fail:{staff.id}:{ip or 'unknown'}"
+
+
+def _check_staff_credentials(
+    staff: StaffMember, user: User, *, password: str, totp_code: str, now: datetime
+) -> int | None:
+    """The authenticator code's time step when the password, the code and the
+    account are all good; None otherwise. A code already used is refused,
+    so it cannot be replayed."""
+    password_ok = verify_password(staff.password_hash, password)
+    step = None
+    if password_ok and staff.totp_secret_encrypted is not None:
+        step = _matching_totp_step(
+            decrypt_text(staff.totp_secret_encrypted), totp_code.strip(), now
+        )
+    replayed = (
+        step is not None and staff.totp_last_step is not None and step <= staff.totp_last_step
+    )
+    if (
+        not password_ok
+        or step is None
+        or replayed
+        or not staff.is_active
+        or user.status != UserStatus.ACTIVE
+    ):
+        return None
+    return step
+
+
+def _record_staff_failure(db: DbSession, staff: StaffMember, user: User, ip: str | None) -> None:
+    audit.record(
+        db,
+        actor_type="staff",
+        actor_user_id=user.id,
+        action="staff.sign_in_failed",
+        target_type="staff_member",
+        target_id=staff.id,
+        ip=ip,
+    )
+
+
+def _open_staff_session(
+    db: DbSession,
+    staff: StaffMember,
+    user: User,
+    step: int,
+    *,
+    ip: str | None,
+    user_agent: str | None,
+    previous_session_token: str | None,
+    method: str,
+) -> str:
+    staff.failed_logins = 0
+    staff.locked_until = None
+    staff.totp_last_step = step
+    if previous_session_token:
+        end_session_by_token(db, previous_session_token)
+    token = start_session(
+        db, user, kind=SessionKind.STAFF, transport="cookie", ip=ip, user_agent=user_agent
+    )
+    audit.record(
+        db,
+        actor_type="staff",
+        actor_user_id=user.id,
+        action="staff.sign_in",
+        target_type="staff_member",
+        target_id=staff.id,
+        after={"method": method},
+        ip=ip,
+    )
+    return token
+
+
 def staff_sign_in(
     db: DbSession,
     *,
@@ -514,11 +673,27 @@ def staff_sign_in(
     user_agent: str | None,
     previous_session_token: str | None = None,
 ) -> tuple[User, StaffMember, str]:
-    """Password and authenticator code together (blueprint C.5)."""
+    """Phone number, password and authenticator code (blueprint C.5).
+
+    Since decision SI-1 (D-101) staff sign in with Telegram first and then
+    add their password and code (`staff_step_up`). This way, without
+    Telegram, is refused while SMS is switched off (PROVISIONAL P-101-8): a
+    server where everyone signs in with Telegram has no way around it. It
+    stays for when SMS is switched back on as the backup, and on a laptop.
+
+    Audit M3: failures lock the staff account only for the network address
+    they came from (P-101-4), so an outsider who types a staff member's
+    number locks out nobody but themselves; a lock answers exactly like a
+    wrong password, so nothing says the number belongs to staff; and many
+    failures on one account alert the founder (`ops.checks`, P-101-5).
+    """
+    if not get_config().sms_on:
+        raise PermissionDenied(
+            "staff_telegram_required",
+            "Staff sign in with Telegram first, then with their password and code.",
+        )
     ratelimit.hit(f"staff-login:ip:{ip or 'unknown'}", 30, timedelta(minutes=15))
-    failure = AppError(
-        "staff_credentials_invalid", "Those sign-in details are not right.", status_code=401
-    )
+    failure = _staff_failure()
     try:
         phone = normalize_phone(raw_phone)
     except InvalidPhoneNumber:
@@ -536,63 +711,82 @@ def staff_sign_in(
         verify_password(_DUMMY_PASSWORD_HASH, password)
         raise failure
     staff, user = row
+    window = _staff_lock_window(db)
+    bucket = _address_lock_bucket(staff, ip)
+    limit = settings.get_int(db, "auth.staff_failures_before_lock")
+    locked = ratelimit.current(bucket, window, now=now) >= limit or (
+        # A lock from the staff member's own Telegram-verified step
+        # (`staff_step_up`), which only they can cause.
+        staff.locked_until is not None and staff.locked_until > now
+    )
+    if locked:
+        # The same work and the same answer as a wrong password (M3).
+        verify_password(_DUMMY_PASSWORD_HASH, password)
+        raise failure
+
+    step = _check_staff_credentials(staff, user, password=password, totp_code=totp_code, now=now)
+    if step is None:
+        # The count is what matters; the answer stays the same.
+        with contextlib.suppress(RateLimited):
+            ratelimit.hit(bucket, limit, window, now=now)
+        _record_staff_failure(db, staff, user, ip)
+        db.commit()
+        raise failure
+
+    token = _open_staff_session(
+        db, staff, user, step, ip=ip, user_agent=user_agent,
+        previous_session_token=previous_session_token, method="phone_password",
+    )  # fmt: skip
+    return user, staff, token
+
+
+def staff_step_up(
+    db: DbSession,
+    *,
+    session: Session,
+    user: User,
+    password: str,
+    totp_code: str,
+    ip: str | None,
+    user_agent: str | None,
+    session_token: str,
+) -> tuple[User, StaffMember, str]:
+    """A staff member who signed in with Telegram adds their password and
+    authenticator code (D-101): the existing second step on top of
+    Telegram. The signed-in session is replaced by a staff session.
+
+    Only the person holding the Telegram account can get this far, so here
+    failures lock the staff account itself, as before D-101, and the lock
+    may say so: it tells the person nothing about anyone else."""
+    if session.kind != SessionKind.CUSTOMER:
+        raise PermissionDenied(
+            "customer_session_required", "Sign in with Telegram first, then add your password."
+        )
+    ratelimit.hit(f"staff-login:ip:{ip or 'unknown'}", 30, timedelta(minutes=15))
+    now = _now()
+    staff = db.scalar(select(StaffMember).where(StaffMember.user_id == user.id).with_for_update())
+    if staff is None:
+        verify_password(_DUMMY_PASSWORD_HASH, password)
+        raise _staff_failure()
     if staff.locked_until is not None and staff.locked_until > now:
         raise RateLimited(
             "staff_locked",
             "Too many failed sign-ins. Try again later.",
             details={"retry_after_seconds": int((staff.locked_until - now).total_seconds()) + 1},
         )
-
-    password_ok = verify_password(staff.password_hash, password)
-    step = None
-    if password_ok and staff.totp_secret_encrypted is not None:
-        step = _matching_totp_step(
-            decrypt_text(staff.totp_secret_encrypted), totp_code.strip(), now
-        )
-    # A code that was already used is refused, so it cannot be replayed.
-    replayed = (
-        step is not None and staff.totp_last_step is not None and step <= staff.totp_last_step
-    )
-    if (
-        not password_ok
-        or step is None
-        or replayed
-        or not staff.is_active
-        or user.status != UserStatus.ACTIVE
-    ):
+    step = _check_staff_credentials(staff, user, password=password, totp_code=totp_code, now=now)
+    if step is None:
         staff.failed_logins += 1
-        if staff.failed_logins >= STAFF_MAX_FAILED_LOGINS:
+        if staff.failed_logins >= settings.get_int(db, "auth.staff_failures_before_lock"):
             staff.failed_logins = 0
-            staff.locked_until = now + STAFF_LOCK
-        audit.record(
-            db,
-            actor_type="staff",
-            actor_user_id=user.id,
-            action="staff.sign_in_failed",
-            target_type="staff_member",
-            target_id=staff.id,
-            ip=ip,
-        )
+            staff.locked_until = now + _staff_lock_window(db)
+        _record_staff_failure(db, staff, user, ip)
         db.commit()
-        raise failure
-
-    staff.failed_logins = 0
-    staff.locked_until = None
-    staff.totp_last_step = step
-    if previous_session_token:
-        end_session_by_token(db, previous_session_token)
-    token = start_session(
-        db, user, kind=SessionKind.STAFF, transport="cookie", ip=ip, user_agent=user_agent
-    )
-    audit.record(
-        db,
-        actor_type="staff",
-        actor_user_id=user.id,
-        action="staff.sign_in",
-        target_type="staff_member",
-        target_id=staff.id,
-        ip=ip,
-    )
+        raise _staff_failure()
+    token = _open_staff_session(
+        db, staff, user, step, ip=ip, user_agent=user_agent,
+        previous_session_token=session_token, method="telegram",
+    )  # fmt: skip
     return user, staff, token
 
 
@@ -611,12 +805,24 @@ class TelegramIdentity:
     first_name: str | None
 
 
-def verify_telegram_init_data(init_data: str, *, now: datetime | None = None) -> TelegramIdentity:
+def verify_telegram_init_data(
+    init_data: str,
+    *,
+    now: datetime | None = None,
+    db: DbSession | None = None,
+    purpose: str | None = None,
+) -> TelegramIdentity:
     """Check a Telegram Mini App's signed start-up data (blueprint D.2, F.4).
 
     Telegram signs the data with a key derived from the bot token. Both the
     signature and the timestamp are verified here, on the server, every time.
     Returns the verified Telegram identity.
+
+    Audit M4 (D-101): with `db`, the data is accepted only for
+    `auth.telegram_init_data_max_age_seconds` (PROVISIONAL P-101-3, five
+    minutes) instead of an hour; with `purpose` too, only once for that
+    purpose. A sign-in marks it used (`telegram_sign_in`), so a copy of it
+    cannot start a second session.
     """
     bot_token = get_config().telegram_bot_token
     if not bot_token:
@@ -642,7 +848,13 @@ def verify_telegram_init_data(init_data: str, *, now: datetime | None = None) ->
     except (ValueError, OverflowError, OSError):
         raise invalid from None
     now = now or _now()
-    if auth_date > now + timedelta(minutes=1) or now - auth_date > TELEGRAM_AUTH_MAX_AGE:
+    max_age = TELEGRAM_AUTH_MAX_AGE
+    if db is not None:
+        max_age = min(
+            max_age,
+            timedelta(seconds=settings.get_int(db, "auth.telegram_init_data_max_age_seconds")),
+        )
+    if auth_date > now + timedelta(minutes=1) or now - auth_date > max_age:
         raise PermissionDenied("telegram_data_expired", "Telegram sign-in data is too old.")
 
     try:
@@ -650,17 +862,38 @@ def verify_telegram_init_data(init_data: str, *, now: datetime | None = None) ->
         telegram_id = int(telegram_user["id"])
     except (ValueError, KeyError, TypeError):
         raise invalid from None
+    if db is not None and purpose is not None:
+        _use_init_data_once(db, received_hash, purpose)
     first_name = telegram_user.get("first_name")
     return TelegramIdentity(
         id=telegram_id, first_name=first_name if isinstance(first_name, str) else None
     )
 
 
+def _use_init_data_once(db: DbSession, signature: str, purpose: str) -> None:
+    """Remember signed start-up data as used for `purpose`; refuse it if it
+    was used for that purpose before (M4). Committed at once, in its own
+    transaction, so a refusal later in the request cannot undo it."""
+    digest = keyed_hash("telegram-init-data", signature)
+    with get_session_factory()() as side:
+        first = side.execute(
+            pg_insert(TelegramInitDataUse)
+            .values(digest=digest, purpose=purpose)
+            .on_conflict_do_nothing()
+            .returning(TelegramInitDataUse.digest)
+        ).first()
+        side.commit()
+    if first is None:
+        raise PermissionDenied(
+            "telegram_data_used", "This Telegram sign-in was already used. Open MarkX again."
+        )
+
+
 def telegram_sign_in(
     db: DbSession, *, init_data: str, ip: str | None, user_agent: str | None
 ) -> tuple[User, str]:
     """Sign in a Telegram identity that is already linked to an account."""
-    identity = verify_telegram_init_data(init_data)
+    identity = verify_telegram_init_data(init_data, db=db)
     user = db.scalar(select(User).where(User.telegram_id == identity.id))
     if user is None:
         raise Conflict(
@@ -669,6 +902,9 @@ def telegram_sign_in(
         )
     if user.status != UserStatus.ACTIVE:
         raise PermissionDenied("account_blocked", "This account cannot sign in.")
+    # Used up only by a sign-in that succeeds (M4), so the same start-up can
+    # still sign in once the person has linked this Telegram account.
+    _use_init_data_once(db, dict(parse_qsl(init_data, keep_blank_values=True))["hash"], "sign_in")
     # Cookies are unreliable in embedded web views, so the Mini App carries its
     # session in a header, issued afresh at each launch (blueprint F.4).
     token = start_session(
@@ -681,7 +917,10 @@ def link_telegram(db: DbSession, user: User, *, init_data: str, actor: Actor) ->
     """The Mini App's link (D-093): one Telegram identity per account, and one
     account per Telegram identity. Off unless Telegram linking is switched on."""
     telegram_link.require_linking_available()
-    telegram_id = verify_telegram_init_data(init_data).id
+    # The shorter window applies (M4); single use does not: linking needs a
+    # signed-in MarkX session already, and linking the same Telegram account
+    # again changes nothing.
+    telegram_id = verify_telegram_init_data(init_data, db=db).id
     telegram_link.link_with_init_data(db, user, telegram_id, actor)
 
 

@@ -38,6 +38,52 @@ class TelegramSignInIn(ApiModel):
     init_data: str = Field(min_length=1, max_length=8192)
 
 
+class StaffStepUpIn(ApiModel):
+    """The staff step on top of a Telegram sign-in (D-101): no phone number,
+    which comes from the signed-in account."""
+
+    password: str = Field(min_length=1, max_length=256)
+    totp_code: OtpCode
+
+
+class SignInMethodsOut(ApiModel):
+    """Which ways of signing in this server offers (D-101, decision SI-1)."""
+
+    telegram: bool = Field(description="Signing in with Telegram is set up and switched on.")
+    sms: bool = Field(description="Signing in with an SMS code is switched on (a backup).")
+    staff_phone_password: bool = Field(
+        description="Staff may sign in with phone, password and code without Telegram. "
+        "False while SMS is switched off: staff sign in with Telegram, then add their step."
+    )
+
+
+class TelegramWebSignInIn(ApiModel):
+    language: Language = "am"
+
+
+class TelegramWebSignInOut(ApiModel):
+    """A new website sign-in with Telegram (D-101). The browser's private
+    secret travels in an HttpOnly cookie, never in this body."""
+
+    link: str = Field(description="The one-time t.me link to open in Telegram.")
+    expires_at: datetime
+
+
+class TelegramWebSignInStateOut(ApiModel):
+    """Where this browser's Telegram sign-in stands (D-101)."""
+
+    state: Literal["none", "waiting", "waiting_for_phone", "signed_in", "expired", "refused"]
+    expires_at: datetime | None = None
+    reason: (
+        Literal[
+            "phone_not_ethiopian", "phone_on_other_telegram", "phone_in_use", "account_inactive"
+        ]
+        | None
+    ) = Field(default=None, description="Why it was refused, in the person's own terms.")
+    me: MeOut | None = Field(default=None, description="The signed-in account, once signed in.")
+    is_new_account: bool = False
+
+
 class TelegramConnectionOut(ApiModel):
     """The signed-in person's own Telegram connection (D-093). Never the
     Telegram id or username; `link` only in the answer that created it."""

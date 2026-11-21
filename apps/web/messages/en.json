@@ -150,7 +150,33 @@
     "devHint": "Development build: codes are written to the local SMS inbox, not sent.",
     "signedInAs": "Signed in as {phone}",
     "signOut": "Sign out",
-    "needSignIn": "Sign in to continue."
+    "needSignIn": "Sign in to continue.",
+    "leadTelegram": "Sign in with your Telegram account. It confirms your phone number for deliveries; no password and no SMS needed.",
+    "orSms": "Or sign in with an SMS code",
+    "unavailable": "Signing in is not available right now. Please try again later.",
+    "telegram": {
+      "start": "Sign in with Telegram",
+      "starting": "Opening…",
+      "open": "Open Telegram",
+      "steps": "In three taps:",
+      "step1": "Tap “Open Telegram”.",
+      "step2": "In Telegram, press Start.",
+      "step3": "Press “📱 Share my phone number”, then come back to this page.",
+      "waiting": "Waiting for Telegram…",
+      "waitingForPhone": "Telegram is open. Share your phone number there, then come back here.",
+      "continueInTelegram": "Continue in Telegram, then come back to this page.",
+      "signedIn": "You are signed in.",
+      "expiresAt": "This sign-in works until {time}.",
+      "expired": "This sign-in took too long. Start again.",
+      "startAgain": "Start again",
+      "checkFailed": "We could not check whether Telegram confirmed you. We will try again.",
+      "noTelegram": "No Telegram on this phone? Install Telegram from your app store, sign up with your phone number, then come back.",
+      "refused_phone_not_ethiopian": "MarkX needs an Ethiopian mobile number (09… or 07…). This Telegram account uses another number.",
+      "refused_phone_on_other_telegram": "This phone number is already used with a different Telegram account. Sign in with that Telegram account, or contact MarkX support to move it.",
+      "refused_phone_in_use": "Your Telegram now has a phone number that belongs to another MarkX account. Contact MarkX support.",
+      "refused_account_inactive": "This account cannot sign in. Contact MarkX support.",
+      "refused": "Signing in with Telegram did not work. Start again."
+    }
   },
   "cart": {
     "title": "Your cart",
@@ -469,10 +495,17 @@
     "term_not_found": "That word was not found.",
     "restricted_goods": "That product is on the list of goods not allowed on MarkX.",
     "telegram_linking_unavailable": "Connecting Telegram is not available yet.",
-    "telegram_already_connected": "Your account is already connected to Telegram. Disconnect it first to connect another.",
+    "telegram_already_connected": "Your account is already connected to Telegram.",
     "telegram_already_linked": "This Telegram account cannot be connected to this MarkX account.",
     "network_unavailable": "No connection. Check your internet, then try again.",
-    "server_unavailable": "MarkX could not answer just now. Please try again in a moment."
+    "server_unavailable": "MarkX could not answer just now. Please try again in a moment.",
+    "telegram_sign_in_unavailable": "Signing in with Telegram is not available yet.",
+    "sms_sign_in_off": "Signing in with an SMS code is switched off. Sign in with Telegram.",
+    "staff_telegram_required": "Staff sign in with Telegram first, then add their password and code.",
+    "telegram_data_used": "This Telegram sign-in was already used. Open MarkX again.",
+    "telegram_data_expired": "This Telegram sign-in is too old. Open MarkX again.",
+    "sms_share_spent": "Too many codes were sent from here today. Please try again tomorrow, or sign in with Telegram.",
+    "staff_locked": "Too many failed attempts. Try again in a few minutes."
   },
   "seller": {
     "title": "Seller dashboard",
@@ -1061,7 +1094,11 @@
     "restrictedTerm": "Word or phrase",
     "modelCode": "Model code (optional)",
     "descriptionAm": "Description in Amharic",
-    "descriptionEn": "Description in English"
+    "descriptionEn": "Description in English",
+    "signInLeadTelegram": "Sign in with Telegram first, then add your password and the six-digit code from your authenticator app.",
+    "stepTitle": "Your staff step",
+    "stepLead": "You are signed in with Telegram as {phone}. Add your password and the six-digit code from your authenticator app.",
+    "orPhonePassword": "Or with phone, password and code (backup sign-in)"
   },
   "labels": {
     "staffRole": {
@@ -1304,7 +1341,7 @@
         "waiting": "Finish in Telegram. This page updates by itself.",
         "connected": "Your Telegram account is connected to this MarkX account.",
         "expired": "The link was not used in time. Get a new one.",
-        "failed": "This Telegram account could not be connected. If it is connected to another MarkX account, disconnect it there first. Then try again.",
+        "failed": "This Telegram account could not be connected. A MarkX account can only be connected to the Telegram account it first used, and a Telegram account belongs to one MarkX account only. To change this, contact MarkX support.",
         "disconnected": "Telegram is disconnected. MarkX no longer sends you messages there."
       },
       "step1": "Tap “Open Telegram”.",
@@ -1375,7 +1412,8 @@
     "seller_verification_level_changed": "Your shop's verification level changed.",
     "seller_weekly_report": "Your weekly figures are ready.",
     "order_ready": "Order {code} is packed and will leave the shop soon.",
-    "order_ready_for_collection": "Order {code} is ready: collect it at the shop with your handover code."
+    "order_ready_for_collection": "Order {code} is ready: collect it at the shop with your handover code.",
+    "auth_phone_changed": "Your MarkX phone number was changed to the number Telegram confirmed. If that was not you, contact MarkX support."
   },
   "catalogue": {
     "nameAm": "Name in Amharic",

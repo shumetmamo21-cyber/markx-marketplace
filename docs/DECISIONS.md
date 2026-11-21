@@ -3996,6 +3996,394 @@ check; adding it to them is a small follow-up.
 `e2e/a11y.mjs`; `package.json`, `package-lock.json` (axe-core);
 `.github/workflows/journeys.yml` (one step).
 
+## D-101 Sign-in with Telegram for everyone (decision SI-1); SMS switched off; the audit's sign-in findings M2, M3, M4; saved tests for one buyer's simultaneous orders
+
+**Founder's decision SI-1, recorded 21 November 2026:** everyone (buyers,
+sellers and staff) signs in with Telegram only. SMS is kept, switched off,
+as a later backup. Staff keep their existing second step on top of
+Telegram. **Engineering decisions below, 21 November 2026.** Follows the
+independent audit (`docs/reports/2026-11-19-independent-audit.md`, section
+9 and section 17 item 10), D-089, D-093 and N-1. Product code, two
+migrations (`0020`, and `0021` for the recycled-number fix in section
+2a), tests, one journey and documents. **Nothing deployed;
+no bot, token, SMS provider or account created; nothing sent to or
+received from Telegram; no money spent.** Branch
+`claude/telegram-signin-audit-fixes-q318w6`, from `main` at `b79caab` with
+the complete history.
+
+### 1. How a person signs in with Telegram, and why this way
+
+**The choice: the bot's deep link, then Telegram's own "share my phone
+number" button.** On the sign-in page the person taps **Sign in with
+Telegram**, then **Open Telegram**. On a phone the link
+(`https://t.me/<bot>?start=si-<token>`) opens the Telegram app directly;
+the person presses **Start**; the bot answers with one button, **📱 Share my
+phone number**; they press it and come back to the page, which signs them
+in by itself (it asks the API every 2.5 seconds and at once when the tab
+is shown again). Nothing is typed. Code: `markx/accounts/telegram_sign_in.py`
+(new), routes `POST /auth/telegram/sign-in` and
+`POST /auth/telegram/sign-in/check`, `GET /auth/methods`; the page:
+`apps/web/src/components/TelegramSignIn.tsx`.
+
+**Why, for Ethiopian mobile phones:**
+
+- **No typing and no SMS.** The person never types a number or a code,
+  which is where most sign-in mistakes happen on a small screen; MarkX pays
+  nothing per sign-in (an SMS costs money every time, D-089).
+- **The number comes from Telegram, already confirmed.** Telegram verified
+  it when the account was made; the bot receives it with the account's own
+  id. Deliveries need a working number; this is that number.
+- **Light on slow networks.** No third-party script or frame is loaded
+  (the page's Content-Security-Policy allows none); the waiting page sends
+  a small request every 2.5 seconds.
+- **It survives the browser being closed in the background.** Low-memory
+  Android phones often reload a tab when the person comes back from another
+  app. The browser's half of the sign-in is an HttpOnly cookie, so a
+  reloaded page carries on where it was.
+- **Considered and not used:** the Telegram Login Widget (a script and
+  frame from telegram.org, the bot's domain set with BotFather, and on a
+  phone it asks the person to type their number and confirm in Telegram:
+  more steps, and it does not give MarkX the number); the Mini App alone
+  (works only inside Telegram; its route stays, with M4 fixed); SMS (off,
+  by SI-1).
+- **UNKNOWN:** how many MarkX customers have Telegram installed; how the
+  link behaves in every Ethiopian Android browser and in Telegram Desktop.
+  Not measured; nothing here was tried on a real phone or with a real bot.
+
+**What protects it.**
+
+- **Two secrets.** The link's token (256 bits) and a second 256-bit
+  secret that only the browser that started holds, in an HttpOnly cookie
+  sent only to the two sign-in routes (`markx_tg_sign_in`, path
+  `/api/v1/auth/telegram/sign-in`). Only keyed hashes of both are stored
+  (`telegram_sign_ins.token_hash`, `.browser_hash`, 32 bytes by
+  constraint). A copied link alone signs nobody in, and only the browser
+  holding the secret can collect the session, **once** (row lock; four
+  simultaneous collections give one session, tested).
+- **Telegram says who.** The webhook (D-093: secret header, update ids
+  once, private chats with people only) accepts `/start si-<token>` from
+  one Telegram account; a second account opening the same link is told it
+  is not valid. A shared contact is accepted only when its `user_id` is the
+  sender's own id and it is not forwarded; otherwise the bot asks again.
+- **Short and single.** Each link works once and for
+  `auth.telegram_sign_in_minutes` (10, PROVISIONAL P-101-1), start to
+  finish; a new start in the same browser, or a new link opened by the same
+  Telegram account, ends the earlier one. 60 starts an hour per address
+  (P-101-2) and 20 bot attempts an hour per Telegram account.
+- **The residual risk, said plainly: a forwarded link.** Someone who sends
+  their own sign-in link to a victim ("open this") and gets the victim to
+  press Start *and* share their number would sign the sender's browser in
+  to the victim's account. The bot's message therefore says, in Amharic and
+  English, to continue only if they started signing in themselves; the
+  person is told in the app of every new sign-in (`auth.new_sign_in`, as
+  with SMS codes); the link lives ten minutes. A matching code shown on both
+  screens would reduce this further at the cost of one more step: **F-25**.
+- **UNKNOWN, to re-read when the bot is connected:** the exact shape of
+  Telegram's `contact` message and of `reply_markup` in a webhook reply
+  were written from what is known of the Bot API; this session did not
+  reach Telegram's documentation. The runbook says to check before
+  activation.
+
+**Switched on with the bot.** Signing in with Telegram uses the same bot,
+webhook and secret as connecting Telegram (D-093) and is on exactly when
+`MARKX_TELEGRAM_LINKING_ENABLED` and its two values are set (still OFF by
+default everywhere). With SMS off and the bot off, nobody can sign in, and
+the page says so ("Signing in is not available right now") instead of
+offering a button that fails.
+
+**Staff.** Staff sign in with Telegram like everyone (a customer session,
+with no staff powers), then the staff page asks for their **existing
+second step**, the password and the authenticator code
+(`POST /auth/staff/step-up`, `StaffStepForm.tsx`); no phone number is
+typed: it comes from the signed-in account. The Telegram session is
+replaced by a short staff session (unchanged lifetimes). Replayed codes are
+refused as before; five failures lock the staff account (only the person
+holding that Telegram account can get this far, so this lock cannot be
+used by an outsider). The old way (phone, password and code without
+Telegram) is **refused while SMS is switched off** (403
+`staff_telegram_required`, the same for every number; PROVISIONAL
+P-101-8), so a Telegram-only server has no way around Telegram; it stays
+for when SMS is switched back on, and on a laptop.
+
+### 2. The confirmed phone number, and changing Telegram account or number
+
+An account is made only once Telegram has confirmed the number, so every
+account signed in this way has a confirmed number. It must be an Ethiopian
+mobile number (`+2519…` or `+2517…`, `core/phone.py`); anything else is
+refused with "MarkX needs an Ethiopian mobile number". One number is one
+account; one Telegram account is one account (both unique in the
+database). **PROVISIONAL P-101-6, the rules when something changes** (T is
+the Telegram account, P the number Telegram confirmed):
+
+| Situation | What happens | Why |
+| --- | --- | --- |
+| An account has both T and P | That account signs in | The normal case |
+| Neither exists | A new account with P and T | A new person |
+| An account has P and has **never had any** Telegram account (made by SMS before SI-1, by an invitation, or by staff for a new staff member) | T is connected to it; it signs in with its history, and belongs to T from then on | Telegram has just confirmed P belongs to this person, as an SMS code did |
+| An account has P and a **different** Telegram account, **connected or disconnected** | **Refused**; the page says to sign in with that Telegram account or contact support | Ethiopian numbers are recycled: a new owner of an old number must not take over the old owner's account, orders or shop. Support decides (F-24). See section 2a |
+| The account T belongs to was disconnected from Telegram | It signs in, and Telegram is connected again | Only T can; disconnecting stops messages, nothing more |
+| The account with T has another number, and P belongs to nobody | The account's number becomes P; recorded in the audit log (masked numbers) and told to the person in the app (`auth.phone_changed`) | The same person changed number; deliveries need the current one, and Telegram confirmed it |
+| The account with T has another number and P belongs to a second account | **Refused** | One number, one account; support decides |
+| The account is blocked or deleted | Refused | As before |
+
+Locks: the users' rows (ascending id), then the Telegram account's advisory
+lock (D-093's order), then one per number; the unique constraints inside
+savepoints are the backstop. Two Telegram accounts sharing new numbers at
+the same moment make two accounts (tested).
+
+### 2a. A recycled number never takes over an account (rule P-101-6, fixed after the independent review of pull request #9)
+
+**The defect.** An independent review of pull request #9 found that
+"Disconnect Telegram" made MarkX forget which Telegram account an account
+had. Person A signs in with Telegram, then disconnects; later the phone
+company gives A's old number to a stranger, who signs in with Telegram and
+the row "an account has P and no Telegram" put the stranger into A's
+account, with A's orders, addresses and shop.
+
+**The rule now applied (the founder's rule P-101-6: a recycled number must
+never take over someone else's account), recorded 21 November 2026:**
+
+- Once an account has had a Telegram account, MarkX **always remembers
+  which one**, even after "Disconnect Telegram". Disconnecting only stops
+  messages.
+- **Only that same Telegram account may sign in to it again.** Any other
+  Telegram account bringing the same number is refused
+  (`phone_on_other_telegram`) and told to contact support (F-24, later).
+- An account that has **never** had any Telegram account (made by an
+  invitation, by staff, or by SMS before SI-1) may still be claimed by the
+  first Telegram sign-in with its number, as before.
+
+**How.** A new column `users.bound_telegram_id` (migration `0021`), the
+Telegram account the account belongs to. It is set the first time **any**
+Telegram account is attached, by any of the three ways (signing in with
+Telegram, the bot's connection link, the Mini App), and is never cleared:
+"Disconnect Telegram" clears only `telegram_id`, which carries messages.
+The database backs it three times: it is unique (one Telegram account
+belongs to at most one MarkX account), `telegram_id` when set must equal
+it (a CHECK), and a trigger refuses to change or clear it once set, for
+every role. Existing connected accounts were bound to their Telegram
+account by the migration. **UNKNOWN for real data, and irrelevant today:**
+an account that disconnected before `0021` has no record of its Telegram
+account (the id was cleared and was never written to the audit log), so it
+would stay unbound; nothing is deployed, so no real account is in that
+state.
+
+**Every other way a different Telegram account could reach an existing
+account, searched in the sign-in and account code, and closed the same
+way:**
+
+1. **Connected by the bot's link or the Mini App, then disconnected** (not
+   signed in with Telegram at all). Same takeover; closed because those
+   ways bind too.
+2. **"Connect Telegram" with a different Telegram account after a
+   disconnect** (bot link or Mini App). It would have bound the account to
+   a second Telegram account, which could then sign in. Now refused (the
+   link ends `failed`/`already_connected`; the Mini App answers 409
+   `telegram_already_linked`, the same words as every refusal). Only the
+   account's own Telegram account can be connected again.
+3. **A remembered Telegram account connected to, or signing in to, a
+   second MarkX account** after disconnecting from the first. Refused
+   (`telegram_in_use`; signing in with the second account's number is
+   `phone_in_use`).
+4. **Found on the way, not a takeover but a split:** a person who
+   disconnected and then changed number signed in with their own Telegram
+   account and got a new, empty account. Now the lookup by Telegram uses the
+   remembered account, so they reach their own account and the number
+   follows (as section 2 says for connected accounts); their old number is
+   free for its next owner, who gets a new account of their own.
+
+Checked and not a way in: Mini App sign-in (`POST /auth/telegram`) finds
+only a *connected* Telegram account, so after a disconnect it answers
+`telegram_not_linked` for everyone; collecting a sign-in (`check`) uses
+the account chosen when Telegram confirmed it; staff and team-member
+creation make accounts with no Telegram account. **Outside this rule, said
+plainly:** signing in by SMS code (switched off by SI-1) proves only the
+number, so a stranger with a recycled number could sign in by SMS if SMS is
+switched back on. That is the SMS backup's own question, not changed here;
+it should be decided with F-24 before SMS returns.
+
+**A refused sign-in does not reconnect anything.** When the account's own
+Telegram account signs in with a new number that belongs to someone else,
+the sign-in is refused and Telegram stays disconnected (tested).
+
+**Website words changed** (English and Amharic, native review still
+pending): the connection page no longer says "disconnect it first to
+connect another" or "disconnect it there first", which would no longer
+work; it says a MarkX account can only be connected to the Telegram
+account it first used and to contact MarkX support to change it.
+
+**Tests:** `tests/api/test_telegram_recycled_number.py`, 13 tests. The
+first, `test_a_recycled_number_cannot_take_over_an_account_after_disconnect`,
+plays exactly the review's steps (A has a shop and an address, signs in
+with Telegram, disconnects; a stranger brings the number with another
+Telegram account): **on the branch before the fix (`b89aeff`) it fails
+because the bot answers the stranger "✅ You are signed in"**; after the
+fix the stranger is refused with `phone_on_other_telegram`, gets no
+session and no account, and A still signs in. On `b89aeff` 12 of the 13
+fail (the takeover, the bot-link and Mini App ways, the second Telegram
+account connected, the remembered account reaching a second account, the
+split account, and the database guards); one guard passes on both (no
+answer names the Telegram account). Web: one test that the refusal's words
+say to contact support, in both languages. **No existing check or test was
+weakened, removed or changed.**
+
+### 3. SMS switched off
+
+`MARKX_SMS_PROVIDER` takes a third value, **`off`**: no login code and no
+notification SMS is sent, and no provider is needed. **A real server may
+start with SMS off; it still refuses the fake sender** (unchanged check,
+unchanged tests) and still needs every provider setting when SMS is `http`.
+Switching SMS off relaxes nothing else (tested: the fake bot check, the
+fake push sender and insecure cookies are still refused). With SMS off,
+`POST /auth/otp/request` and `/auth/otp/verify` answer 403 `sms_sign_in_off`
+before anything is counted or sent; notification SMS are recorded
+`skipped`/`sms_disabled`; `get_sms_sender()` refuses as a last barrier.
+The SMS code is all kept: switching it back on is choosing a provider
+(F-11) and setting `http`. `infra/production/env/api.env.example` now says
+`off`. On a laptop and in the tests the default stays `fake`, so every
+existing journey and test runs unchanged; the new journey runs the API with
+`off`.
+
+### 4. M4: Telegram start-up data accepted once, for minutes
+
+Mini App start-up data was accepted for an hour and any number of times.
+Now: **five minutes** (`auth.telegram_init_data_max_age_seconds`, 300,
+PROVISIONAL P-101-3, at most the old hour), and a sign-in with it **marks it
+used**: a keyed hash of Telegram's signature goes into
+`telegram_init_data_uses` (committed at once in its own transaction), and
+the same data again is 403 `telegram_data_used`, however its fields are
+ordered. It is used up only by a sign-in that succeeds, so a person whose
+Telegram is not linked yet can link it and then sign in with the same
+start-up. Linking keeps the shorter window but not single use (it needs a
+MarkX session already, and linking the same Telegram account again
+changes nothing; two existing tests rely on that and are unchanged).
+Rows are deleted after two days by `retention.prune`.
+
+### 5. M3: no staff lock-out by an outsider, no telling which numbers are staff
+
+Before, five wrong passwords for a staff member's number locked the
+account for 15 minutes for everyone, repeatable for ever, and a locked
+account answered 429 `staff_locked` where any other number answered 401:
+an outsider could lock staff out and find staff numbers. Now, on the
+phone-and-password way: failures lock that staff account **only for the
+network address they came from** (`auth.staff_failures_before_lock` 5,
+`auth.staff_lock_minutes` 15, PROVISIONAL P-101-4), counted in the
+rate-limit table; **a lock answers exactly like a wrong password** (401
+`staff_credentials_invalid`, no details, no `Retry-After`, the same
+password-hashing work); an unknown number, a wrong password and a lock
+cannot be told apart. Because one guesser can now spread over many
+addresses, **10 failures on one staff account within an hour, from any
+addresses, alert the founder** (`staff.sign_in_failures`, a warning, staff
+id only; `auth.staff_failure_alert_per_hour`, PROVISIONAL P-101-5). The
+existing per-address limit (30 attempts in 15 minutes) is unchanged. With
+SMS off this way is closed anyway (P-101-8), and the Telegram way cannot
+be reached by an outsider at all.
+
+**Two existing assertions changed, and why it is not weaker.**
+`tests/api/test_auth_staff.py::test_five_failures_lock_the_staff_account`
+and `tests/api/test_phone_digit_limits.py::test_five_failed_staff_sign_ins_in_mixed_digit_styles_lock_the_account`
+expected the lock to answer 429 `staff_locked`. That answer *is* finding
+M3 (it tells a stranger the number is staff). They now expect 401
+`staff_credentials_invalid`; the lock itself is checked as before (the
+right password and code are still refused while it holds), and the first
+test's line that ends the lock also clears the per-address counters, where
+the lock now lives. Nothing else in either test changed.
+
+### 6. M2: no one person, number or address can spend the SMS budget
+
+For when SMS is switched on again. Before, one daily budget (500) was the
+only daily limit, so anyone with enough numbers and addresses could spend
+it and stop everyone's codes. Now each code also counts against three
+**daily shares of the budget**: per phone number 2% (10 codes a day; one
+number is one account, which is the only "person" MarkX knows before
+sign-in), per network address 5% (25) and per network 10% (50: the same
+first three parts of an IPv4 address, or the same /64 of IPv6, so hopping
+addresses inside one connection does not help) (PROVISIONAL P-101-7). A
+share is never smaller than one hour's allowance under the hourly limit,
+so a small budget cannot lock an honest person out of a retry. A refused
+share answers 429 `sms_share_spent` and does not touch the budget. **The
+shared budget stays the final limit** (503 `sms_budget_spent`), and the
+worker's existing `sms.budget` check warns at 80% and is critical at 100%
+(tested). **Why per network is generous:** many Ethiopian mobile customers
+reach the internet through one shared address (carrier-grade NAT; how many
+per address is UNKNOWN), so a strict per-address share would refuse honest
+people who happen to share one.
+
+### 7. Saved tests from the pull request #7 review
+
+`tests/db/test_buyer_limit_contention.py` (23 tests): two checkouts of one
+buyer at the same moment, through the API, make one order; two orders of
+one buyer at the same moment, from two browsers changing the same cart,
+never pass the per-offer limit, the per-shop limit or the open-order
+limit together (each run five times); an expired order counts for neither
+unit limit, takes no open-order place and never starts the cancellation
+cool-down. **They pass on `main`:** the protection already existed (D-099);
+the tests save the proof. Checked by breaking the code on purpose: without
+the unit-limit check the per-shop race fails every round and the per-offer
+race fails in some rounds; counting expired orders makes all three expiry
+tests fail. **Found on the way:** removing only the buyer's cart lock does
+not make them fail, because the shop and offer locks taken next serialise
+the same orders (`AGENTS.md` lock order); the cart lock is the first of two
+barriers, not the only one.
+
+### PROVISIONAL values (THE FOUNDER MUST CONFIRM OR CHANGE THEM BEFORE MARKX GOES LIVE)
+
+The limits are settings in `markx/core/settings_store.py` (the one place),
+each marked `PROVISIONAL (P-101-n)` there and on the admin settings screen
+(in Amharic too), checked by
+`tests/api/test_sign_in_abuse.py::test_the_new_limits_are_provisional_settings`;
+staff can change them, audit-logged. The two rules are marked in the code
+where they live (checked by `test_the_rules_are_marked_provisional_where_they_live`).
+
+| | Setting or rule | Value | Why this value |
+| --- | --- | --- | --- |
+| P-101-1 | `auth.telegram_sign_in_minutes` | 10 minutes | Long enough to open Telegram, press Start and share the number on a slow phone and network; short enough that a forgotten or forwarded link soon stops working. The same as a connection link (D-093) |
+| P-101-2 | `auth.telegram_sign_ins_per_ip_per_hour` | 60 | A Telegram sign-in costs nothing to send, and many customers share one mobile address; the limit only protects the database |
+| P-101-3 | `auth.telegram_init_data_max_age_seconds` | 300 seconds | A Mini App sends its start-up data as it opens; five minutes allows a slow network and a phone clock a little wrong, instead of the hour before (M4) |
+| P-101-4 | `auth.staff_failures_before_lock`, `auth.staff_lock_minutes`; the lock per address | 5 failures, 15 minutes, per address | The values staff had before; only who is locked changes (the address that failed, not the account) |
+| P-101-5 | `auth.staff_failure_alert_per_hour` | 10 in an hour | Twice what locks one address: a person mistyping does not reach it; a guess spread over addresses does |
+| P-101-6 | (a rule) changing Telegram account or number | The table in section 2, and section 2a: an account that ever had a Telegram account belongs to it for good, even after "Disconnect Telegram" | Telegram's confirmation is trusted for a new number on the same Telegram account; never for moving a number or an account to another Telegram account, because numbers are recycled |
+| P-101-7 | `auth.sms_daily_share_per_phone_percent`, `..._per_ip_percent`, `..._per_network_percent` | 2%, 5%, 10% of the daily budget, never under one hour's allowance | 10 codes a day is far more than one honest person needs; an address and a network get more because customers share them (CGNAT); 20 networks would be needed to spend the whole budget |
+| P-101-8 | (a rule) staff without Telegram | Refused while SMS is off; allowed (with M3's fixes) when SMS is on again | SI-1 means no way around Telegram; when SMS is back as the backup, staff need a backup too |
+
+**How an honest person is affected.** A buyer or seller taps one button,
+presses Start and Share in Telegram, and is signed in; they type nothing.
+Someone without Telegram cannot sign in while SMS is off (the page tells
+them to install Telegram). A person who changed their number signs in as
+before and their MarkX number follows; a person who got a new Telegram
+account for an old number is asked to contact support. Staff do one extra
+step they already knew. Nobody honest meets the M2 or M3 limits.
+
+### Tests
+
+Each new test fails on `main` at `b79caab` and passes here, except the
+guards, which pass on both (they check that nothing that should stay the
+same changed):
+
+- Items 1 and 2: `tests/api/test_telegram_sign_in.py`, 32 tests (all fail
+  on `main`: the feature does not exist). Uses `tests/telegram_play.py`,
+  which plays Telegram through the webhook with the test-only secret.
+- Items 3 to 6: `tests/api/test_sign_in_abuse.py`, 37 tests: 28 fail or
+  error on `main`, 9 guards pass on both (the fake sender still refused;
+  switching SMS on still needs every setting; the budget still the final
+  limit and its alert; shares scale; failures still audited; linking again
+  harmless).
+- Item 7: `tests/db/test_buyer_limit_contention.py`, 23 tests: pass on both
+  (see section 7 for how they were shown to catch a breach).
+- Web: `src/lib/telegram-sign-in.test.ts`, 3 tests.
+- Browser journey: `apps/web/e2e/telegram-sign-in.mjs`, in the journeys
+  workflow with the API recreated with SMS `off` and test-only bot values:
+  a new person at 360 px signs in with Telegram (played through the
+  webhook) and places an order; a foreign number is refused in English and
+  Amharic; the staff page asks for Telegram first; axe on each page.
+- Changed: the two assertions in section 5. No other existing check or
+  test was weakened, removed or changed.
+
+**Not done:** no bot, no real message, no real phone; the matching-code
+step (F-25); a staff tool to move a number between Telegram accounts
+(F-24); sign-in from inside the Mini App with the contact step; a native
+speaker's review of the new Amharic (website and bot).
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -4010,7 +4398,11 @@ decides. F-21 (D-098, staff conflict of interest) has a PROVISIONAL answer
 (order life-cycle hardening) sets seven PROVISIONAL values, P-099-1 to
 P-099-7, listed in D-099, and raises F-22, which has a PROVISIONAL answer
 (P-099-7). F-23 (raised 20 November 2026, product editing by staff whose
-own shop proposed the product) is OPEN with no provisional answer.** Treat this list as part of the launch
+own shop proposed the product) is OPEN with no provisional answer. SI-1
+(sign-in with Telegram for everyone, SMS off as a backup) was decided on
+21 November 2026: see D-101, which sets eight PROVISIONAL values and rules,
+P-101-1 to P-101-8, and raises F-24 and F-25 (OPEN; recommendations
+given).** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -4191,8 +4583,9 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 
 ### F-11 Which SMS provider (blueprint O.23)
 
-- **Today:** none. The adapter is ready (D-089); no real server can start
-  without one, so **no production sign-in by SMS is possible**.
+- **Today:** none. The adapter is ready (D-089). Since SI-1 (D-101) SMS is
+  switched off (`MARKX_SMS_PROVIDER=off`) and people sign in with Telegram;
+  a provider is needed only to switch SMS back on as the backup.
 - **What the founder decides:** the provider, from its price per message,
   sender-name approval for "MarkX" (and how long it takes), delivery
   reports, a test account, where it processes numbers (blueprint section M:
@@ -4403,6 +4796,38 @@ deciding, but product pages are shared by every seller."
   member of staff, or left as they are. Nothing is changed until the
   founder decides.
 - **Founder's approval required: yes.**
+
+### F-24 Who may move a phone number to another Telegram account, and how (D-101)
+
+- **Today (P-101-6):** never automatically. A person whose number is on a
+  MarkX account tied to another Telegram account (connected or, since the
+  fix in D-101 section 2a, disconnected) is refused and told to contact
+  support; **no staff tool exists** to move it, so support cannot yet help
+  them. The database refuses to change `users.bound_telegram_id` once set
+  (migration `0021`'s trigger), so the tool will need its own migration
+  that allows exactly an audited move.
+- **Why:** Ethio telecom and Safaricom recycle numbers; the new owner of an
+  old number must not get the old owner's account, orders or shop.
+- **Options:** (a) staff move it after checking identity (a staff tool,
+  audited, perhaps with a waiting period and a message to the old Telegram
+  account first); (b) the person makes a new account with a new number;
+  (c) automatic after a waiting period with no answer from the old
+  Telegram account.
+- **Engineer's recommendation:** (a), with a 72-hour wait and a message to
+  the old account, built before launch.
+- **Founder's approval required: yes** (account ownership, support process).
+
+### F-25 Whether a Telegram sign-in also shows a matching code (D-101)
+
+- **Today:** no. The bot warns, in both languages, to continue only if the
+  person started signing in themselves; the link lives ten minutes and
+  works once; every new sign-in is told in the app.
+- **Option:** the page shows two digits and the bot asks the person to
+  press the matching one of three buttons. It makes a forwarded-link trick
+  (D-101, section 1) much harder, for one more tap for everyone.
+- **Engineer's recommendation:** not before launch; decide once real
+  sign-in numbers and any abuse are seen.
+- **Founder's approval required: yes** (one more step for every person).
 
 ## Open questions carried over from session 1
 

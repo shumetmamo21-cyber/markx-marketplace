@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
+from markx.audit.models import AuditLog
 from markx.backup.models import BackupRun
 from markx.catalog.models import ImageStatus, ProductImage
 from markx.core import ratelimit, settings_store
@@ -393,6 +394,38 @@ def sms_budget(db: Session, now: datetime) -> list[Finding]:
             severity=severity,
             summary=f"The daily SMS budget is {words} ({sent} of {budget}).",
             details={"sent": sent, "budget": budget},
+        )
+    ]
+
+
+def staff_sign_in_failures(db: Session, now: datetime) -> list[Finding]:
+    """Many failed sign-ins on one staff account within an hour, from any
+    addresses together (D-101, audit M3). Since a lock holds only for the
+    address the failures came from (P-101-4), a guess spread over many
+    addresses is reported here instead (P-101-5). Names the account by its
+    staff id only, never a phone number."""
+    threshold = settings_store.get_int(db, "auth.staff_failure_alert_per_hour")
+    rows = db.execute(
+        select(AuditLog.target_id, func.count())
+        .where(
+            AuditLog.action == "staff.sign_in_failed",
+            AuditLog.occurred_at >= now - timedelta(hours=1),
+        )
+        .group_by(AuditLog.target_id)
+        .having(func.count() >= threshold)
+        .order_by(AuditLog.target_id)
+    ).all()
+    if not rows:
+        return []
+    return [
+        Finding(
+            key="staff.sign_in_failures",
+            severity="warning",
+            summary=(
+                f"{len(rows)} staff account(s) had at least {threshold} failed sign-ins in the "
+                "last hour. Someone may be guessing a staff password; check with the person."
+            ),
+            details={"staff_member_ids": [r[0] for r in rows], "counts": [r[1] for r in rows]},
         )
     ]
 
@@ -870,6 +903,7 @@ WATCH: tuple[Check, ...] = (
     sms_budget,
     sms_failures,
     sms_unfinished,
+    staff_sign_in_failures,
     notification_sms_budget,
     notification_delivery_failures,
     notification_channel_unavailable,

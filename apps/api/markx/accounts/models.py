@@ -63,6 +63,10 @@ class User(UUIDPrimaryKey, Timestamps, Base):
             "(telegram_id is null) = (telegram_linked_at is null)",
             name="telegram_linked_at_with_telegram_id",
         ),
+        CheckConstraint(
+            "telegram_id is null or telegram_id = bound_telegram_id",
+            name="telegram_id_is_the_bound_one",
+        ),
     )
 
     phone: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
@@ -71,6 +75,13 @@ class User(UUIDPrimaryKey, Timestamps, Base):
     # Unique, so one Telegram account belongs to one MarkX account.
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     telegram_linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The Telegram account this account belongs to (D-101, P-101-6): set the
+    # first time any Telegram account is attached, and never cleared or
+    # changed (a database trigger, migration 0021), not even by "Disconnect
+    # Telegram", which clears only `telegram_id` and so stops messages. Only
+    # this Telegram account may sign in to the account, so a stranger given
+    # the same recycled phone number cannot take it over.
+    bound_telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     # When the person last disconnected Telegram, so their settings can say so.
     telegram_unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     name: Mapped[str | None] = mapped_column(Text)
@@ -285,5 +296,108 @@ class TelegramUpdate(Base):
 
     update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class TelegramSignInStatus(StrEnum):
+    PENDING = "pending"  # the link was made; not opened in Telegram yet
+    OPENED = "opened"  # opened by one Telegram account; waiting for its phone number
+    CONFIRMED = "confirmed"  # Telegram confirmed the number; the account is chosen
+    CONSUMED = "consumed"  # the browser that started it received its session
+    REFUSED = "refused"  # refused once Telegram confirmed the number (failure_reason)
+    REVOKED = "revoked"  # replaced by a newer sign-in of the same browser or Telegram account
+
+
+class TelegramSignInFailure(StrEnum):
+    # The number Telegram confirmed is not an Ethiopian mobile number.
+    PHONE_NOT_ETHIOPIAN = "phone_not_ethiopian"
+    # The number belongs to a MarkX account tied to another Telegram account
+    # (PROVISIONAL P-101-6: never moved automatically).
+    PHONE_ON_OTHER_TELEGRAM = "phone_on_other_telegram"
+    # This Telegram account's MarkX account has another number, and the new
+    # number already belongs to a second MarkX account (one number, one account).
+    PHONE_IN_USE = "phone_in_use"
+    ACCOUNT_INACTIVE = "account_inactive"  # the account is blocked or deleted
+
+
+class TelegramSignIn(UUIDPrimaryKey, CreatedAt, Base):
+    """Signing in on the website with Telegram (D-101, decision SI-1).
+
+    The browser asks for a one-time link to the bot and receives a second,
+    private secret in a cookie only it holds. Opening the link in Telegram
+    sends the bot `/start si-<token>` from the person's Telegram account; the
+    bot then asks them to share their phone number with Telegram's own
+    button, and Telegram states the number. Only the browser holding the
+    secret can then collect the session, once. Only keyed hashes of the
+    token and the secret are stored.
+    """
+
+    __tablename__ = "telegram_sign_ins"
+    __table_args__ = (
+        in_check("status", TelegramSignInStatus),
+        in_check("language", LANGUAGES),
+        CheckConstraint(
+            "failure_reason is null or failure_reason in ("
+            + ", ".join(f"'{f.value}'" for f in TelegramSignInFailure)
+            + ")",
+            name="failure_reason_allowed",
+        ),
+        CheckConstraint("expires_at > created_at", name="expires_after_creation"),
+        CheckConstraint("octet_length(token_hash) = 32", name="token_hash_length"),
+        CheckConstraint("octet_length(browser_hash) = 32", name="browser_hash_length"),
+        CheckConstraint(
+            "status not in ('opened', 'confirmed', 'consumed') or telegram_id is not null",
+            name="opened_by_a_telegram_account",
+        ),
+        CheckConstraint(
+            "(user_id is not null) = (status in ('confirmed', 'consumed'))",
+            name="account_once_confirmed",
+        ),
+        CheckConstraint(
+            "(finished_at is null) = (status in ('pending', 'opened', 'confirmed'))",
+            name="finished_once_settled",
+        ),
+        CheckConstraint(
+            "(status = 'refused') = (failure_reason is not null)", name="refusal_has_a_reason"
+        ),
+        Index("ix_telegram_sign_ins_telegram_status", "telegram_id", "status"),
+        Index("ix_telegram_sign_ins_created_at", "created_at"),
+    )
+
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True, nullable=False)
+    browser_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    language: Mapped[str] = mapped_column(Text, nullable=False, server_default="am")
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    ip: Mapped[str | None] = mapped_column(INET)
+
+
+class TelegramInitDataUse(Base):
+    """Telegram Mini App start-up data already accepted (D-101, audit M4).
+
+    Each signed start-up signs in once (`purpose` is `sign_in`, the only
+    one so far), so a copy of it cannot be replayed for a second session. Only a keyed
+    hash of the data is kept, and only until it would be too old anyway.
+    """
+
+    __tablename__ = "telegram_init_data_uses"
+    __table_args__ = (
+        in_check("purpose", ("sign_in",)),
+        CheckConstraint("octet_length(digest) = 32", name="digest_length"),
+        Index("ix_telegram_init_data_uses_used_at", "used_at"),
+    )
+
+    digest: Mapped[bytes] = mapped_column(LargeBinary, primary_key=True)
+    purpose: Mapped[str] = mapped_column(Text, primary_key=True)
+    used_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
