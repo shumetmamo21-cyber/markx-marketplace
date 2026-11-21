@@ -27,6 +27,24 @@ follow from it, and every procedure below keeps them:
    throwaway PostgreSQL container without network or secrets, and a
    restore never resets a database password.
 
+**Finished on 21 November 2026 (D-105; audit BK-4 and BK-5, review notes
+RN-1 to RN-5), tested with PostgreSQL 17.12, MinIO and local containers
+only.** Three more rules:
+
+4. **Losing the server must not be silent.** After each verified set the
+   backup service calls an outside heartbeat address; the outside monitor
+   alerts when the calls stop. Operational alerts (a container that stays
+   unhealthy) go to the staff Telegram group through the bot. Both stay
+   **off** until the founder chooses a monitor and creates the group (F-18).
+5. **The server's own secrets have a safe copy.** `deploy.sh escrow-secrets`
+   makes one file holding the application keys, the database passwords and
+   the certificate key, encrypted to the recovery key; the founder keeps it
+   with the recovery key (F-19). The drill proves it works: a staff member
+   signs in to the restored copy with it.
+6. **An overwritten backup file is found and survives.** The server's key
+   can write a file again (it cannot delete); the locked older version is
+   used by verify, restore and the drill, and an alert is raised.
+
 ## What exists
 
 | Piece | State |
@@ -39,7 +57,11 @@ follow from it, and every procedure below keeps them:
 | The off-server drill (`drill --from-destination`) on a throwaway recovery machine, with a read-only key (D-096) | **Tested** in CI on every push: a container with no network, MinIO, test keys. **Real world**: never run against a real bucket |
 | Retention away from the server (`prune`, its own key), version- and lock-aware (D-096) | **Tested** against MinIO (versioned and object-locked buckets). **Real world**: never run |
 | Object lock required on staging and production (D-096) | **Tested** against MinIO's S3 Object Lock. **NOT VERIFIED** on Amazon S3 or Cloudflare R2 |
-| Alerts: failed, incomplete or stale backups; failed or overdue drills (the worker's watch) | **Tested** (generated). **Prepared** (delivered): a person hears of them only once the founder's Telegram alert group is configured (F-18); until then they reach the log only |
+| Alerts: failed, incomplete or stale backups; failed or overdue drills; an overwritten backup file (the worker's watch) | **Tested** (generated). **Prepared** (delivered): a person hears of them only once the founder's Telegram alert group is configured (F-18); until then they reach the log only |
+| The outside heartbeat after each verified set (`MARKX_BACKUP_HEARTBEAT_URL`, D-105, BK-4) | **Tested** against a stand-in monitor on the same machine. **Off** until F-18; no monitor contacted |
+| The container watch (`deploy.sh watch`, a timer every 5 minutes) and the test alert (`deploy.sh alert-test`), straight to the staff Telegram group (D-105, BK-4) | **Tested** with a stand-in for Docker and in the rehearsal (a paused container). **Off** until F-18: no Telegram group exists; nothing was ever sent to Telegram |
+| The secrets copy (`deploy.sh escrow-secrets`, `open-secrets`) and the drill's staff sign-in with it (D-105, BK-5) | **Tested** in pytest, CI's off-server drill and the rehearsal. **Real world**: no real secret has been copied; who keeps the copy is F-19 |
+| Verify, restore and the drill from an older locked copy of an overwritten file; the alert `backup.overwritten` (D-105, RN-1) | **Tested** against MinIO's versioning and object lock. **NOT VERIFIED** on S3 or R2 |
 | An off-server destination (S3 or R2) | **Founder** (F-16). The code refuses to call anything else off-server |
 | `infra/backup/restore-legacy-cbc.sh`: decrypt-and-restore of the retired `.dump.enc` format (D-063) | Kept for old dumps only; nothing makes that format any more |
 
@@ -187,6 +209,8 @@ switched on automatically on staging and production):
 | `backup.stale` | no verified **off-server** set newer than `MARKX_BACKUP_MAX_AGE_HOURS` (26); also when none ever existed | critical |
 | `backup.drill_failed` | the last restore drill failed | critical |
 | `backup.drill_overdue` | no drill passed in `MARKX_RESTORE_DRILL_MAX_AGE_DAYS` (35) | warning |
+| `backup.overwritten` | a backup run or an entered drill found a backup file written again at the destination, in the last 30 days (PROVISIONAL P-105-3): see "A backup file was overwritten" | critical |
+| `backup.overwrite_check_unavailable` | the server's key cannot list the bucket's versions, so an overwrite would go unseen | warning |
 
 Each attempt's record (`backup_runs`: status, sizes, object counts, the
 destination's identity, the error code) is what the watch reads. An alert
@@ -195,6 +219,44 @@ founder's Telegram group once `MARKX_TELEGRAM_BOT_TOKEN` and
 `MARKX_ALERT_TELEGRAM_CHAT_ID` are set, **otherwise only the log, which no
 one reads by itself** (F-18). The backup container's health check is a
 second, local signal: `unhealthy` when no verified set is fresh.
+
+### Alerts that still work when the server is lost (D-105, BK-4)
+
+Everything above runs **on** the server. If the server is lost, its
+database stops or the worker dies, nothing above can say so. Three things
+cover that, all **off until the founder decides F-18**:
+
+1. **The outside heartbeat (a "dead man's switch").** After each verified
+   set the backup service calls `MARKX_BACKUP_HEARTBEAT_URL` (in
+   `backup.env`). An outside monitoring service expects that call once a
+   day; when it does not come, **the outside service** alerts the founder,
+   whatever happened to the server. Set it up once F-18 is decided:
+   - create a "heartbeat" (also called "cron" or "push") check at the chosen
+     monitor, expecting one call a day with a grace of about 3 hours
+     (PROVISIONAL P-105-1: the set runs at 23:00 UTC; the alert then comes
+     within about 27 hours of the last good set), alerting the founder's
+     phone (and, as the audit asks, a second channel such as e-mail);
+   - put its address in `backup.env` as `MARKX_BACKUP_HEARTBEAT_URL=https://...`
+     (a secret: it is never logged or printed; https is required);
+   - `deploy.sh alert-test --send-heartbeat` calls it once now: the monitor
+     should show the call.
+   A failed call never fails the backup; it is recorded in the run as
+   `heartbeat: failed:...`.
+2. **The container watch.** `deploy.sh watch install-timer` installs a
+   systemd timer that runs `deploy.sh watch` every 5 minutes. A container
+   that stays unhealthy, stopped or missing for
+   `MARKX_CONTAINER_ALERT_MINUTES` (in `compose.env`, default 15,
+   PROVISIONAL P-105-2) sends **one** alert to the staff Telegram group
+   through the bot, and one more when it is fine again. It runs from a
+   throwaway container of the worker's image, so it works while the
+   database or the worker is down. What it cannot see (the whole server,
+   or Docker itself, gone) is the heartbeat's job.
+3. **The staff Telegram group.** Set `MARKX_TELEGRAM_BOT_TOKEN` and
+   `MARKX_ALERT_TELEGRAM_CHAT_ID` in `api.env` once the group exists (F-18),
+   then `deploy.sh alert-test`: it sends a test alert, says whether the
+   group accepted it, and **fails when nobody was told** (alerts off, or
+   Telegram refused). Confirm the message on the phone. This is step 7 of
+   "Activating off-server backups".
 
 ## A backup now
 
@@ -223,7 +285,13 @@ test keys and MinIO). It needs:
 
 The database it restores into is a **throwaway PostgreSQL 17.12 container
 with no network at all**, reached only through a socket folder, holding no
-secret. `infra/backup/recovery-host.sh` makes it and removes it with all
+secret. The socket folder (`MARKX_RECOVERY_SOCKET_DIR`, default
+`/tmp/markx-recovery-socket`) is **private** (mode 700, yours only): the
+database trusts its socket, so no other user of the machine may reach it.
+The script deletes that folder only when it made it (it carries a mark),
+stops only the container it started (it carries a label), and refuses a
+folder whose socket path would be longer than 107 characters (D-105, RN-2
+to RN-4). `infra/backup/recovery-host.sh` makes it and removes it with all
 its data. The restore runs as the `markx_migrator` role, never the
 superuser, so even a forged backup cannot run a program there, and a
 restore never resets a role's password (D-096).
@@ -283,11 +351,42 @@ uv run python -m markx.backup drill --from-destination \
   --report ~/drill-$(date -u +%Y%m%d).json
 ```
 
+**With the secrets copy (D-105, BK-5), once one exists (F-19):** the drill
+also proves the copy works. After the restore it opens the newest copy in
+the bucket with the recovery key, checks that every staff authenticator
+secret in the restored copy decrypts with the copied
+`MARKX_ENCRYPTION_KEY`, and then **a staff member signs in to the restored
+copy** with the copied keys, their password and the 6-digit code their
+authenticator app shows at that moment. The API it signs in through runs on
+the recovery machine only, listens on 127.0.0.1, and is stopped at once.
+
+```bash
+read -rs MARKX_DRILL_STAFF_PASSWORD; export MARKX_DRILL_STAFF_PASSWORD   # the staff member's password
+uv run python -m markx.backup drill --from-destination \
+  --recovery-key ~/markx-recovery/recovery.key --signer ~/markx-recovery/signer-public.key \
+  --secrets-from-destination --staff-phone <their phone number> \
+  --report ~/drill-$(date -u +%Y%m%d).json
+unset MARKX_DRILL_STAFF_PASSWORD
+```
+
+When the restore has passed, the drill asks for the code. **The staff
+member reads it from the authenticator app on their phone and tells it to
+the person running the drill** (a call or a message; it is useless 30
+seconds later), who types it. A founder who works only from a phone can be
+that staff member: nothing else is needed from them. The report must show
+three `ok  secrets:` lines and `ok  injected: the secrets of another
+server`. (`--secrets FILE` uses a copy file instead of the bucket's.)
+
 "DRILL PASSED" and the time it took go into `docs/DEVELOPMENT_STATUS.md`.
 (`--set <id>` drills another set than the newest.) Then enter the result
 on the server, so the watch knows a drill passed (`backup.drill_overdue`).
 The report holds no secret; `record-drill` checks that its set exists and
-verifies with the server's own signer:
+verifies with the server's own signer, and **does not believe the report's
+own "passed"** (D-105, RN-5): every restore check must be there and have
+passed, every injected fault must have been refused, the secrets step must
+have passed when it ran, and what was restored (files, rows, the set's
+time) must match the set's signed manifest. A report that says PASSED
+without showing it is recorded as a FAILED drill, and the watch alerts:
 
 ```bash
 scp ~/drill-<date>.json <server>:/tmp/
@@ -381,6 +480,92 @@ always starts on the recovery machine (above).
 settings from where the founder keeps them, then steps 3 to 8 from the
 backup destination. Nothing from the old server is needed.
 
+## The secrets copy (D-105, BK-5)
+
+A backup set holds the data, never the server's own secrets. Losing the
+server without a copy of them means: the staff authenticator secrets in a
+restored database cannot be decrypted (no staff member can sign in), the
+handover codes and signed links change, and the database passwords and the
+site's certificate key must be made again. The **secrets copy** is one file
+that holds them, safe to keep anywhere because it is useless without the
+recovery key:
+
+- **What it holds** (PROVISIONAL P-105-4): from `/etc/markx`: `api.env`
+  (`MARKX_SECRET_KEY`, `MARKX_ENCRYPTION_KEY` and the other settings),
+  `postgres.env` (the four database passwords), `migrate.env`,
+  `backup.env`, `web.env`, `compose.env`, `backup-signing.key`,
+  `backup-public.key`; from the certificate folder: `privkey.pem` and
+  `fullchain.pem`. Never `recovery.key` (it refuses one).
+- **How it is protected:** read on the server, kept in memory, encrypted to
+  the recovery key's PUBLIC half before anything is written (the server can
+  make a copy, never open one), and signed with the backup signing key. Only
+  file names and sizes are ever printed.
+
+**Making it (on the server, by whoever runs the server; root):**
+
+```bash
+infra/production/deploy.sh escrow-secrets
+```
+
+It writes `markx-secrets-<date>-<id>.json` into `/var/backups/markx/escrow/`
+(owner 999, mode 600) and puts the same file in the backup bucket under
+`escrow/`, where the object lock keeps it. **Make a new copy after any
+secret changes** (docs/runbooks/secret-rotation.md) and after the first
+certificate is installed; `deploy.sh check` reminds you when none exists.
+
+**Keeping it (the founder, F-19), from a phone only:** the person who ran
+the command sends the file to the founder (any channel: it is encrypted).
+The founder saves it **in the same two places as the recovery key** (for
+example a password manager entry with the file attached, and the second
+place F-19 chooses), never beside the server's passwords. Nothing has to be
+opened or checked on the phone: the monthly drill proves the copy in the
+bucket works, and the founder's own copy is the same file. If the bucket is
+lost with the server's account, the founder's copy is the one that counts.
+
+**Checking or opening it (on the recovery machine only; it refuses a
+server):**
+
+```bash
+uv run python -m markx.backup open-secrets --from-destination \
+  --recovery-key ~/markx-recovery/recovery.key --signer ~/markx-recovery/signer-public.key --check
+# For a new server after a total loss: write the files into a new private folder.
+uv run python -m markx.backup open-secrets --file markx-secrets-<...>.json \
+  --recovery-key ~/markx-recovery/recovery.key --signer ~/markx-recovery/signer-public.key \
+  --out ~/markx-new-server-etc
+```
+
+**After a total loss:** a new server; copy the folder's files into its
+`/etc/markx` (and `tls/` into the certificate folder) with the owners and
+modes `deploy.sh check` asks for; `deploy.sh check`; restore the newest set
+(above) and swap it into place; deploy; a staff member signs in. Then
+delete the folder on the recovery machine (`shred -u`, `rm -rf`). If the
+site's domain or certificate changed, make a new certificate instead of
+using the copied one.
+
+## A backup file was overwritten (D-105, RN-1)
+
+The server's backup key cannot delete, but it can write a file again under
+the same name. On a bucket with an object lock the original stays, locked,
+as an older version. The backup service notices a set's file with a second,
+different version, or a file blob it checked that changed since, and the
+watch raises `backup.overwritten`; the off-server drill and `verify` report
+it too (`WARN ... written again after the set was made`).
+
+What it means: **someone may hold the server's backup key** (a stolen
+`backup.env`, or a break-in). What to do:
+
+1. Treat it as a suspected break-in from the earliest such write (see
+   "Backups made after a suspected break-in are not trusted"): tell the
+   founder; rotate the server's backup key at the provider; check the
+   server.
+2. On the recovery machine, `verify --deep` the newest sets made before
+   that moment. Verify, restore and the drill use the original locked
+   version of an overwritten file by themselves, and say so. Their key needs
+   `ListBucketVersions` and `GetObjectVersion` (step 3 below).
+3. The alert stays open for 30 days after the last run that saw an
+   overwrite (PROVISIONAL P-105-3), so it is not resolved by a quiet night
+   before someone has seen it.
+
 ## Retention (away from the server, D-096)
 
 `MARKX_BACKUP_RETENTION_DAYS` (0 keeps everything) and
@@ -451,6 +636,7 @@ sets whatever `MARKX_BACKUP_RETENTION_DAYS` says.
    the backup service without it. Then **three keys on that bucket**, each
    for one place:
    - **the server's key** (into `backup.env`): `ListBucket`,
+     `ListBucketVersions` (to notice an overwritten file, D-105),
      `GetBucketLocation`, `GetBucketObjectLockConfiguration`,
      `ListBucketMultipartUploads`, `PutObject`, `GetObject`,
      `GetObjectRetention`, `PutObjectRetention` (COMPLIANCE only ever
@@ -458,7 +644,9 @@ sets whatever `MARKX_BACKUP_RETENTION_DAYS` says.
      **No `DeleteObject`, no `DeleteObjectVersion`, no bypass of the lock,
      no bucket settings.**
    - **the recovery machine's read-only key**: `ListBucket`,
-     `GetBucketLocation`, `GetBucketObjectLockConfiguration`, `GetObject`,
+     `ListBucketVersions`, `GetBucketLocation`,
+     `GetBucketObjectLockConfiguration`, `GetObject`, `GetObjectVersion`
+     (an older locked copy of an overwritten file, D-105),
      `GetObjectRetention`. Kept with the recovery key.
    - **the retention key**: the read-only key's rights plus
      `ListBucketVersions`, `GetObjectVersion`, `DeleteObject`,
@@ -478,8 +666,14 @@ sets whatever `MARKX_BACKUP_RETENTION_DAYS` says.
    must be refused. Then the drill on the recovery machine (above), its
    `record-drill` on the server, and a timed restore on the recovery
    machine (the measured RTO). Record all in `docs/DEVELOPMENT_STATUS.md`.
-7. Configure the alert group (F-18) and confirm a test alert arrives on a
-   phone. Only then may anyone say MarkX has off-server backups.
+7. Configure the alert group and the outside heartbeat (F-18; "Alerts that
+   still work when the server is lost" above): `deploy.sh alert-test
+   --send-heartbeat` must pass and the founder must confirm the test alert
+   on the phone and the call at the monitor. `deploy.sh watch install-timer`.
+8. `deploy.sh escrow-secrets`, and the founder keeps the copy with the
+   recovery key (F-19; "The secrets copy" above). The next drill runs with
+   `--secrets-from-destination`. Only then may anyone say MarkX has
+   off-server backups.
 
 ## To test on the real provider, once F-16 is decided (D-096)
 
@@ -507,6 +701,13 @@ off-server backups, on the chosen provider, with the founder's approval:
    key; `record-drill` on the server; then `prune` with the retention key,
    dry run first: locked objects reported as held, nothing else removed.
 7. A timed full restore (the RTO).
+8. (D-105) Write a set's file again with the server's key: the older
+   version must stay locked and readable with the read-only key
+   (`GetObjectVersion`), `verify --deep` must pass from it and say
+   OVERWRITTEN, and the next backup must record the overwrite. Whether S3 and
+   R2 report versions and ETags the way MinIO does is NOT VERIFIED.
+9. (D-105) The outside monitor receives the heartbeat call and alerts when
+   it stops (let one day pass without a set, on staging).
 
 ## Legacy dumps (D-063)
 
