@@ -63,6 +63,10 @@ class User(UUIDPrimaryKey, Timestamps, Base):
             "(telegram_id is null) = (telegram_linked_at is null)",
             name="telegram_linked_at_with_telegram_id",
         ),
+        CheckConstraint(
+            "telegram_id is null or telegram_id = bound_telegram_id",
+            name="telegram_id_is_the_bound_one",
+        ),
     )
 
     phone: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
@@ -71,6 +75,13 @@ class User(UUIDPrimaryKey, Timestamps, Base):
     # Unique, so one Telegram account belongs to one MarkX account.
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     telegram_linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The Telegram account this account belongs to (D-101, P-101-6): set the
+    # first time any Telegram account is attached, and never cleared or
+    # changed (a database trigger, migration 0021), not even by "Disconnect
+    # Telegram", which clears only `telegram_id` and so stops messages. Only
+    # this Telegram account may sign in to the account, so a stranger given
+    # the same recycled phone number cannot take it over.
+    bound_telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     # When the person last disconnected Telegram, so their settings can say so.
     telegram_unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     name: Mapped[str | None] = mapped_column(Text)

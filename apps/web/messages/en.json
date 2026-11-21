@@ -495,7 +495,7 @@
     "term_not_found": "That word was not found.",
     "restricted_goods": "That product is on the list of goods not allowed on MarkX.",
     "telegram_linking_unavailable": "Connecting Telegram is not available yet.",
-    "telegram_already_connected": "Your account is already connected to Telegram. Disconnect it first to connect another.",
+    "telegram_already_connected": "Your account is already connected to Telegram.",
     "telegram_already_linked": "This Telegram account cannot be connected to this MarkX account.",
     "network_unavailable": "No connection. Check your internet, then try again.",
     "server_unavailable": "MarkX could not answer just now. Please try again in a moment.",
@@ -1341,7 +1341,7 @@
         "waiting": "Finish in Telegram. This page updates by itself.",
         "connected": "Your Telegram account is connected to this MarkX account.",
         "expired": "The link was not used in time. Get a new one.",
-        "failed": "This Telegram account could not be connected. If it is connected to another MarkX account, disconnect it there first. Then try again.",
+        "failed": "This Telegram account could not be connected. A MarkX account can only be connected to the Telegram account it first used, and a Telegram account belongs to one MarkX account only. To change this, contact MarkX support.",
         "disconnected": "Telegram is disconnected. MarkX no longer sends you messages there."
       },
       "step1": "Tap “Open Telegram”.",

@@ -37,4 +37,10 @@ describe("Telegram sign-in (D-101)", () => {
       expect(am.auth.telegram[`refused_${reason}`]).toMatch(/[ሀ-፿]/);
     }
   });
+
+  it("tells someone refused for a number on another Telegram account to contact support (P-101-6, F-24)", () => {
+    // A recycled number: the account stays with the Telegram account it had.
+    expect(en.auth.telegram.refused_phone_on_other_telegram).toContain("contact MarkX support");
+    expect(am.auth.telegram.refused_phone_on_other_telegram).toContain("ድጋፍ");
+  });
 });

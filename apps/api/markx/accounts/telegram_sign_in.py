@@ -33,13 +33,21 @@ sign-in (`auth.new_sign_in`), as with SMS codes.
 P the number Telegram confirmed. One number is one account; one Telegram
 account is one account.
 
+"The account with T" is the account T belongs to (`users.bound_telegram_id`):
+the first Telegram account ever attached to it, remembered for ever, even
+after "Disconnect Telegram", which only stops messages.
+
 * An account already has both T and P: that account.
 * Neither exists: a new account with P and T.
-* An account has P but no Telegram yet (for example it was made by SMS, or
-  by staff for a new staff member): T is connected to it.
-* An account has P but a DIFFERENT Telegram account: refused. A number is
-  never moved from one Telegram account to another automatically, because
-  Ethiopian numbers are recycled; the person asks MarkX support (F-24).
+* An account has P and has never had any Telegram account (for example it
+  was made by SMS, by an invitation, or by staff for a new staff member): T
+  is connected to it, and it belongs to T from then on.
+* An account has P but belongs to a DIFFERENT Telegram account, connected or
+  disconnected: refused. A number is never moved from one Telegram account
+  to another automatically, because Ethiopian numbers are recycled; the
+  person asks MarkX support (F-24).
+* The account with T was disconnected from Telegram: signing in with T
+  connects it again (only T can).
 * The account with T has another number, and P belongs to nobody: the
   account's number becomes P (Telegram confirmed it), recorded in the audit
   log and told to the person in the app.
@@ -431,6 +439,24 @@ def _refuse(
     logger.info("telegram sign-in refused", extra={"outcome": failure.value})
 
 
+def _reconnect(db: DbSession, user: User, telegram_id: int, now: datetime) -> None:
+    """The account's own Telegram account signed in after "Disconnect
+    Telegram": connect it again, as signing in with it always did."""
+    assert user.bound_telegram_id in (None, telegram_id)
+    if user.telegram_id is not None:
+        return
+    user.telegram_id = telegram_id
+    user.bound_telegram_id = telegram_id
+    user.telegram_linked_at = now
+    user.telegram_unlinked_at = None
+    db.flush()
+    telegram_link._revoke_pending(db, user.id, now)
+    audit.record_by(
+        db, Actor(type="user", user_id=user.id), "telegram.linked", "user", user.id,
+        after={"method": "telegram_sign_in"},
+    )  # fmt: skip
+
+
 class _Changed(Exception):
     """The accounts involved changed between reading and locking them."""
 
@@ -444,7 +470,12 @@ def _lock_phone(db: DbSession, phone: str) -> None:
 
 
 def _ids(db: DbSession, telegram_id: int, phone: str) -> tuple[uuid.UUID | None, uuid.UUID | None]:
-    by_telegram = db.scalar(select(User.id).where(User.telegram_id == telegram_id))
+    # The account T belongs to, connected or disconnected (P-101-6).
+    by_telegram = db.scalar(
+        select(User.id).where(
+            (User.bound_telegram_id == telegram_id) | (User.telegram_id == telegram_id)
+        )
+    )
     by_phone = db.scalar(select(User.id).where(User.phone == phone))
     return by_telegram, by_phone
 
@@ -470,6 +501,9 @@ def _settle_account(
         if by_telegram.id != by_phone.id:
             return TelegramSignInFailure.PHONE_IN_USE
         user = by_telegram
+        if user.status != UserStatus.ACTIVE:
+            return TelegramSignInFailure.ACCOUNT_INACTIVE
+        _reconnect(db, user, telegram_id, now)
     elif by_telegram is not None:
         # The same Telegram account, a new number Telegram confirmed, and
         # nobody else has it: the account's number follows (P-101-6).
@@ -484,6 +518,7 @@ def _settle_account(
         except IntegrityError:
             db.refresh(user)
             return TelegramSignInFailure.PHONE_IN_USE
+        _reconnect(db, user, telegram_id, now)
         audit.record_by(
             db, Actor(type="user", user_id=user.id), "account.phone_changed", "user", user.id,
             before={"phone": mask_phone(before)},
@@ -495,11 +530,17 @@ def _settle_account(
         if user.telegram_id is not None and user.telegram_id != telegram_id:
             # Never moved automatically (P-101-6): numbers are recycled.
             return TelegramSignInFailure.PHONE_ON_OTHER_TELEGRAM
+        if user.bound_telegram_id is not None and user.bound_telegram_id != telegram_id:
+            # The same, after "Disconnect Telegram": the account still belongs
+            # to the Telegram account it had. A stranger given the old number
+            # never takes it over (P-101-6); support decides (F-24).
+            return TelegramSignInFailure.PHONE_ON_OTHER_TELEGRAM
         if user.status != UserStatus.ACTIVE:
             return TelegramSignInFailure.ACCOUNT_INACTIVE
         try:
             with db.begin_nested():
                 user.telegram_id = telegram_id
+                user.bound_telegram_id = telegram_id
                 user.telegram_linked_at = now
                 user.telegram_unlinked_at = None
                 db.flush()
@@ -517,6 +558,7 @@ def _settle_account(
             phone=phone,
             language=row.language,
             telegram_id=telegram_id,
+            bound_telegram_id=telegram_id,
             telegram_linked_at=now,
         )
         try:

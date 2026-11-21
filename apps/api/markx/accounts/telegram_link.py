@@ -25,7 +25,11 @@ Rules, each enforced here and backed by the database:
 * Completing re-checks the account (still active) and the sign-in session
   that asked (not signed out, not expired).
 * One Telegram account per MarkX account and one MarkX account per Telegram
-  account (`users.telegram_id` is unique). Every link to one Telegram
+  account (`users.telegram_id` is unique). The first Telegram account
+  attached is remembered for ever (`users.bound_telegram_id`, unique, never
+  changed or cleared: D-101, P-101-6); disconnecting clears only
+  `telegram_id`. An account can be connected again only to that Telegram
+  account, and a remembered Telegram account only to its own account. Every link to one Telegram
   account takes the same advisory lock, so two at once cannot both pass.
 * A refused link says the same thing whatever the reason, so nobody learns
   whether a Telegram account is linked elsewhere.
@@ -309,7 +313,12 @@ def start_link(db: DbSession, user: User, session: Session, actor: Actor) -> Con
 
 def disconnect(db: DbSession, user: User, actor: Actor) -> Connection:
     """Disconnect Telegram and cancel any link not used yet. Always allowed:
-    it only ever removes access. Signing in to MarkX never depended on it."""
+    it only ever removes access. Signing in to MarkX never depended on it.
+
+    It stops messages only: `bound_telegram_id`, the Telegram account the
+    account belongs to, is kept (D-101, P-101-6), so a stranger who is later
+    given the same phone number cannot sign in to this account with their
+    own Telegram account."""
     user = _lock_user(db, user.id)
     now = _now()
     _revoke_pending(db, user.id, now)
@@ -334,12 +343,24 @@ def _attach(
     if user.telegram_id is not None:
         # The same Telegram account again changes nothing.
         return None if user.telegram_id == telegram_id else TelegramLinkFailure.ALREADY_CONNECTED
-    owner = db.scalar(select(User.id).where(User.telegram_id == telegram_id))
+    if user.bound_telegram_id is not None and user.bound_telegram_id != telegram_id:
+        # The account belongs to another Telegram account, remembered even
+        # after "Disconnect Telegram" (D-101, P-101-6). It is never moved to
+        # a different one automatically; support decides (F-24).
+        return TelegramLinkFailure.ALREADY_CONNECTED
+    owner = db.scalar(
+        select(User.id).where(
+            (User.telegram_id == telegram_id) | (User.bound_telegram_id == telegram_id),
+            User.id != user.id,
+        )
+    )
     if owner is not None:
+        # Connected to, or remembered by, another MarkX account.
         return TelegramLinkFailure.TELEGRAM_IN_USE
     try:
         with db.begin_nested():
             user.telegram_id = telegram_id
+            user.bound_telegram_id = telegram_id
             user.telegram_linked_at = now
             user.telegram_unlinked_at = None
             db.flush()
