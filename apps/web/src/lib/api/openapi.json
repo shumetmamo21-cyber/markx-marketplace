@@ -7902,6 +7902,34 @@
         "title": "ShipmentOut",
         "type": "object"
       },
+      "SignInMethodsOut": {
+        "additionalProperties": false,
+        "description": "Which ways of signing in this server offers (D-101, decision SI-1).",
+        "properties": {
+          "sms": {
+            "description": "Signing in with an SMS code is switched on (a backup).",
+            "title": "Sms",
+            "type": "boolean"
+          },
+          "staff_phone_password": {
+            "description": "Staff may sign in with phone, password and code without Telegram. False while SMS is switched off: staff sign in with Telegram, then add their step.",
+            "title": "Staff Phone Password",
+            "type": "boolean"
+          },
+          "telegram": {
+            "description": "Signing in with Telegram is set up and switched on.",
+            "title": "Telegram",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "telegram",
+          "sms",
+          "staff_phone_password"
+        ],
+        "title": "SignInMethodsOut",
+        "type": "object"
+      },
       "SpecOut": {
         "additionalProperties": false,
         "properties": {
@@ -8452,6 +8480,29 @@
         "title": "StaffSignInIn",
         "type": "object"
       },
+      "StaffStepUpIn": {
+        "additionalProperties": false,
+        "description": "The staff step on top of a Telegram sign-in (D-101): no phone number,\nwhich comes from the signed-in account.",
+        "properties": {
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "totp_code": {
+            "pattern": "^[0-9]{6}$",
+            "title": "Totp Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "totp_code"
+        ],
+        "title": "StaffStepUpIn",
+        "type": "object"
+      },
       "StatusEventOut": {
         "additionalProperties": false,
         "properties": {
@@ -8896,6 +8947,110 @@
           "init_data"
         ],
         "title": "TelegramSignInIn",
+        "type": "object"
+      },
+      "TelegramWebSignInIn": {
+        "additionalProperties": false,
+        "properties": {
+          "language": {
+            "default": "am",
+            "pattern": "^(am|en)$",
+            "title": "Language",
+            "type": "string"
+          }
+        },
+        "title": "TelegramWebSignInIn",
+        "type": "object"
+      },
+      "TelegramWebSignInOut": {
+        "additionalProperties": false,
+        "description": "A new website sign-in with Telegram (D-101). The browser's private\nsecret travels in an HttpOnly cookie, never in this body.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "link": {
+            "description": "The one-time t.me link to open in Telegram.",
+            "title": "Link",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link",
+          "expires_at"
+        ],
+        "title": "TelegramWebSignInOut",
+        "type": "object"
+      },
+      "TelegramWebSignInStateOut": {
+        "additionalProperties": false,
+        "description": "Where this browser's Telegram sign-in stands (D-101).",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "is_new_account": {
+            "default": false,
+            "title": "Is New Account",
+            "type": "boolean"
+          },
+          "me": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The signed-in account, once signed in."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "phone_not_ethiopian",
+                  "phone_on_other_telegram",
+                  "phone_in_use",
+                  "account_inactive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was refused, in the person's own terms.",
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "none",
+              "waiting",
+              "waiting_for_phone",
+              "signed_in",
+              "expired",
+              "refused"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "TelegramWebSignInStateOut",
         "type": "object"
       },
       "TrackingEventOut": {
@@ -13240,6 +13395,28 @@
         ]
       }
     },
+    "/api/v1/auth/methods": {
+      "get": {
+        "description": "The ways of signing in this server offers (D-101, decision SI-1).",
+        "operationId": "sign_in_methods_api_v1_auth_methods_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInMethodsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sign In Methods",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/otp/request": {
       "post": {
         "operationId": "request_otp_api_v1_auth_otp_request_post",
@@ -13405,6 +13582,48 @@
         ]
       }
     },
+    "/api/v1/auth/staff/step-up": {
+      "post": {
+        "description": "The staff step on top of a Telegram sign-in (D-101): the password and\nthe authenticator code. The signed-in session becomes a staff session.",
+        "operationId": "staff_step_up_api_v1_auth_staff_step_up_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffStepUpIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Staff Step Up",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/telegram": {
       "post": {
         "operationId": "telegram_sign_in_api_v1_auth_telegram_post",
@@ -13441,6 +13660,70 @@
           }
         },
         "summary": "Telegram Sign In",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/telegram/sign-in": {
+      "post": {
+        "description": "Start signing in with Telegram on the website (D-101): a one-time link\nto MarkX's bot, and a private secret for this browser in a cookie. An\nearlier sign-in this browser had not finished stops working.",
+        "operationId": "start_telegram_sign_in_api_v1_auth_telegram_sign_in_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramWebSignInIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramWebSignInOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Telegram Sign In",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/telegram/sign-in/check": {
+      "post": {
+        "description": "Where this browser's Telegram sign-in stands. Once Telegram confirmed\nthe person and their phone number, this answer signs the browser in,\nexactly once (D-101).",
+        "operationId": "check_telegram_sign_in_api_v1_auth_telegram_sign_in_check_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramWebSignInStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check Telegram Sign In",
         "tags": [
           "auth"
         ]
