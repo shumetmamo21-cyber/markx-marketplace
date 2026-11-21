@@ -62,6 +62,7 @@ from markx.orders import service as orders
 from markx.orders.models import Order, OrderItem, SellerOrder, SellerOrderStatus
 from markx.sellers.models import Seller, SellerMember, SellerStatus
 from markx.telegram_bot import keyboards as kb
+from markx.telegram_bot import products
 from markx.telegram_bot.texts import DECLINE_REASONS, error_text, say
 
 logger = logging.getLogger("markx.telegram_bot")
@@ -287,9 +288,10 @@ class _OrderView:
     code: str
     items: int
     collection: bool
+    products: str  # the product names (F-26, D-104); "" if none
 
 
-def _views(db: Session, seller_orders: list[SellerOrder]) -> list[_OrderView]:
+def _views(db: Session, seller_orders: list[SellerOrder], language: str | None) -> list[_OrderView]:
     ids = [s.id for s in seller_orders]
     if not ids:
         return []
@@ -312,12 +314,14 @@ def _views(db: Session, seller_orders: list[SellerOrder]) -> list[_OrderView]:
             select(Shipment.seller_order_id, Shipment.mode).where(Shipment.seller_order_id.in_(ids))
         ).all()
     )
+    names = products.for_seller_orders(db, ids, language)
     return [
         _OrderView(
             seller_order=s,
             code=codes[s.id],
             items=int(items.get(s.id) or 0),
             collection=modes.get(s.id) == DeliveryMode.SHOP_COLLECTION,
+            products=names.get(s.id, ""),
         )
         for s in seller_orders
     ]
@@ -335,9 +339,12 @@ def _state(view: _OrderView, language: str, now: datetime) -> str:
 
 
 def _line(view: _OrderView, language: str, now: datetime) -> str:
-    return say(
+    line = say(
         "order_line", language, code=view.code, state=_state(view, language, now), items=view.items
     )
+    if view.products:
+        line += "\n" + say("order_products", language, products=view.products)
+    return line
 
 
 def _next_steps(view: _OrderView, language: str, now: datetime) -> list[list[dict[str, str]]]:
@@ -360,7 +367,7 @@ def _card(
     db: Session, press: Press, seller_order: SellerOrder, headline: str | None = None
 ) -> dict[str, Any]:
     language, now = press.language, _now()
-    (view,) = _views(db, [seller_order])
+    (view,) = _views(db, [seller_order], language)
     lines = [headline] if headline else []
     lines.append(_line(view, language, now))
     status = seller_order.status
@@ -395,7 +402,7 @@ def _inbox(db: Session, press: Press) -> dict[str, Any]:
     )
     if not waiting:
         return _reply(press, say("inbox_empty", language))
-    shown = _views(db, waiting[:INBOX_LIMIT])
+    shown = _views(db, waiting[:INBOX_LIMIT], language)
     lines = [say("inbox_title", language)] + ["• " + _line(v, language, now) for v in shown]
     if len(waiting) > INBOX_LIMIT:
         total = db.scalar(select(func.count()).select_from(query.subquery())) or 0

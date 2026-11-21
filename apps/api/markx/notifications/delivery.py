@@ -80,7 +80,7 @@ from markx.notifications.push import (
 )
 from markx.orders.models import SellerOrder
 from markx.sellers.models import Seller, SellerMember, SellerStatus
-from markx.telegram_bot import keyboards
+from markx.telegram_bot import keyboards, products
 
 logger = logging.getLogger("markx.notifications.delivery")
 
@@ -296,6 +296,23 @@ def recipient_may_receive(db: Session, notification: Notification, user: User) -
 # -- Telegram ----------------------------------------------------------------------------
 
 
+def _product_names(db: Session, notification: Notification, user: User) -> str:
+    """The product names for a store's order message (F-26), else "". Only a
+    message about one seller order of one store, to someone
+    `recipient_may_receive` already let through for that order."""
+    params: dict[str, Any] = notification.params or {}
+    if not notification.template.startswith("order.") or not (
+        "seller_id" in params and "seller_order_id" in params
+    ):
+        return ""
+    try:
+        seller_id = uuid.UUID(str(params["seller_id"]))
+        seller_order_id = uuid.UUID(str(params["seller_order_id"]))
+    except ValueError:
+        return ""
+    return products.for_notification(db, seller_id, seller_order_id, user.language)
+
+
 def _telegram(
     db: Session, row: Outbox, notification: Notification, user: User, senders: Senders
 ) -> None:
@@ -340,11 +357,18 @@ def _telegram(
         notification, channel, status=DeliveryStatus.SENDING, reason=resumed,
         provider=provider, new_attempt=True,
     )  # fmt: skip
+    params = dict(notification.params)
+    names = _product_names(db, notification, user)
+    if names:
+        # F-26 (D-104): the store's own order messages name the products. Read
+        # now, for the person it goes to (checked above), in their language;
+        # never stored with the notification and never in an SMS.
+        params[texts.PRODUCTS_PARAM] = names
     try:
         result = sender.send(
             telegram_id=user.telegram_id,
             template=notification.template,
-            params=dict(notification.params),
+            params=params,
             language=user.language,
             idempotency_key=str(row.id),
             # Accept and Decline under a new order, a link to the order page
