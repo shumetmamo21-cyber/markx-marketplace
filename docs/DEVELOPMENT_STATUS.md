@@ -1689,6 +1689,50 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Sign-in with Telegram, SMS off, M2, M3, M4** (D-101), on 21 November
+2026, branch `claude/telegram-signin-audit-fixes-q318w6`, from `main` at
+`b79caab` with the complete history (`git fetch --unshallow`; `git
+rev-parse --is-shallow-repository` prints `false`). PostgreSQL 17.12 and
+MinIO in containers, with the CI job's settings (MinIO and the backup tools
+required, least-privilege MinIO users, `postgres:17.12` client tools).
+
+```text
+uv run pytest -q -p no:cacheprovider                     ->  1997 passed, 0 skipped, in 18 min 18 s (1905 on main; 92 new)
+the 92 new tests (3 files)                               ->  32 + 37 + 23 passed
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  250 files already formatted
+uv run mypy markx                                        ->  no issues found in 148 source files
+uv run alembic upgrade head && uv run alembic check      ->  0019 -> 0020; no new upgrade operations detected
+check_openapi_copy --exact openapi.json; web copy        ->  both match the API exactly
+apps/web: npm run lint; npm run typecheck                ->  passed; passed
+apps/web: npm test                                       ->  145 passed (142 before; 3 new)
+apps/web: npm run build; gen:api diff                    ->  passed; no change
+
+# The new tests against the old code (a worktree of b79caab with only the new test files)
+test_telegram_sign_in.py                                 ->  cannot even import: the feature does not exist (32 fail)
+test_sign_in_abuse.py (new-only import made optional)    ->  25 failed, 3 errors, 9 passed (the 9 guards)
+test_buyer_limit_contention.py                           ->  23 passed (the protection existed; see D-101 §7)
+# The same item 7 tests with the code broken on purpose
+unit-limit check removed                                 ->  per-shop race fails 5 of 5 rounds, per-offer 2 of 5
+expired orders counted                                   ->  all 3 expiry tests fail
+cart lock removed (only)                                 ->  still pass: the shop and offer locks serialise them
+
+# Browser journeys on a fresh demo database (API with uvicorn, web with next start)
+telegram-sign-in (new; API with SMS off, test-only bot)  ->  passed: Telegram sign-in, order placed, refusals en + am,
+                                                             staff page Telegram first, axe: no violations
+buyer-journey, staff-journey, sign-in-cooldown,
+telegram-connection off (API as by default)              ->  all passed, "console errors: none"
+```
+
+The new journey's first run failed on the accessibility check (white text
+on Telegram's light blue: too little contrast); the button is now a darker
+blue and passes. Its second run failed on the engineer's own script (it
+looked for an "Add a new address" button, but a new person's checkout
+shows the address form at once); fixed in the journey. A first full API run
+had 3 failures in `test_openapi_copy.py`, because a route description was
+edited while the suite was running; the files and the code agree, and the
+clean run above passed. Not run locally: the other journeys (they run on
+GitHub in the pull request), the production stack rehearsal.
+
 **Frontend resilience** (D-100), on 20 November 2026, branch
 `claude/frontend-resilience-errors-g4z33c`, from `main` at `fae2514` with
 the complete history (`git fetch --unshallow`; not shallow). PostgreSQL
