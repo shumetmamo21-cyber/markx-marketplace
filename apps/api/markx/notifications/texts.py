@@ -4,8 +4,9 @@ A notification is stored as a template name and parameters. The web app has
 its own words for every template (`apps/web/messages/*.json`); a message that
 leaves the server needs words here, in both languages.
 
-The rule that matters: **the only parameter an outside text may carry is the
-order code.** Never a buyer's or seller's name, phone number, address,
+The rule that matters: **the only parameter an SMS may carry is the order
+code.** (Telegram: also the weekly message's figures, and on a store's own
+order messages the product names, F-26; see `render_telegram`.) Never a buyer's or seller's name, phone number, address,
 handover code, price or product: an SMS sits unencrypted on a phone and at
 the provider, and a Telegram message on Telegram's servers. The person opens
 MarkX, signed in, to see the rest. `render` refuses any other placeholder,
@@ -241,10 +242,26 @@ def render(template: str, params: Mapping[str, Any], language: str) -> str:
     return words
 
 
+# F-26 (decided by the founder; D-104): a seller order message in Telegram
+# names the products ordered, on a line of its own under the words. Only for
+# the store's own messages (`notifications.delivery` adds `product_names`
+# only for a store's member allowed to handle that order), only the names
+# `telegram_bot.products` makes (one short line of plain text), and never in
+# an SMS: `render` above takes the order code alone.
+PRODUCTS_PARAM = "product_names"
+PRODUCTS_LINE: dict[str, str] = {
+    "en": "Products: {products}",
+    "am": "ምርቶች፦ {products}",
+}
+MAX_PRODUCTS_TEXT = 200
+_NOT_ONE_PLAIN_LINE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+
+
 def render_telegram(template: str, params: Mapping[str, Any], language: str) -> str:
     """The Telegram text for one notification (D-102): Telegram's own words
     where they exist, else the SMS words, else the generic line. Only the
-    order code, the week and whole-number counts are ever filled in."""
+    order code, the week and whole-number counts are ever filled in; a store's
+    order message also gets its product names on a line of their own (F-26)."""
     lang = "en" if language == "en" else "am"
     words = (TELEGRAM_TEXTS.get(template) or ORDER_TEXTS.get(template) or GENERIC_TEXT)[lang]
     used = placeholders(words)
@@ -265,4 +282,19 @@ def render_telegram(template: str, params: Mapping[str, Any], language: str) -> 
                 raise UnsafeText(f"text for {template!r} needs a whole number for {name!r}")
             filled = str(value)
         words = words.replace("{" + name + "}", filled)
+    names = params.get(PRODUCTS_PARAM)
+    if names is not None:
+        if not template.startswith("order.") or not params.get("seller_order_id"):
+            raise UnsafeText(
+                f"product names are only for a store's order messages, not {template!r}"
+            )
+        if (
+            not isinstance(names, str)
+            or not names.strip()
+            or len(names) > MAX_PRODUCTS_TEXT
+            or _NOT_ONE_PLAIN_LINE.search(names)
+        ):
+            raise UnsafeText(f"text for {template!r} needs one short line of product names")
+        # Filled last and alone, so nothing in a name is read as a placeholder.
+        words += "\n" + PRODUCTS_LINE[lang].replace("{products}", names)
     return words

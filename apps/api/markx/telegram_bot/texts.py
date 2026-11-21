@@ -2,12 +2,15 @@
 
 Every reply is in the person's language (Amharic unless they chose English).
 A reply names only what the person may already see in MarkX: an order's code,
-its state, how many items it has and how long is left to answer; for offers,
+its state, how many items it has, the names of the products ordered (F-26,
+decided by the founder; D-104) and how long is left to answer; for offers,
 the store's own public listing (product, price, stock). Never a buyer's name,
-phone number, address or handover code, and never what a buyer ordered.
+phone number, address or handover code, and never an order's prices.
 
 `{…}` fields are filled by `say` with values the bot made itself (codes,
-counts, minutes, offer references), never with text a person typed.
+counts, minutes, offer references) or with the store's own product names,
+made into one short line of plain text by `telegram_bot.products`; never
+with text a buyer typed.
 """
 
 from __future__ import annotations
@@ -58,6 +61,15 @@ TEXTS: dict[str, dict[str, str]] = {
     "order_line": {
         "en": "{code}: {state}, {items} item(s)",
         "am": "{code}፦ {state}፣ {items} ዕቃ",
+    },
+    # The products ordered (F-26, D-104), on the line under the order.
+    "order_products": {
+        "en": "   Products: {products}",
+        "am": "   ምርቶች፦ {products}",
+    },
+    "products_more": {
+        "en": "{names} and {more} more",
+        "am": "{names} እና ሌሎች {more}",
     },
     "minutes_left": {
         "en": "{minutes} min left to answer",

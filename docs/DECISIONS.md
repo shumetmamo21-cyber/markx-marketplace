@@ -4491,7 +4491,7 @@ messages leave only with a push provider configured (D-092). No migration.
 | P-102-3 | Orders in one inbox message | 10, the soonest deadline first, then "…and N more: open MarkX" | Fits a phone screen and Telegram's message limit |
 | P-102-4 | Listings shown by `/offers` | 20 | The same reason |
 | P-102-5 | Buyer's buttons | The "order placed" message opens the secure tracking link; the others the signed-in order page | The tracking link was made for exactly that message (D.14); a newer one is not issued per message |
-| P-102-6 | What the bot shows about an order | Code, state, items, minutes left; not the products, prices or buyer | The D-092 rule for anything that leaves the server; see F-26 |
+| P-102-6 | What the bot shows about an order | Code, state, items, minutes left; not the products, prices or buyer (**replaced by D-104:** the product names are shown, F-26) | The D-092 rule for anything that leaves the server; see F-26 |
 | P-102-7 | Weekly message in Telegram | Counts only: received, accepted, completed, prices to confirm; no money | Earnings are the store's own, but money figures stay inside MarkX until the founder says otherwise |
 | P-102-8 | Handover in the bot | Not offered: the code is entered on the website only; "On its way" from the bot records no rider name or number (the website can add them) | The handover code is never stored, logged or shown outside MarkX (D-044); Telegram keeps every message |
 | P-102-9 | A listing's reference | The last six characters of its id, for example `4F2A9C` | Random in a UUIDv7, so short and almost never alike; if two of one person's listings ever match, the bot says it found none and the website still works |
@@ -4798,6 +4798,135 @@ passes `--accept-newer-schema`.
   so an expiry alert reaches the log only (as every other alert today).
 - A visitor-facing maintenance page during a safe stop (the proxy answers
   502 or 504), zero-downtime deploys, log shipping: unchanged from the audit.
+
+## D-104 Three small fixes after pull request #11: product names in the seller bot (F-26), the review confirmation that vanished, a connected account always remembers its Telegram account
+
+21 November 2026. Branch `claude/markx-pr11-review-fixes-3uf2ts`, from
+`main` at `7093e6c` (pull request #11 merged after an independent review;
+see `docs/DEVELOPMENT_STATUS.md`). One migration (0022). Nothing deployed;
+no server, domain, account, bot, SMS or paid resource.
+
+### 1. F-26, decided by the founder: the seller bot names the products
+
+The founder chose option (b) without quantities: **product names only, never
+any buyer detail**, in English and Amharic, shortened sensibly when long.
+
+- **Where:** every Telegram message about one of the store's orders (the
+  new-order alert, the reminder before it expires, and the others: expired,
+  cancelled, problem reported, completed, ...), and the bot's `/orders`
+  inbox and an order's card. A line of its own under the words:
+  "Products: Samsung Galaxy A16" / "ምርቶች፦ ሳምሰንግ ጋላክሲ A16".
+- **What:** the names the order line copied when the buyer ordered
+  (`order_items.title_en`, `title_am`; never live catalogue text), in the
+  reader's language, the other language if that one is empty. No quantity,
+  price, variant, buyer name, phone number, address or handover code.
+- **Shortened** (`markx/telegram_bot/products.py`, one rule for every
+  message): control characters and line breaks become spaces, so a name is
+  one line of plain text (Telegram is sent no formatting mode); each name at
+  most 40 characters, cut at a word near the end, with "…"; the same product
+  twice is named once; at most three names, then "and N more" / "እና ሌሎች N".
+- **Only to whom it may go:** the names are read when the message is sent,
+  and only for a person `recipient_may_receive` already let through (an
+  active member who handles that store's orders, of a store that is not
+  closed, about one of that store's orders). They are never stored with the
+  notification and never go into an SMS (`render` still takes the order
+  code alone). `render_telegram` takes them only on a store's order message
+  (an `order.` template with a seller order), only as one plain line of at
+  most 200 characters, and fills them in last and alone, so a name that
+  looks like `{code}` stays text.
+- **Changed from D-102:** P-102-6 ("not the products") is replaced by this.
+  The test comment that said "no product" now says "the order code and the
+  product names"; its assertions (no buyer name, no price) are unchanged.
+
+### 2. "Your review is saved" vanished: a website bug, not a slow test
+
+The browser journey "Reviews, reports, pictures and problem evidence"
+failed now and then (four times so far, by the founder's count), waiting
+30 seconds for "Your review is saved". Checked for this record: 18 November
+locally (`docs/DEVELOPMENT_STATUS.md`), Browser journeys #44 first attempt
+(the pull request #10 review's report) and #46 first attempt (its log: step
+4, the order page, right after the order was completed). Which run the
+fourth was: UNKNOWN (not checked).
+
+**The cause**, seen in the browser with a probe on the old site: after
+"Send review" the form showed the message and asked for a page refresh.
+The refreshed order page no longer offers the item just rated, so the
+item's form was removed, and the message with it. The message appeared
+and was removed about 75 milliseconds later, for good. The journey passed
+only when its check happened to fall inside that moment; a real buyer
+mostly never saw the confirmation at all. The same happened on "Your
+reviews" for an item rated from its list.
+
+**The fix (the website):** a small holder, `ReviewNotices`, around each
+list of items to rate (the order page, and the list on "Your reviews").
+The form gives it the message; the holder sits outside the items, so the
+refresh that removes the rated item leaves it, and the message, in place.
+A form without a holder (changing a review, which stays on the page) shows
+the message itself, as before. No timeout was lengthened, no retry or skip
+added.
+
+**The proof:** the journey now also waits until the rated item has gone
+and requires the confirmation to be still there. On the old site that check
+failed 3 runs out of 3; on the fixed site the journey, run on its own, passed **20 times out of
+20 in a row** (36 to 43 seconds each, each on a fresh demo database
+prepared as the journeys workflow does).
+
+### 3. The database refuses a connected account with no remembered Telegram account
+
+Found in the pull request #9 review. Migration 0021's rule, `telegram_id is
+null or telegram_id = bound_telegram_id`, let one state through:
+`telegram_id` set and `bound_telegram_id` empty, because comparing with an
+empty value is "unknown" in SQL, not "false", and a check constraint only
+refuses "false". No part of the program creates that state. Migration 0022
+states the rule in full: `telegram_id is null or (bound_telegram_id is not
+null and telegram_id = bound_telegram_id)`, under the same name. An
+existing row in that state (none is expected; nothing is deployed) is bound
+to the Telegram account it is connected to first, as migration 0021 did; if
+another account is already bound to it, the migration stops with an error
+rather than guess.
+
+Two test helpers (`tests/api/test_notification_delivery.py`,
+`tests/worker/test_worker.py`) set `telegram_id` alone, which is that very
+state; they now also set the remembered account, as every way of
+connecting does. No assertion changed.
+
+### PROVISIONAL values
+
+| # | What | Value | Why |
+| --- | --- | --- | --- |
+| P-104-1 | The longest product name a Telegram message shows | 40 characters, cut at a word, then "…" | About one line of a phone screen |
+| P-104-2 | Product names shown for one order | 3, then "and N more" | Most orders have one or two lines; the inbox shows up to 10 orders in one message |
+
+**The engineer's guesses; the founder must confirm or change them before
+MarkX goes live.**
+
+### What changed in the code
+
+- `apps/api/markx/telegram_bot/products.py` (new): the names of an order,
+  cleaned and shortened.
+- `apps/api/markx/telegram_bot/service.py`, `texts.py`: the inbox and the
+  order card show the names.
+- `apps/api/markx/notifications/delivery.py`, `texts.py`: the store's order
+  messages get the names, at sending time, for an allowed recipient only.
+- `apps/api/migrations/versions/20261121_1800_telegram_needs_its_bound_account.py`
+  (0022) and `markx/accounts/models.py`: the rule in full.
+- `apps/web/src/components/ReviewForm.tsx` (`ReviewNotices`), the order
+  page and "Your reviews"; `apps/web/e2e/shop-screens.mjs`: the new check.
+
+### Tests
+
+- F-26: seven new tests in `tests/api/test_telegram_bot.py` (section 7b);
+  all seven fail on the old code (the alert and the inbox carried no
+  names; the rest need the new rule). One of them checks that a full inbox
+  (10 orders) with the longest names still fits Telegram's 4096
+  characters.
+- The review confirmation: the new journey check (above).
+- The database rule: three new tests in
+  `tests/api/test_telegram_recycled_number.py`; the two that try the
+  forbidden state (for the API's role and the migrations' role) fail on the
+  old rule ("did not raise").
+- Full results: `docs/DEVELOPMENT_STATUS.md`, "Tests executed", 21 November
+  2026 (D-104).
 
 ## Decisions that need the founder
 
@@ -5265,6 +5394,9 @@ deciding, but product pages are shared by every seller."
   store's own public listings, and a seller who cannot see them will open
   the website for every order anyway.
 - **Founder's approval required: yes** (what leaves MarkX).
+- **Decided (21 November 2026):** the founder chose product names only,
+  never any buyer detail, in both languages, shortened when long. Built in
+  D-104 section 1.
 
 ## Open questions carried over from session 1
 

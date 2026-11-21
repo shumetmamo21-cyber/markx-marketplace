@@ -64,7 +64,11 @@ class User(UUIDPrimaryKey, Timestamps, Base):
             name="telegram_linked_at_with_telegram_id",
         ),
         CheckConstraint(
-            "telegram_id is null or telegram_id = bound_telegram_id",
+            # In full (D-104, migration 0022): `x = null` is not false, so
+            # "telegram_id = bound_telegram_id" alone let a connected account
+            # with no remembered Telegram account through.
+            "telegram_id is null or "
+            "(bound_telegram_id is not null and telegram_id = bound_telegram_id)",
             name="telegram_id_is_the_bound_one",
         ),
     )

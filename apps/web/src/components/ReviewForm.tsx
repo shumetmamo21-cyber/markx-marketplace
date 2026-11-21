@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { createContext, useContext, useId, useState, type ReactNode } from "react";
 
 import { browserApi, errorCode } from "@/lib/api/browser";
 import { apiErrorText, fill, type Messages } from "@/lib/i18n";
@@ -33,11 +33,29 @@ function StarChoice({ name, legend, initial, t }: { name: string; legend: string
   );
 }
 
+// Where "Your review is saved" is shown (D-104). Saving refreshes the page,
+// and an item just rated is no longer offered for rating, so its form (and a
+// message kept inside it) is removed by that refresh: the buyer saw the
+// confirmation for a moment or not at all. Around a list of items to rate,
+// this holder keeps the message itself, outside the items, so it stays.
+const SavedNotice = createContext<((text: string) => void) | null>(null);
+
+export function ReviewNotices({ children }: { children: ReactNode }) {
+  const [text, setText] = useState("");
+  return (
+    <SavedNotice.Provider value={setText}>
+      {children}
+      {text ? <p role="status" className="mt-3 font-semibold">{text}</p> : null}
+    </SavedNotice.Provider>
+  );
+}
+
 // Rating a purchase (blueprint C-18): the product and the shop, one to five,
 // and a few words if the buyer wants. Whether a review may be written or
 // changed is the API's decision (completed order, open window, no reply yet).
 export function ReviewForm({ target, t }: Props) {
   const router = useRouter();
+  const announce = useContext(SavedNotice);
   const id = useId();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string; code: string } | null>(null);
@@ -56,6 +74,7 @@ export function ReviewForm({ target, t }: Props) {
         };
         setBusy(true);
         setMessage(null);
+        announce?.("");
         const { error } =
           target.kind === "write"
             ? await browserApi.POST("/api/v1/me/orders/{order_id}/items/{item_id}/review", {
@@ -66,7 +85,10 @@ export function ReviewForm({ target, t }: Props) {
         setBusy(false);
         if (error) setMessage({ ok: false, text: apiErrorText(t, errorCode(error)), code: errorCode(error) });
         else {
-          setMessage({ ok: true, text: r.saved, code: "" });
+          // Inside a holder the message outlives this form; on its own (a
+          // review being changed, which stays on the page) the form shows it.
+          if (announce) announce(r.saved);
+          else setMessage({ ok: true, text: r.saved, code: "" });
           router.refresh();
         }
       }}

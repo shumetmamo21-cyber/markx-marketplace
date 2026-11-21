@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { ReviewForm } from "@/components/ReviewForm";
+import { ReviewForm, ReviewNotices } from "@/components/ReviewForm";
 import { Stars } from "@/components/Reviews";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime } from "@/lib/format";
@@ -36,20 +36,22 @@ export default async function MyReviewsPage({ params }: PageProps<"/[lang]/revie
       <section aria-labelledby="pending" className="space-y-3">
         <h1 id="pending" className="text-2xl font-extrabold">{r.pendingTitle}</h1>
         {waiting.length === 0 ? <p className="text-slate">{r.pendingNone}</p> : null}
-        <ul className="space-y-3">
-          {waiting.map((item) => (
-            <li key={item.order_item_id} className="space-y-3 rounded-card border border-line bg-white p-4">
-              <div>
-                <p className="font-bold">{item.title}{item.variant_label ? ` (${item.variant_label})` : ""}</p>
-                <p className="text-sm text-slate">
-                  <Link href={`/${lang}/orders/${item.order_id}`} className="underline">{fill(r.order, { code: item.order_code })}</Link>
-                  {" · "}{fill(r.rateBy, { date: formatDateTime(item.review_until, lang) })}
-                </p>
-              </div>
-              <ReviewForm target={{ kind: "write", orderId: item.order_id, itemId: item.order_item_id }} t={formText} />
-            </li>
-          ))}
-        </ul>
+        <ReviewNotices>
+          <ul className="space-y-3">
+            {waiting.map((item) => (
+              <li key={item.order_item_id} className="space-y-3 rounded-card border border-line bg-white p-4">
+                <div>
+                  <p className="font-bold">{item.title}{item.variant_label ? ` (${item.variant_label})` : ""}</p>
+                  <p className="text-sm text-slate">
+                    <Link href={`/${lang}/orders/${item.order_id}`} className="underline">{fill(r.order, { code: item.order_code })}</Link>
+                    {" · "}{fill(r.rateBy, { date: formatDateTime(item.review_until, lang) })}
+                  </p>
+                </div>
+                <ReviewForm target={{ kind: "write", orderId: item.order_id, itemId: item.order_item_id }} t={formText} />
+              </li>
+            ))}
+          </ul>
+        </ReviewNotices>
       </section>
 
       <section aria-labelledby="mine" className="space-y-3">

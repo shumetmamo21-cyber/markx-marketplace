@@ -20,7 +20,9 @@ Telegram for orders (D-102), and Part A.00000000000000000 the same day by
 the session that reviewed and merged pull request #10 and made the
 deployment ready for a server (D-103), and Part A.000000000000000000 the
 same day by the session that fixed the defect the independent review of
-pull request #11 found (D-103 section 5).
+pull request #11 found (D-103 section 5), and Part A.0000000000000000000
+the same day by the session that reviewed and merged pull request #11 and
+made three small fixes (D-104).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -29,6 +31,51 @@ pull request #11 found (D-103 section 5).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000000000000000000 — Pull request #11 merged; three small fixes (21 November 2026, D-104)
+
+**Pull request #11 (server readiness with its rollback fix) was reviewed
+independently and merged** into `main` as `7093e6c`, after its full test
+suite (2061 passed, 0 skipped) and every GitHub check passed, including the
+production rehearsal (124 passed, 0 failed). Nothing in it had to be fixed
+first. Main stayed green after the merge (CI #175, Browser journeys #51).
+
+Then three small fixes, in one pull request, **#12**. **One database
+change (migration 0022). Nothing deployed; no server, domain, account,
+bot, SMS or paid resource.**
+
+1. **Your decision F-26, built.** In Telegram, the shop now sees which
+   products were ordered: in the new-order message, the reminder, every
+   other message about one of its orders, and the `/orders` list. Product
+   names only, never the buyer's name, phone, address or code, and no
+   prices. In English or Amharic, as the person chose. A long name is
+   shortened to 40 characters; after three products it says "and 2 more".
+   SMS is unchanged (order code only).
+2. **The browser test that failed now and then was a real website bug.**
+   After a buyer saved a review on the order page, "Thank you. Your review
+   is saved." appeared and disappeared again about a tenth of a second
+   later, because the page refreshed and removed the rated item together
+   with its message. Most buyers never saw the confirmation. The message
+   now stays. Proof: the journey now checks that it stays; on the old
+   website that check failed 3 times out of 3; on the fixed one the
+   journey passed **20 times out of 20 in a row**.
+3. **A gap in a database rule is closed.** The database must never hold an
+   account that is connected to Telegram but has no remembered Telegram
+   account. The old rule let that through (a quirk of how databases
+   compare empty values). Nothing made it happen; now it cannot.
+
+**What needs you:** two new PROVISIONAL values to confirm before launch:
+the longest product name shown (40 characters) and how many products are
+named per order (3). Both in `docs/DECISIONS.md`, D-104.
+
+**For the next engineer:** `telegram_bot/products.py` is the one rule for
+product names in Telegram; `notifications.delivery` adds them at sending
+time for an allowed recipient only, never stored with the notification.
+On the web, a message about something the refresh removes must live
+outside it (`ReviewNotices`). Running a browser journey many times needs a
+fresh demo database per run (a buyer's fourth review of one shop is held).
 
 ---
 
@@ -155,7 +202,7 @@ words, once the founder's bot exists and is switched on:
   bot can never do what the website would refuse.
 
 **What needs you:** confirm or change P-102-1 to P-102-9 and answer F-26
-(`docs/DECISIONS.md`, D-102); when the bot exists, follow
+(`docs/DECISIONS.md`, D-102; F-26 since answered and built, D-104); when the bot exists, follow
 `docs/runbooks/telegram-linking.md`, steps 5 and 9 (the webhook must
 receive `callback_query`, or every button does nothing).
 

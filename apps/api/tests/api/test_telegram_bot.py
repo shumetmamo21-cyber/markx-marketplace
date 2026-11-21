@@ -30,7 +30,7 @@ from markx.orders import service as orders
 from markx.orders.models import Order, SellerOrder
 from markx.performance import service as performance
 from markx.sellers.models import Seller, SellerMember
-from markx.telegram_bot import keyboards, texts
+from markx.telegram_bot import keyboards, products, texts
 from markx.telegram_bot.service import offer_ref
 from markx.worker.runner import run_once
 from tests import telegram_play as tg
@@ -197,7 +197,7 @@ def test_a_new_order_reaches_the_shop_in_telegram_with_accept_and_decline(
     hex_id = seller_order.id.hex
     assert _buttons(alert["reply_markup"])[:3] == [f"a:{hex_id}", f"d:{hex_id}", "inbox"]
     assert alert["text"].startswith(f"MarkX: new order {order['code']}. Tap Accept or Decline")
-    # Only the order code: no buyer, product, price or address.
+    # The order code and the product names (F-26): no buyer, price or address.
     assert "Abebe" not in alert["text"]
     assert "birr" not in alert["text"].lower()
 
@@ -614,6 +614,195 @@ def test_the_weekly_message_is_not_sent_to_someone_who_left_the_store(
         .where(Notification.user_id == gone.id, NotificationDelivery.channel == "telegram")
     )
     assert reason == "recipient_not_authorized"
+
+
+# -- 7b. what was ordered (F-26, decided by the founder; D-104) -------------------------------
+
+PRODUCT_EN = "Samsung Galaxy A16"
+PRODUCT_AM = "ሳምሰንግ ጋላክሲ A16"
+
+
+def _buyer_details(db: Session, order: dict[str, Any]) -> list[str]:
+    """Everything about the buyer a message must never carry."""
+    db.rollback()
+    placed = db.get(Order, uuid.UUID(order["id"]))
+    assert placed is not None
+    buyer = db.get(User, placed.buyer_user_id)
+    assert buyer is not None
+    details = [buyer.phone, buyer.phone[4:], "0" + buyer.phone[4:]]
+    details += [
+        str(v) for v in placed.address_snapshot.values() if isinstance(v, str) and len(v) > 3
+    ]
+    details += [
+        p["handover_code"] for p in order.get("seller_orders", []) if p.get("handover_code")
+    ]
+    if buyer.name:
+        details.append(buyer.name)
+    return [d for d in details if d]
+
+
+def test_the_new_order_alert_and_the_reminder_name_the_products_in_the_owners_language(
+    bazaar: Bazaar, db: Session
+) -> None:
+    _connect(db, A_PHONE, OWNER_TG, "en")
+    order = _order(bazaar)
+    seller_order = _seller_order(db, order)
+    _drain()
+    (alert,) = _pushed(OWNER_TG, "order.placed_for_seller")
+    assert alert["text"].endswith(f"\nProducts: {PRODUCT_EN}")
+    # Amharic for the reminder: the owner changed language in between.
+    _connect(db, A_PHONE, OWNER_TG, "am")
+    with session_scope() as session:
+        orders.remind_approaching_deadline(
+            session, now=seller_order.response_deadline - timedelta(minutes=5)
+        )
+    _drain()
+    (reminder,) = _pushed(OWNER_TG, "order.approaching_response_deadline")
+    assert reminder["text"].endswith(f"\nምርቶች፦ {PRODUCT_AM}")
+    for message in (alert, reminder):
+        for detail in _buyer_details(db, order):
+            assert detail not in message["text"], detail
+        assert "18,500" not in message["text"], "no price"
+        assert "18500" not in message["text"], "no price"
+    # Every other message about one of the store's orders names them too.
+    with session_scope() as session:
+        orders.expire_unanswered_orders(
+            session, now=seller_order.response_deadline + timedelta(minutes=1)
+        )
+    _drain()
+    (expired,) = _pushed(OWNER_TG, "order.expired_unanswered")
+    assert expired["text"].endswith(f"\nምርቶች፦ {PRODUCT_AM}")
+
+
+def test_the_product_names_are_never_stored_with_the_notification_or_sent_by_sms(
+    bazaar: Bazaar, db: Session
+) -> None:
+    _connect(db, A_PHONE, OWNER_TG, "en")
+    _order(bazaar)
+    _drain()
+    (alert,) = _pushed(OWNER_TG, "order.placed_for_seller")
+    assert PRODUCT_EN in alert["text"]
+    db.rollback()
+    for params in db.scalars(
+        select(Notification.params).where(Notification.template == "order.placed_for_seller")
+    ):
+        assert outside_texts.PRODUCTS_PARAM not in params
+        assert PRODUCT_EN not in str(params)
+    # SMS takes the order code alone, whatever it is given.
+    sms = outside_texts.render(
+        "order.placed_for_seller",
+        {**alert["params"], outside_texts.PRODUCTS_PARAM: PRODUCT_EN},
+        "en",
+    )
+    assert PRODUCT_EN not in sms
+
+
+def test_the_buyer_and_another_store_never_get_the_product_line(
+    bazaar: Bazaar, db: Session
+) -> None:
+    _connect(db, A_PHONE, OWNER_TG, "en")
+    _connect(db, B_PHONE, BETA_TG, "en")
+    order = _order(bazaar)
+    buyer_id = db.scalar(select(Order.buyer_user_id).where(Order.id == uuid.UUID(order["id"])))
+    buyer = db.get(User, buyer_id)
+    assert buyer is not None
+    buyer.telegram_id = buyer.bound_telegram_id = BUYER_TG
+    buyer.telegram_linked_at = datetime.now(UTC)
+    db.commit()
+    seller_order = _seller_order(db, order)
+    _press(OWNER_TG, f"a:{seller_order.id.hex}")
+    _drain()
+    assert _pushed(BUYER_TG), "the buyer was told in Telegram"
+    for line in _pushed(BUYER_TG):
+        assert outside_texts.PRODUCTS_PARAM not in line["params"]
+        assert "Products:" not in line["text"]
+    # Beta hears nothing about Alpha's order (its own approval message only).
+    assert not [line for line in _pushed(BETA_TG) if line["template"].startswith("order.")]
+    assert all(outside_texts.PRODUCTS_PARAM not in line["params"] for line in _pushed(BETA_TG))
+    assert PRODUCT_EN not in _say(BETA_TG, "/orders")["text"]
+
+
+def test_the_orders_inbox_and_an_orders_card_name_the_products(bazaar: Bazaar, db: Session) -> None:
+    _connect(db, A_PHONE, OWNER_TG, "en")
+    order = _order(bazaar)
+    seller_order = _seller_order(db, order)
+    inbox = _say(OWNER_TG, "/orders")["text"]
+    assert f"{order['code']}: waiting for your answer" in inbox
+    assert f"\n   Products: {PRODUCT_EN}" in inbox
+    card = _press(OWNER_TG, f"o:{seller_order.id.hex}")["text"]
+    assert f"Products: {PRODUCT_EN}" in card
+    for detail in _buyer_details(db, order):
+        assert detail not in inbox, detail
+        assert detail not in card, detail
+    _connect(db, A_PHONE, OWNER_TG, "am")
+    assert f"ምርቶች፦ {PRODUCT_AM}" in _say(OWNER_TG, "/orders")["text"]
+
+
+def test_long_and_many_product_names_are_shortened_sensibly() -> None:
+    long_name = "Samsung Galaxy A16 5G Dual SIM 128 GB Black with Original Charger"
+    short = products.shorten(long_name)
+    assert len(short) <= products.NAME_LIMIT
+    assert short.endswith("…")
+    assert short == "Samsung Galaxy A16 5G Dual SIM 128 GB…", "cut at a word near the end"
+    assert products.shorten("A" * 60) == "A" * 39 + "…", "one long word is cut at the limit"
+    assert products.describe(["Phone\nwith\ttabs  and\x00 nulls"], "en") == (
+        "Phone with tabs and nulls"
+    )
+    names = ["Phone A", "phone a", "Case B", "Charger C", "Cable D", "Screen E"]
+    assert products.describe(names, "en") == "Phone A, Case B, Charger C and 2 more"
+    assert products.describe(names, "am") == "Phone A፣ Case B፣ Charger C እና ሌሎች 2"
+    assert products.describe(["", "  "], "en") == ""
+    worst = products.describe([long_name * 3] * 2 + [str(n) * 80 for n in range(9)], "am")
+    assert len(worst) <= products.MAX_TEXT
+    assert outside_texts.render_telegram(
+        "order.placed_for_seller",
+        {"order_code": "MX-ACDEFG", "seller_order_id": "x", outside_texts.PRODUCTS_PARAM: worst},
+        "am",
+    ).endswith(worst)
+
+
+def test_a_full_inbox_with_the_longest_names_fits_one_telegram_message() -> None:
+    """Ten orders (P-102-3), each with the longest product line this rule can
+    make, in either language, stay under Telegram's 4096 characters."""
+    from markx.telegram_bot.service import INBOX_LIMIT
+
+    worst = products.describe(["W" * 90 + str(n) for n in range(50)], "am")
+    for language in ("en", "am"):
+        line = texts.say(
+            "order_line", language, code="MX-ACDEFG",
+            state=texts.say("state_ready_collection", language) + ", "
+            + texts.say("minutes_left", language, minutes=99_999),
+            items=999,
+        ) + "\n" + texts.say("order_products", language, products=worst)  # fmt: skip
+        inbox = "\n".join(
+            [texts.say("inbox_title", language)]
+            + ["• " + line] * INBOX_LIMIT
+            + [texts.say("inbox_more", language, more=999_999)]
+        )
+        assert len(inbox) < 4096, (language, len(inbox))
+
+
+def test_a_telegram_text_refuses_product_names_that_are_not_one_short_line() -> None:
+    seller = {"order_code": "MX-ACDEFG", "seller_order_id": "x"}
+    for bad in ("", "Phone\n+251911223344", "x" * 201, 7, ["Phone"]):
+        with pytest.raises(outside_texts.UnsafeText):
+            outside_texts.render_telegram(
+                "order.placed_for_seller", {**seller, outside_texts.PRODUCTS_PARAM: bad}, "en"
+            )
+    # Only a store's order message: never the buyer's, never the weekly one.
+    for template, params in (
+        ("order.placed", {"order_code": "MX-ACDEFG"}),
+        ("seller.weekly_report", {"week_start": "2026-11-16"}),
+    ):
+        with pytest.raises(outside_texts.UnsafeText):
+            outside_texts.render_telegram(
+                template, {**params, outside_texts.PRODUCTS_PARAM: "Phone"}, "en"
+            )
+    # A name that looks like a placeholder stays text.
+    words = outside_texts.render_telegram(
+        "order.placed_for_seller", {**seller, outside_texts.PRODUCTS_PARAM: "{code} {week}"}, "en"
+    )
+    assert words.endswith("Products: {code} {week}")
 
 
 # -- 8. every word in both languages, and nothing personal ----------------------------------

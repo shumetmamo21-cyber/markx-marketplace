@@ -1,17 +1,69 @@
 # Development status
 
-**Last updated:** 21 November 2026, by the **server readiness session**
-(D-103) on branch `claude/pr10-review-server-readiness-y7novo` (pull
-request open into `main`, **not merged**: an independent review follows),
-from `main` at `9b3658f` with the complete history. That session first
-reviewed pull request #10 independently and merged it (below). Before it,
-pull request #9 (D-101) was merged into `main` as `fe4546f`; the frontend
-resilience session (D-100, pull request #8) as `b79caab`; the order
-life-cycle hardening session (D-099, pull request #7) as `fae2514`; the
-staff conflict and phone digits session (D-098, pull request #6) as
-`c70b338`; the checks and secret-scan session (D-097, pull request #5) as
-`d01fef7`, and the backup trust hardening session (D-096, pull request #4)
-as `773bbb6`.
+**Last updated:** 21 November 2026, by the **three small fixes session**
+(D-104) on branch `claude/markx-pr11-review-fixes-3uf2ts`, from `main` at
+`7093e6c` with the complete history. That session first reviewed the fix
+on pull request #11 independently and merged it (below; merge commit
+`7093e6c`). Before it, pull request #10 (D-102) was merged as `9b3658f`;
+pull request #9 (D-101) as `fe4546f`; the frontend resilience session
+(D-100, pull request #8) as `b79caab`; the order life-cycle hardening
+session (D-099, pull request #7) as `fae2514`; the staff conflict and
+phone digits session (D-098, pull request #6) as `c70b338`; the checks and
+secret-scan session (D-097, pull request #5) as `d01fef7`, and the backup
+trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## Three small fixes: product names in the seller bot, the review confirmation, the remembered Telegram account (21 November 2026, D-104)
+
+One pull request into `main`: **#12**. **One migration (0022). Nothing
+deployed; no server, domain, account, bot, SMS or paid resource.** Details
+and two PROVISIONAL values (P-104-1, P-104-2): `docs/DECISIONS.md`, D-104.
+
+| Fix | What changed | Proof |
+| --- | --- | --- |
+| F-26 (decided by the founder) | The seller's Telegram messages about an order (new-order alert, reminder, every other order message), the `/orders` inbox and an order's card name the products: names only, never a buyer detail, price or quantity; English or Amharic; each name at most 40 characters, at most 3 then "and N more" | 7 new tests, all fail on the old code |
+| "Your review is saved" failing now and then | A website bug: the refresh after saving removed the rated item's form, and the message with it, about 75 ms after it appeared. The message now sits outside the items (`ReviewNotices`) and stays | The journey now requires the message to still be there after the refresh: 3 of 3 runs fail on the old site; **20 of 20 runs in a row pass** on the fixed site |
+| A connected account with no remembered Telegram account | The database rule now says it in full (migration 0022); it let that state through because comparing with an empty value is not "false" in SQL | 3 new tests; the 2 that try the forbidden state fail on the old rule |
+
+**Test results:** see "Tests executed", 21 November 2026 (D-104).
+
+## Pull request #11 reviewed independently and merged (21 November 2026)
+
+The fix on pull request #11 (commits `46ca31a`, `704d15e`, `6ae83b7` after
+`9d0c888`) was reviewed read-only by this session, which wrote none of it.
+**Verdict: no problem that had to be fixed first; merged** with a normal
+merge pinned to `6ae83b7` (merge commit `7093e6c`); its branch is kept.
+
+- The commits change only what the fix needs: `deploy.sh`, the preflight's
+  new `--deploying` refusal, a comment in `config.py` and `api.env.example`,
+  the rehearsal, the new tests and documents. No CI workflow changed.
+- The automatic return checks the old release with
+  `MARKX_ALLOW_NEWER_SCHEMA` forced off (`run -e ...=false`, which wins over
+  `env_file` and Compose `environment`; pydantic reads the environment
+  before `.env`), refuses a database it does not know ("schema: ahead"),
+  requires the started release to report "current", and otherwise stops
+  the API, worker and web app.
+- `deploy` refuses while the setting is on (before any Docker call); the
+  new release refuses it too, wherever it is set; a rollback by hand to a
+  release older than the database needs the setting and
+  `--accept-newer-schema`; in a safe stop the backup service, and
+  `deploy.sh backup`, run as the release that migrated the database.
+- The rehearsal ends with the setting off and runs the reviewer's case.
+- One existing rehearsal check was changed: the compatible rollback now
+  also passes `--accept-newer-schema`, which the new rule requires; a new
+  check proves the setting alone is refused. Not weakened. No test or
+  safety check was removed.
+- Tests: 18 of the 20 new tests fail on `9d0c888`. With only the "may be
+  sourced" line added to the old `deploy.sh`, the reviewer's case fails
+  because old `recover` printed "old is running again, verified": the
+  defect. The deploy-refusal tests fail on the old code because the
+  refusal does not exist (the old script stops later, at its server
+  check).
+- Full API suite at `6ae83b7`, locally: **2061 passed, 0 skipped**.
+  GitHub on `6ae83b7`: **CI #174** success (all 8 checks; production
+  rehearsal **124 passed, 0 failed**, including the 7 "setting left on"
+  checks) and **Browser journeys #50** success, first attempt.
+- Main after the merge (`7093e6c`): **CI #175** success (all its jobs) and
+  **Browser journeys #51** success, first attempt.
 
 ## Fix before merging pull request #11: an older release started against a database it does not accept (21 November 2026, D-103 section 5)
 
@@ -138,7 +190,8 @@ F-26: `docs/DECISIONS.md`, D-102.
 
 **For later:** a real bot and phone (the runbook's step 9 lists the Bot
 API shapes to re-read; `allowed_updates` must include `callback_query`);
-F-26 (whether the bot shows what was ordered); answering a reported
+F-26 (whether the bot shows what was ordered; since decided and built,
+D-104); answering a reported
 problem and recording a direct payment from the bot; staff alerts in
 Telegram; a native speaker's review of the Amharic.
 
@@ -1767,12 +1820,11 @@ Be careful with these. They were written and never exercised.
   picomatch GHSA-fc5q-39xc-vjpf (no fixed version exists). Its allow-list
   entry expires on 31 December 2026, when CI fails until it is reviewed
   again (`.github/security/npm-audit-allowlist.json`).
-- **`shop-screens.mjs` flaked once** in a local rehearsal on 18 November
-  2026: the review was saved (the API answered 201) but the journey did
-  not see "Your review is saved" within 30 seconds; the same journey,
-  re-run straight after, passed every step with no console errors. Watch
-  for it in CI; the likely cause is the page refreshing as the message
-  appears.
+- **Fixed (D-104): `shop-screens.mjs` and "Your review is saved".** It
+  failed now and then (first on 18 November 2026 locally, then on GitHub).
+  The cause was the website: the refresh after saving removed the rated
+  item's form and the message with it, about 75 ms after it appeared. The
+  message now stays; the journey checks that it does.
 - **The web CSP still allows inline scripts** (D-084): per-request nonces
   would make every page dynamic; measure before changing.
 
@@ -1877,6 +1929,34 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**Three small fixes** (D-104), on 21 November 2026, branch
+`claude/markx-pr11-review-fixes-3uf2ts` from `main` at `7093e6c` (complete
+history). PostgreSQL 17.12 and MinIO in containers, with
+`MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1`.
+
+```text
+uv run pytest -q -p no:cacheprovider -rs                 ->  2071 passed, 0 skipped, in 22 min 17 s (2061 + the 10 new)
+F-26: 7 new tests in tests/api/test_telegram_bot.py      ->  7 passed; on 7093e6c (old code, new test file and
+                                                             products.py only) all 7 fail: the alert and the inbox
+                                                             carry no product names
+database rule: 3 new in test_telegram_recycled_number.py ->  3 passed; on 7093e6c the 2 that try the forbidden state
+                                                             fail with "DID NOT RAISE IntegrityError"
+uv run ruff check .  /  ruff format --check .            ->  passed  /  259 files already formatted
+uv run mypy markx                                        ->  no issues found in 153 source files
+alembic upgrade head  /  alembic check                   ->  0021 -> 0022  /  no new upgrade operations detected
+check_openapi_copy (exact, and the web app's copy)       ->  both match (no API change)
+apps/web: npm run lint / npm run typecheck / npm test    ->  passed / passed / 146 passed (15 files)
+apps/web: npm run build                                  ->  compiled
+"Your review is saved", in Chromium (Compose stack, demo data, built web app, as journeys.yml):
+  probe on the OLD site                                  ->  the message is shown, then removed about 75 ms later, for good
+                                                             (0 after 3 s): the refresh removes the rated item's form
+  shop-screens.mjs with the new check, OLD site          ->  3 runs: 3 failed, "the confirmation vanished when the page
+                                                             refreshed"
+  shop-screens.mjs on its own, FIXED site, 20 in a row   ->  20 passed, 0 failed (36 to 43 s each; a fresh demo
+    (fresh demo database before each run)                    database each time, as a buyer's fourth review of one
+                                                             shop in 30 days is held for staff)
+```
 
 **Fix before merging pull request #11** (D-103 section 5), on 21 November
 2026, branch `claude/pr10-review-server-readiness-y7novo` on top of
