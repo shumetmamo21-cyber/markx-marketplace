@@ -219,7 +219,13 @@ async function decideLeftovers(asStaff) {
   await rate.getByRole('group', { name: 'How was the shop?' }).getByText('5 ★').click();
   await rate.getByLabel('What should other buyers know? (optional)').fill(`Demo review (${TAG}): sealed box, works well.`);
   await rate.getByRole('button', { name: 'Send review' }).click();
-  await buyer.getByRole('status').filter({ hasText: 'Your review is saved' }).waitFor();
+  const saved = buyer.getByRole('status').filter({ hasText: 'Your review is saved' });
+  await saved.waitFor();
+  // D-104: saving refreshes the page and the rated item is no longer offered;
+  // the confirmation must still be there once it has gone (it used to vanish
+  // with the item's form, after a moment, so this step failed now and then).
+  await rate.waitFor({ state: 'detached' });
+  expect(await saved.isVisible(), 'the confirmation vanished when the page refreshed');
   await buyer.reload();
   expect(await buyer.locator('details', { hasText: 'Rate this purchase' }).count() === 0, 'the rated item is still offered for rating');
   console.log('4 rated on the order page; it is no longer offered');

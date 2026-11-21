@@ -7,7 +7,7 @@ import { OrderActions } from "@/components/OrderActions";
 import { PhotoUpload } from "@/components/PhotoUpload";
 import { ProblemMessageForm } from "@/components/ProblemMessageForm";
 import { ProblemPhotos } from "@/components/ProblemPhotos";
-import { ReviewForm } from "@/components/ReviewForm";
+import { ReviewForm, ReviewNotices } from "@/components/ReviewForm";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
@@ -104,12 +104,14 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
               <li className="flex justify-between gap-3 text-slate"><span>{o.deliveryFee}</span><span className="price">{formatPrice(part.delivery_fee_santim, lang)}</span></li>
               <li className="flex justify-between gap-3 font-semibold"><span>{o.partTotal}</span><span className="price">{formatPrice(part.total_santim, lang)}</span></li>
             </ul>
-            {part.items.filter((item) => toRate.has(item.id)).map((item) => (
-              <details key={item.id} className="mt-3 rounded-card border border-adey p-3">
-                <summary className="flex min-h-12 cursor-pointer items-center font-semibold">{t.reviews.rate}: {item.title}</summary>
-                <ReviewForm target={{ kind: "write", orderId: order.id, itemId: item.id }} t={reviewText} />
-              </details>
-            ))}
+            <ReviewNotices>
+              {part.items.filter((item) => toRate.has(item.id)).map((item) => (
+                <details key={item.id} className="mt-3 rounded-card border border-adey p-3">
+                  <summary className="flex min-h-12 cursor-pointer items-center font-semibold">{t.reviews.rate}: {item.title}</summary>
+                  <ReviewForm target={{ kind: "write", orderId: order.id, itemId: item.id }} t={reviewText} />
+                </details>
+              ))}
+            </ReviewNotices>
             {part.payment_method ? (
               <p className="mt-1 text-sm text-slate">
                 {fill(o.payment, { method: t.checkout[`pay_${part.payment_method}` as "pay_cash"] ?? part.payment_method })}
