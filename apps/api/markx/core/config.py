@@ -148,6 +148,17 @@ class Config(BaseSettings):
     backup_monitoring: Literal["auto", "on", "off"] = "auto"
     backup_max_age_hours: int = Field(default=26, ge=1, le=24 * 14)
     restore_drill_max_age_days: int = Field(default=35, ge=1, le=365)
+    # The site's certificate (D-103): the worker's watch reads its expiry
+    # date from this file (the production Compose file mounts the proxy's
+    # certificate folder read-only) and alerts MARKX_TLS_CERTIFICATE_WARN_DAYS
+    # before it expires, critically in the last 7 days, so a renewal that did
+    # not happen is never silent. Unset (a laptop, the tests): not checked.
+    tls_certificate_file: Path | None = None
+    # PROVISIONAL (P-103-1, D-103): 21 days, nine days after Let's Encrypt's
+    # own renewal point (30 days before expiry), so two renewal days a day
+    # apart have both failed first. The engineer's guess; THE FOUNDER MUST
+    # CONFIRM OR CHANGE IT BEFORE MARKX GOES LIVE.
+    tls_certificate_warn_days: int = Field(default=21, ge=8, le=90)
     # Who carries notifications to people's Telegram (D-092). "none": nobody;
     # every Telegram delivery is recorded `unavailable` and the in-app list
     # still has the message. "fake" writes to a development file and is for a

@@ -29,8 +29,21 @@
 #   backups        the backup service makes a verified, signed set; a real
 #                  server refuses a same-server destination; the recovery
 #                  drill restores database and files and refuses tampering
+#   containers     (D-103) every outside image by digest; memory, CPU and
+#                  process limits on every service; the user ids the images set
+#   certificate    (D-103) a new certificate installed and served without a
+#                  restart; a wrong one refused; renewal off by default and,
+#                  switched on, renewed through certbot's deploy hook (a
+#                  stand-in for certbot: no certificate authority is
+#                  contacted); the renewal timer's units; the worker's watch
+#                  alerts before expiry and stops when renewed
+#   rollback       deploy.sh rollback to an earlier release, every service
+#                  including the backup service, with MARKX_IMAGE_PREFIX set
+#   failed update  (D-103) a release that fails its checks after the
+#                  migration: back on the last working release; and when that
+#                  release refuses the migrated database, a safe stop with
+#                  instructions, then the documented way out
 #   shutdown       every service stops on SIGTERM within its grace period
-#   rollback       deploy.sh rollback to an earlier release
 #
 # Everything is local: no account, domain, certificate authority or bucket
 # is contacted. It removes its containers, networks, volumes and files at
@@ -58,6 +71,9 @@ if [[ -n "${MARKX_BUILD_CA:-}" ]]; then
 fi
 export MARKX_DEPLOY_REHEARSAL=1
 export MARKX_DEPENDENCY_SERVICES="postgres minio"
+# D-103: the whole rehearsal names its images with a prefix of its own, so
+# deploy, rollback and recovery prove they use MARKX_IMAGE_PREFIX.
+prefix="markx-rehearsal"
 
 compose() {
   docker compose "${compose_files[@]}" --env-file "$MARKX_COMPOSE_ENV" "$@"
@@ -85,8 +101,10 @@ cleanup() {
   fi
   export MARKX_RELEASE=rehearsal-1
   compose --profile migrate down -v --remove-orphans >/dev/null 2>&1 || true
-  docker image rm -f markx/api:rehearsal-1 markx/web:rehearsal-1 \
-    markx/api:rehearsal-2 markx/web:rehearsal-2 >/dev/null 2>&1 || true
+  local r i
+  for r in 1 2 3 4; do
+    for i in api web backup; do docker image rm -f "$prefix/$i:rehearsal-$r" >/dev/null 2>&1 || true; done
+  done
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -115,6 +133,8 @@ MARKX_PUBLIC_BIND=127.0.0.1
 MARKX_HTTP_PORT=$http_port
 MARKX_HTTPS_PORT=$https_port
 MARKX_API_WORKERS=1
+MARKX_IMAGE_PREFIX=$prefix
+MARKX_TLS_RENEWAL=none
 EOF
 cat > "$config/api.env" <<EOF
 MARKX_DATABASE_URL=postgresql+psycopg://markx_app:$app_pw@postgres:5432/markx
@@ -302,6 +322,31 @@ for s in api worker web proxy backup; do
   [[ "$ro" == true ]] && pass "$s has a read-only root file system" || fail "$s root file system is writable"
 done
 
+echo "== containers (D-103)"
+for s in postgres api worker web proxy backup; do
+  limits="$(docker inspect "$(compose ps -q "$s")" --format '{{.HostConfig.Memory}} {{.HostConfig.NanoCpus}} {{.HostConfig.PidsLimit}}')"
+  read -r memory cpus pids <<<"$limits"
+  if (( memory > 0 && cpus > 0 && cpus <= 1000000000 && pids > 0 )); then
+    pass "$s has memory, CPU and process limits ($memory bytes, $((cpus / 10000000))% of a CPU, $pids processes)"
+  else
+    fail "$s limits: $limits"
+  fi
+done
+for s in api worker backup; do
+  [[ "$(docker inspect "$(compose ps -q "$s")" --format '{{.Config.User}}')" == 999:999 ]] \
+    && pass "$s runs as uid 999, set by its image" || fail "$s user: $(docker inspect "$(compose ps -q "$s")" --format '{{.Config.User}}')"
+done
+[[ "$(docker inspect "$(compose ps -q web)" --format '{{.Config.User}}')" == 1000:1000 ]] \
+  && pass "web runs as uid 1000, set by its image" || fail "web user"
+for s in postgres proxy minio; do
+  [[ "$(docker inspect "$(compose ps -q "$s")" --format '{{.Config.Image}}')" =~ @sha256:[0-9a-f]{64}$ ]] \
+    && pass "$s runs an image pinned to its digest" || fail "$s image: $(docker inspect "$(compose ps -q "$s")" --format '{{.Config.Image}}')"
+done
+[[ "$(docker inspect "$(compose ps -q api)" --format '{{.Config.Image}}')" == "$prefix/api:rehearsal-1" ]] \
+  && pass "the release's images carry MARKX_IMAGE_PREFIX ($prefix)" || fail "api image name"
+check  "the worker reads the certificate, for its expiry" compose exec -T worker test -r /run/markx-tls/fullchain.pem
+refuse "the worker cannot read the certificate's private key" compose exec -T worker cat /run/markx-tls/privkey.pem
+
 # -- 5. the proxy -----------------------------------------------------------------
 
 echo "== the proxy"
@@ -430,21 +475,239 @@ fi
 [[ -z "$(psql_markx "select datname from pg_database where datname like 'markx_drill%'")" ]] \
   && pass "the drill removed its own database" || fail "a drill database was left behind"
 
-# -- 7. rollback ------------------------------------------------------------------
+# -- 7. the certificate (D-103) ------------------------------------------------------
+
+echo "== the certificate"
+served_serial() {
+  openssl s_client -connect "127.0.0.1:$https_port" -servername "$host" </dev/null 2>/dev/null \
+    | openssl x509 -noout -serial 2>/dev/null
+}
+file_serial() { openssl x509 -in "$1" -noout -serial; }
+# nginx applies a reload through new worker processes a moment later.
+serves() { # certificate file: wait until the proxy serves it
+  local want; want="$(file_serial "$1")"
+  for _ in $(seq 1 15); do [[ "$(served_serial)" == "$want" ]] && return 0; sleep 1; done
+  return 1
+}
+make_certificate() { # folder, days, [hostname]
+  mkdir -p "$1"
+  openssl req -x509 -newkey rsa:2048 -nodes -days "$2" -subj "/CN=${3:-$host}" \
+    -addext "subjectAltName=DNS:${3:-$host}" -keyout "$1/privkey.pem" -out "$1/fullchain.pem" 2>/dev/null
+}
+alert_state() { # the open certificate alert's severity, or nothing
+  psql_markx "select severity from ops_alerts where key = 'tls.certificate_expiring' and resolved_at is null"
+}
+run_watch_now() {
+  psql_markx "update scheduled_jobs set next_run_at = now() where name = 'ops.watch'" >/dev/null
+}
+run_watch_now
+for _ in $(seq 1 40); do [[ "$(alert_state)" == critical ]] && break; sleep 3; done
+[[ "$(alert_state)" == critical ]] \
+  && pass "the worker's watch raised a critical alert: the rehearsal's certificate expires in 2 days" \
+  || fail "certificate alert: '$(alert_state)'"
+"$prod/deploy.sh" certificate check > "$work/cert-check.txt" 2>&1 && st=0 || st=$?
+[[ $st -ne 0 ]] && grep -q "was not renewed" "$work/cert-check.txt" \
+  && pass "deploy.sh certificate check fails inside the warning time" || { fail "certificate check"; cat "$work/cert-check.txt"; }
+
+before_serial="$(served_serial)"
+make_certificate "$work/cert-other-host" 90 other.example.invalid
+refuse "a certificate for another hostname is refused" "$prod/deploy.sh" certificate install "$work/cert-other-host"
+make_certificate "$work/cert-a" 90; make_certificate "$work/cert-b" 90
+mkdir -p "$work/cert-mismatch"; cp "$work/cert-a/fullchain.pem" "$work/cert-b/privkey.pem" "$work/cert-mismatch/"
+refuse "a certificate with somebody else's key is refused" "$prod/deploy.sh" certificate install "$work/cert-mismatch"
+[[ -n "$before_serial" && "$(served_serial)" == "$before_serial" ]] \
+  && pass "after both refusals the proxy still serves the certificate it had" || fail "served certificate changed"
+proxy_started="$(docker inspect "$(compose ps -q proxy)" --format '{{.State.StartedAt}}')"
+if "$prod/deploy.sh" certificate install "$work/cert-a" > "$work/cert-install.txt" 2>&1 \
+  && serves "$work/cert-a/fullchain.pem"; then
+  pass "deploy.sh certificate install puts a new certificate in place and the proxy serves it"
+else
+  fail "certificate install"; cat "$work/cert-install.txt"
+fi
+[[ "$(docker inspect "$(compose ps -q proxy)" --format '{{.State.StartedAt}}')" == "$proxy_started" ]] \
+  && pass "the proxy reloaded the certificate without a restart" || fail "the proxy was restarted"
+[[ "$(stat -c '%u %a' "$tls/fullchain.pem")" == "0 644" && "$(stat -c '%u %a' "$tls/privkey.pem")" == "101 400" ]] \
+  && pass "the installed files have the owners and modes deploy.sh check requires" || fail "installed file modes"
+check "deploy.sh check passes with the installed certificate" "$prod/deploy.sh" check
+check "deploy.sh certificate check passes with 90 days left" "$prod/deploy.sh" certificate check
+run_watch_now
+for _ in $(seq 1 40); do [[ -z "$(alert_state)" ]] && break; sleep 3; done
+[[ -z "$(alert_state)" ]] && pass "the watch resolved the certificate alert after the renewal" || fail "alert still open: $(alert_state)"
+
+"$prod/deploy.sh" certificate renew > "$work/renew-off.txt" 2>&1 \
+  && grep -q "automatic renewal is OFF" "$work/renew-off.txt" \
+  && pass "renewal is off by default (MARKX_TLS_RENEWAL=none) and says so" || { fail "renew with renewal off"; cat "$work/renew-off.txt"; }
+refuse "deploy.sh certificate issue refuses while renewal is off" "$prod/deploy.sh" certificate issue
+# A stand-in for certbot: contacts nobody; makes a "renewed" certificate in a
+# lineage folder and runs the deploy hook it was given, as certbot does.
+cat > "$work/certbot" <<STANDIN
+#!/usr/bin/env bash
+set -euo pipefail
+echo "\$*" >> "$work/certbot.calls"
+hook=""; webroot=""
+while (( \$# )); do
+  case "\$1" in --deploy-hook) hook="\$2"; shift 2 ;; -w) webroot="\$2"; shift 2 ;; *) shift ;; esac
+done
+[[ "\$webroot" == "$acme" ]] || { echo "certbot stand-in: wrong webroot '\$webroot'" >&2; exit 1; }
+lineage="$work/letsencrypt/live/$host"; mkdir -p "\$lineage"
+openssl req -x509 -newkey rsa:2048 -nodes -days 90 -subj "/CN=$host" -addext "subjectAltName=DNS:$host" \
+  -keyout "\$lineage/privkey.pem" -out "\$lineage/fullchain.pem" 2>/dev/null
+RENEWED_LINEAGE="\$lineage" sh -c "\$hook"
+STANDIN
+chmod 700 "$work/certbot"
+sed -i 's/^MARKX_TLS_RENEWAL=.*/MARKX_TLS_RENEWAL=certbot/' "$MARKX_COMPOSE_ENV"
+if MARKX_CERTBOT_COMMAND="$work/certbot" "$prod/deploy.sh" certificate renew > "$work/renew-on.txt" 2>&1 \
+  && grep -q "^renew " "$work/certbot.calls" \
+  && serves "$work/letsencrypt/live/$host/fullchain.pem"; then
+  pass "with MARKX_TLS_RENEWAL=certbot, renew runs certbot, whose deploy hook installs the new certificate"
+else
+  fail "renewal through certbot's deploy hook"; cat "$work/renew-on.txt"
+fi
+sed -i 's/^MARKX_TLS_RENEWAL=.*/MARKX_TLS_RENEWAL=none/' "$MARKX_COMPOSE_ENV"
+if MARKX_SYSTEMD_DIR="$work/systemd" "$prod/deploy.sh" certificate install-timer > /dev/null 2>&1 \
+  && grep -qxF "ExecStart=$prod/deploy.sh certificate renew" "$work/systemd/markx-certificate.service" \
+  && grep -qxF "Environment=MARKX_COMPOSE_ENV=$MARKX_COMPOSE_ENV" "$work/systemd/markx-certificate.service" \
+  && grep -qxF "Persistent=true" "$work/systemd/markx-certificate.timer"; then
+  if command -v systemd-analyze >/dev/null 2>&1; then
+    if systemd-analyze verify "$work/systemd/markx-certificate.service" "$work/systemd/markx-certificate.timer" > "$work/verify.txt" 2>&1; then
+      pass "the renewal timer's units are written with this server's paths and systemd accepts them"
+    else
+      fail "systemd-analyze verify"; cat "$work/verify.txt"
+    fi
+  else
+    pass "the renewal timer's units are written with this server's paths (no systemd-analyze here; weaker evidence)"
+  fi
+else
+  fail "the renewal timer's units"
+fi
+
+# -- 8. rollback, with MARKX_IMAGE_PREFIX set (D-103) ----------------------------------
 
 echo "== rollback"
-docker tag markx/api:rehearsal-1 markx/api:rehearsal-2
-docker tag markx/web:rehearsal-1 markx/web:rehearsal-2
+image_of() { docker inspect "$(compose ps -q "$1")" --format '{{.Config.Image}}'; }
+release_images_of() { echo "$(image_of api) $(image_of worker) $(image_of web) $(image_of backup)"; }
+images_of_release() { echo "$prefix/api:$1 $prefix/api:$1 $prefix/web:$1 $prefix/backup:$1"; }
+for i in api web backup; do docker tag "$prefix/$i:rehearsal-1" "$prefix/$i:rehearsal-2"; done
 if MARKX_RELEASE=rehearsal-2 "$prod/deploy.sh" rollback rehearsal-2 > "$work/rollback.txt" 2>&1 \
-  && [[ "$(docker inspect "$(compose ps -q api)" --format '{{.Config.Image}}')" == markx/api:rehearsal-2 ]]; then
-  pass "deploy.sh rollback starts another release's images, verified"
+  && [[ "$(release_images_of)" == "$(images_of_release rehearsal-2)" ]]; then
+  pass "deploy.sh rollback starts another release's images, the backup service's too, verified"
 else
-  fail "rollback"; tail -30 "$work/rollback.txt"
+  fail "rollback ($(release_images_of))"; tail -30 "$work/rollback.txt"
 fi
 export MARKX_RELEASE=rehearsal-2
 refuse "rollback refuses a release whose images are not here" "$prod/deploy.sh" rollback no-such-release
+docker image rm "$prefix/backup:rehearsal-2" >/dev/null 2>&1 || true
+refuse "rollback refuses a release whose backup image is missing" "$prod/deploy.sh" rollback rehearsal-2
+docker tag "$prefix/backup:rehearsal-1" "$prefix/backup:rehearsal-2"
 
-# -- 8. shutdown ------------------------------------------------------------------
+# -- 9. a release that fails its checks after the migration (D-103) -------------------
+
+echo "== a failed update"
+# A broken release: the same code, except that its API never becomes ready.
+# Only its build context differs (a copy of apps/api, given to deploy.sh as
+# one more Compose file), so the running services are not touched by it.
+broken_release() { # name, with a newer migration (yes/no)
+  local dir="$work/$1"
+  mkdir -p "$dir"
+  tar -C "$repo/apps" --exclude=.venv --exclude=.mypy_cache --exclude=.ruff_cache \
+    --exclude=.pytest_cache --exclude=__pycache__ -cf - api | tar -C "$dir" -xf -
+  sed -i 's/return self.schema == "current" or (self.schema == "ahead" and self.newer_schema_allowed)/return False  # rehearsal: a broken release/' \
+    "$dir/api/markx/ops/health.py"
+  grep -q "rehearsal: a broken release" "$dir/api/markx/ops/health.py" || return 1
+  if [[ "$2" == yes ]]; then
+    cat > "$dir/api/migrations/versions/29991231_0000_rehearsal_newer_schema.py" <<MIGRATION
+"""The rehearsal's own migration: the database becomes newer than every real release."""
+from alembic import op
+
+revision = "rehearsal_newer"
+down_revision = "$before"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.execute("comment on table alembic_version is 'rehearsal: a newer schema'")
+
+
+def downgrade() -> None:
+    pass
+MIGRATION
+  fi
+  cat > "$dir.yaml" <<OVERRIDE
+services:
+  api:
+    build:
+      context: $dir/api
+  backup:
+    build:
+      context: $dir/api
+      target: backup
+OVERRIDE
+}
+if broken_release broken-a no; then
+  MARKX_COMPOSE_OVERRIDE="$MARKX_COMPOSE_OVERRIDE:$work/broken-a.yaml" "$prod/deploy.sh" deploy rehearsal-3 \
+    > "$work/deploy-3.txt" 2>&1 && st=0 || st=$?
+  if [[ $st -ne 0 ]] && grep -q "rehearsal-2 is running again, verified" "$work/deploy-3.txt" \
+    && [[ "$(release_images_of)" == "$(images_of_release rehearsal-2)" ]] \
+    && [[ "$(tail -1 "$config/releases.log" | cut -d' ' -f2-)" == "auto-rollback rehearsal-2" ]] \
+    && [[ ! -e "$config/deploy-halted" ]]; then
+    pass "a release that fails after its migration: deploy fails and the last working release runs again, every service"
+  else
+    fail "the automatic return to the last working release (exit $st, $(release_images_of))"; tail -40 "$work/deploy-3.txt"
+  fi
+  [[ "$(https "$url/api/v1/healthz/ready")" == *'"status":"ready"'* ]] \
+    && pass "and the site is ready through the proxy" || fail "site after the automatic return"
+  grep -q " deploy rehearsal-3$" "$config/releases.log" && fail "the failed release was recorded as deployed" \
+    || pass "the failed release is never recorded as deployed"
+else
+  fail "making the broken release"
+fi
+
+if broken_release broken-b yes; then
+  MARKX_COMPOSE_OVERRIDE="$MARKX_COMPOSE_OVERRIDE:$work/broken-b.yaml" "$prod/deploy.sh" deploy rehearsal-4 \
+    > "$work/deploy-4.txt" 2>&1 && st=0 || st=$?
+  stopped=1
+  for s in api worker web; do
+    [[ -z "$(compose ps --status running -q "$s")" ]] || stopped=0
+  done
+  if [[ $st -ne 0 ]] && grep -q "refuses the migrated database" "$work/deploy-4.txt" \
+    && grep -q "DEPLOYMENT HALTED in a safe state" "$work/deploy-4.txt" \
+    && grep -q "MARKX_ALLOW_NEWER_SCHEMA=true" "$work/deploy-4.txt" \
+    && [[ "$(psql_markx "select version_num from alembic_version")" == rehearsal_newer ]] \
+    && (( stopped )); then
+    pass "when the last working release refuses the migrated database: the API, worker and web app stop, with instructions"
+  else
+    fail "the safe stop (exit $st, stopped=$stopped)"; tail -40 "$work/deploy-4.txt"
+  fi
+  [[ -n "$(compose ps --status running -q postgres)" && -n "$(compose ps --status running -q backup)" ]] \
+    && pass "in the safe stop the database and the backup service keep running" || fail "postgres or backup stopped"
+  grep -qx "failed_release=rehearsal-4" "$config/deploy-halted" 2>/dev/null \
+    && [[ "$(stat -c %a "$config/deploy-halted")" == 600 ]] \
+    && pass "the safe stop is written down (deploy-halted in the settings folder)" || fail "halt record"
+  "$prod/deploy.sh" status > "$work/status-halted.txt" 2>&1 || true
+  grep -q "THE LAST DEPLOYMENT HALTED" "$work/status-halted.txt" \
+    && pass "deploy.sh status says the deployment halted" || { fail "status after the halt"; cat "$work/status-halted.txt"; }
+  # 502 or 504 from the proxy itself: no application answers at all.
+  halted_code="$(code "$url/api/v1/healthz/ready")"
+  [[ "$halted_code" =~ ^50[234]$ ]] \
+    && pass "the site answers $halted_code from the proxy: nothing half-working serves visitors" \
+    || fail "site in the safe stop: $halted_code"
+  refuse "the last working release still refuses the newer database without the acknowledgement" \
+    "$prod/deploy.sh" rollback rehearsal-2
+  # The documented way out for a backward-compatible migration (rollback.md).
+  echo "MARKX_ALLOW_NEWER_SCHEMA=true" >> "$config/api.env"
+  if "$prod/deploy.sh" rollback rehearsal-2 > "$work/rollback-ack.txt" 2>&1 \
+    && [[ "$(https "$url/api/v1/healthz/ready")" == *'"schema":"ahead"'* ]] \
+    && [[ ! -e "$config/deploy-halted" ]] && [[ "$(release_images_of)" == "$(images_of_release rehearsal-2)" ]]; then
+    pass "with MARKX_ALLOW_NEWER_SCHEMA=true the rollback ends the safe stop (schema: ahead)"
+  else
+    fail "the way out of the safe stop"; tail -30 "$work/rollback-ack.txt"
+  fi
+else
+  fail "making the broken release with a newer migration"
+fi
+
+# -- 10. shutdown ------------------------------------------------------------------
 
 echo "== shutdown"
 for s in proxy web api worker backup postgres; do

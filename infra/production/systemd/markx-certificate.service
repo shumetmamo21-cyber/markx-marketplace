@@ -1,0 +1,14 @@
+# The site's certificate: renew it if it is due, then check it (D-103).
+# Installed by `deploy.sh certificate install-timer`, which fills in the two
+# paths. With MARKX_TLS_RENEWAL=none (no domain yet) it only checks, and
+# fails inside the warning time, so `systemctl --failed` shows it. The
+# worker's watch alerts the founder independently of this unit.
+[Unit]
+Description=MarkX: renew and check the site's certificate
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+Environment=MARKX_COMPOSE_ENV=@COMPOSE_ENV@
+ExecStart=@DEPLOY@ certificate renew

@@ -11,15 +11,23 @@
 # MARKX_* environment variables at run time.
 
 # The base image can be swapped for a mirror of the same image when Docker
-# Hub limits pulls, e.g. --build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.13.18-slim-bookworm
-# Pinned to a patch release (D-091) so a rebuild of an old release gets the
-# same interpreter; bump it deliberately, with CI.
-ARG PYTHON_IMAGE=python:3.13.18-slim-bookworm
+# Hub limits pulls, e.g. --build-arg PYTHON_IMAGE=mirror.gcr.io/library/python:3.13.18-slim-bookworm@sha256:<the same digest>
+# Pinned to a patch release (D-091) and to its exact content (D-103: the
+# digest of the multi-platform index), so a rebuild of an old release gets
+# the same interpreter and a re-pushed tag cannot change it. Bump both
+# deliberately, with CI (infra/check-image-pins.sh refuses a tag alone).
+ARG PYTHON_IMAGE=python:3.13.18-slim-bookworm@sha256:a5a7017efc5969e00ae2b91c8eb0631049a569652aa4ffc4501769049ae45c72
 # The PostgreSQL client tools of the backup image (D-094) come from the same
 # PostgreSQL release the production Compose file runs (17.12), in its Debian
 # bookworm variant: the Python image is bookworm, and the tools must find the
 # C library they were built against (the default tag is now trixie).
-ARG POSTGRES_IMAGE=postgres:17.12-bookworm
+ARG POSTGRES_IMAGE=postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b
+# The user the API, the worker and the backup service run as (D-103). Fixed
+# here, not left to whichever id `useradd --system` picks: the production
+# Compose file (the worker's heartbeat folder), the backup folder and the
+# backup signing key on the server (deploy.sh check) all name uid 999.
+ARG MARKX_UID=999
+ARG MARKX_GID=999
 
 FROM ${PYTHON_IMAGE} AS build
 # uv, pinned, from PyPI (the same version the repository is developed with).
@@ -59,18 +67,21 @@ RUN set -eu; \
       | while read -r lib; do cp -L "$lib" /pgclient/lib/; done
 
 FROM ${PYTHON_IMAGE} AS app
+ARG MARKX_UID
+ARG MARKX_GID
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MARKX_STORAGE_DIR=/var/lib/markx/storage
-RUN groupadd --system markx \
-    && useradd --system --gid markx --home-dir /app --no-create-home markx \
+RUN groupadd --system --gid "${MARKX_GID}" markx \
+    && useradd --system --uid "${MARKX_UID}" --gid markx --home-dir /app --no-create-home markx \
+    && test "$(id -u markx):$(id -g markx)" = "${MARKX_UID}:${MARKX_GID}" \
     && mkdir -p /var/lib/markx/storage \
     && chown markx:markx /var/lib/markx/storage
 COPY --from=build /opt/venv /opt/venv
 COPY --from=build --chown=root:root /app /app
 WORKDIR /app
-USER markx
+USER ${MARKX_UID}:${MARKX_GID}
 
 # The backup service (D-094): the same application, plus PostgreSQL 17's
 # client tools. `docker build --target backup -t markx-backup apps/api`.
@@ -86,7 +97,7 @@ RUN set -eu; \
     done; \
     pg_dump --version && pg_restore --version && psql --version \
     && mkdir -p /backups && chown markx:markx /backups && chmod 700 /backups
-USER markx
+USER ${MARKX_UID}:${MARKX_GID}
 HEALTHCHECK --interval=5m --timeout=30s --start-period=30m --retries=2 \
     CMD ["python", "-m", "markx.backup", "check"]
 CMD ["python", "-m", "markx.backup", "serve"]
