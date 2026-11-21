@@ -1712,6 +1712,29 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Recycled-number fix** (D-101 section 2a), on 21 November 2026, branch
+`claude/telegram-signin-audit-fixes-q318w6` (pull request #9), from
+`b89aeff` with the complete history (not shallow; nobody had pushed since
+`b89aeff`). PostgreSQL 17 in a container; **MinIO was not started**, so the
+file-storage and backup tests skipped locally (they run on GitHub).
+
+```text
+uv run pytest -q -p no:cacheprovider                     ->  1919 passed, 91 skipped (MinIO not running), in 16 min 2 s
+tests/api/test_telegram_recycled_number.py (new, 13)     ->  13 passed
+the same 13 against b89aeff (worktree, new file only)    ->  12 failed, 1 passed (the guard); the review's steps fail with
+                                                             the bot telling the stranger "✅ You are signed in"
+the Telegram files together (sign-in, linking, Mini App,
+abuse, recycled number)                                  ->  179 passed
+uv run ruff check .  /  uv run ruff format --check .     ->  passed  /  251 files already formatted
+uv run mypy markx                                        ->  no issues found in 148 source files
+uv run alembic upgrade head && uv run alembic check      ->  0020 -> 0021; no new upgrade operations detected
+export_openapi compared with openapi.json                ->  identical (no API change)
+apps/web: npm test; npm run lint; npm run typecheck      ->  146 passed (145 before; 1 new); passed; passed
+```
+
+Not run locally: the web build and the browser journeys (they run on
+GitHub in the pull request; see the session's report for those runs).
+
 **Sign-in with Telegram, SMS off, M2, M3, M4** (D-101), on 21 November
 2026, branch `claude/telegram-signin-audit-fixes-q318w6`, from `main` at
 `b79caab` with the complete history (`git fetch --unshallow`; `git
