@@ -64,8 +64,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from markx.backup import heartbeat
 from markx.backup import manifest as manifest_mod
 from markx.backup.config import BackupConfig
+from markx.backup.copies import Copies
 from markx.backup.crypto import (
     FORMAT_NAME,
     Encryptor,
@@ -172,6 +174,9 @@ class FilesResult:
     skipped: dict[str, int]
     # Blobs proved this run: read back now, or unchanged since they were.
     proved: set[str] = field(default_factory=set)
+    # RN-1: blobs this service checked whose stored bytes someone changed since
+    # (another size or fingerprint than right after the check).
+    overwritten: list[str] = field(default_factory=list)
 
 
 # -- locks ------------------------------------------------------------------------------
@@ -344,6 +349,12 @@ def backup_files(
     remote: dict[str, RemoteObject] = {
         obj.key.rsplit("/", 1)[-1]: obj for obj in ctx.destination.list("objects/")
     }
+    # RN-1: a blob this service read back and recorded, now with other bytes:
+    # written again by someone else (the server never rewrites a checked blob).
+    changed = sorted(
+        manifest_mod.blob_key(blob) for blob, record in ledger.items()
+        if blob in remote and (remote[blob].size != record.bytes or remote[blob].etag != record.etag)
+    )  # fmt: skip
     now = ctx.clock()
     entries: list[FileEntry] = []
     skipped: dict[str, int] = {}
@@ -408,7 +419,7 @@ def backup_files(
         _save_ledger(ledger_path, ledger)
     present = {(e.store, e.key) for e in entries}
     missing = [ref for ref in refs if (ref.store, ref.key) not in present]
-    return FilesResult(entries, new, reused, missing, skipped, proved)
+    return FilesResult(entries, new, reused, missing, skipped, proved, changed)
 
 
 def _upload_blob(
@@ -661,6 +672,11 @@ def _make_set(
         manifest_mod.manifest_key(backup_id), manifest_path, _sha256_file(manifest_path)
     )
 
+    # RN-1: has anything at the destination been written again since?
+    overwritten, overwrite_check = _overwrites(destination, files.overwritten)
+    # BK-4: the outside heartbeat, after a verified set only.
+    beat = _heartbeat(config) if complete else "not_sent:incomplete"
+
     # Recorded, and the local copy kept (only the last few, only verified ones).
     status = "succeeded" if complete else "incomplete"
     record.status, record.finished_at = status, finished
@@ -673,6 +689,8 @@ def _make_set(
         "rows": sum(counts.values()), "referenced": len(refs),
         "missing_references": len(files.missing_references), "skipped": files.skipped,
         "recipient_key_id": ctx.recipient.key_id,
+        "overwritten": {"count": len(overwritten), "keys": overwritten[:20]},
+        "overwrite_check": overwrite_check, "heartbeat": beat,
     }  # fmt: skip
     if not complete:
         record.error_code = (
@@ -693,6 +711,34 @@ def _make_set(
                "new_blobs": files.new_blobs, "database_bytes": dumped.digest.ciphertext_bytes},
     )  # fmt: skip
     return BackupOutcome(status, backup_id, record.error_code, False, body)
+
+
+def _heartbeat(config: BackupConfig) -> str:
+    """BK-4: the outside heartbeat; nothing it does can fail a good set."""
+    try:
+        return heartbeat.ping(config.heartbeat, timeout=config.heartbeat_timeout_seconds)
+    except Exception as exc:
+        logger.error("the outside heartbeat failed", extra={"error_code": type(exc).__name__})
+        return f"failed:{type(exc).__name__}"
+
+
+def _overwrites(destination: Destination, changed_blobs: list[str]) -> tuple[list[str], str]:
+    """Objects at the destination written again since they were made (RN-1):
+    every piece of every set is written exactly once, so any of them with a
+    second, different version (or hidden by a delete marker) was written by
+    someone else; and every blob whose bytes changed since this service
+    checked it. Returns them, and "ok" or why the versions could not be read
+    (the server's key needs s3:ListBucketVersions)."""
+    copies = Copies(destination)
+    copies.scan("sets/")
+    found = sorted(copies.overwritten | set(changed_blobs))
+    if found:
+        logger.error(
+            "BACKUP FILES WERE WRITTEN AGAIN at the destination; the older locked copies are "
+            "kept (docs/runbooks/backup-and-restore.md, 'A backup file was overwritten')",
+            extra={"count": len(found)},
+        )
+    return found, ("ok" if not copies.notes else f"unavailable: {copies.notes[0]}")
 
 
 def _by_kind(refs: list[FileReference]) -> dict[str, int]:

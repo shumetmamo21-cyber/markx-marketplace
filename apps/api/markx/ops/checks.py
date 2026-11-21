@@ -951,6 +951,67 @@ def restore_drills(db: Session, now: datetime) -> list[Finding]:
     return findings
 
 
+# PROVISIONAL (P-105-3, D-105): an overwrite found by a backup run or a drill
+# keeps its alert open this long, so it is never resolved by the next quiet
+# night before a person has seen it.
+OVERWRITE_ALERT_DAYS = 30
+
+
+def _overwritten(details: Any) -> int:
+    found = (details or {}).get("overwritten") if isinstance(details, dict) else None
+    if isinstance(found, dict):
+        return int(found.get("count") or 0)
+    if isinstance(found, int):
+        return found
+    return 0
+
+
+def backup_overwrites(db: Session, now: datetime) -> list[Finding]:
+    """A backup file was written again at the destination (RN-1): found by
+    the backup service (every set's piece is written once, and a blob it
+    checked changed since), or by an off-server drill entered with
+    `record-drill`. The original copies survive under the object lock, but
+    only someone holding the server's backup key can have done it."""
+    config = get_config()
+    if not config.backup_watched:
+        return []
+    findings: list[Finding] = []
+    since = now - timedelta(days=OVERWRITE_ALERT_DAYS)
+    runs = db.scalars(
+        select(BackupRun)
+        .where(BackupRun.kind.in_(("backup", "drill")), BackupRun.started_at >= since)
+        .order_by(BackupRun.started_at.desc())
+    ).all()
+    hit = next((run for run in runs if _overwritten(run.details) > 0), None)
+    if hit is not None:
+        findings.append(
+            Finding(
+                key="backup.overwritten",
+                severity="critical",
+                summary=f"{_overwritten(hit.details)} backup file(s) were written again at the "
+                f"backup destination (found by a {hit.kind} on "
+                f"{hit.started_at.strftime('%Y-%m-%d')}). Someone may hold the server's backup "
+                "key. The original locked copies are kept: see the backup runbook, 'A backup "
+                "file was overwritten'.",
+                details={**_run_facts(hit), "kind": hit.kind},
+            )
+        )
+    last = _last_run(db, "backup", "succeeded", "incomplete")
+    check = (last.details or {}).get("overwrite_check") if last is not None else None
+    if isinstance(check, str) and check.startswith("unavailable"):
+        findings.append(
+            Finding(
+                key="backup.overwrite_check_unavailable",
+                severity="warning",
+                summary="The backup service cannot list the backup bucket's older versions, so "
+                "it cannot tell whether a backup file was overwritten. Give its key "
+                "s3:ListBucketVersions (backup runbook, step 3).",
+                details=_run_facts(last) if last is not None else {},
+            )
+        )
+    return findings
+
+
 WATCH: tuple[Check, ...] = (
     failing_jobs,
     overdue_jobs,
@@ -973,6 +1034,7 @@ WATCH: tuple[Check, ...] = (
     file_storage,
     backups,
     restore_drills,
+    backup_overwrites,
     tls_certificate,
 )
 

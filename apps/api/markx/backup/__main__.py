@@ -6,12 +6,15 @@
     python -m markx.backup check                   exit 0 if a verified set is fresh enough
     python -m markx.backup list                    the sets at the destination
     python -m markx.backup record-drill --report F enter an off-server drill's result (server)
+    python -m markx.backup escrow-secrets ...      an encrypted copy of the server's secrets (BK-5)
+    python -m markx.backup heartbeat [--send]      the outside heartbeat: on or off; one call now
   Never on the server (they refuse on staging and production, BK-1 and BK-2):
     python -m markx.backup verify --set ID ...     check a set without writing anywhere
     python -m markx.backup restore --set ID ...    restore into a NEW database and empty stores
     python -m markx.backup drill ...               the recovery drill (rehearsal: laptop and CI)
     python -m markx.backup drill --from-destination ...   the monthly drill, recovery machine
     python -m markx.backup prune [--execute]       retention, with its own delete key
+    python -m markx.backup open-secrets ...        open a secrets copy (--check, or --out DIR)
 
 Exit status: 0 success; 1 a failed, incomplete or refused operation;
 2 a usage or settings error; 3 skipped because another backup is running.
@@ -21,6 +24,8 @@ Nothing secret is ever printed.
 from __future__ import annotations
 
 import argparse
+import getpass
+import hashlib
 import json
 import logging
 import os
@@ -34,7 +39,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from markx.backup import crypto
+from markx.backup import crypto, escrow, heartbeat
 from markx.backup.config import BackupConfig
 from markx.backup.database import PgServer
 from markx.backup.destination import DestinationError, make_destination
@@ -246,6 +251,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     say(f"backup service: a set now, then daily at {config.hour_utc}:00 UTC, to "
           f"{ctx.destination.identity} ({'off-server' if ctx.destination.offsite else 'NOT off-server'})",
           flush=True)  # fmt: skip
+    say(_heartbeat_state(config), flush=True)
     while not _stop:
         attempts = run_with_retries(
             lambda: run_backup(ctx), attempts=config.retry_attempts,
@@ -369,6 +375,7 @@ def cmd_drill(args: argparse.Namespace) -> int:
 
     config = _config(service=False)
     _not_on_a_server(config, "the drill", _RECOVERY_KEY_STAYS_OFF)
+    secrets_ = _drill_secrets(args, config)
     if args.from_destination:
         if args.seed_sample_files:
             raise SystemExit("--seed-sample-files takes a new backup; not with --from-destination")
@@ -377,7 +384,7 @@ def cmd_drill(args: argparse.Namespace) -> int:
             keys=_keys(args.recovery_key), signers=_signers(args.signer),
             bootstrap_script=_default_bootstrap(),
             inject=args.inject_failures if args.inject_failures is not None else True,
-            backup_id=args.set,
+            backup_id=args.set, secrets_=secrets_,
         )  # fmt: skip
         say(offsite.text())
         _write_report(args.report, offsite.as_dict())
@@ -405,14 +412,21 @@ def cmd_record_drill(args: argparse.Namespace) -> int:
     """On the server: enter the report of a drill run on a separate recovery
     machine, so the watch knows a drill passed (backup.drill_overdue). The
     set it names must exist at the destination and verify with this
-    service's signer; nothing secret is needed or read."""
-    from markx.backup.restore import SetRefused, read_manifest
+    service's signer; nothing secret is needed or read.
+
+    RN-5: the report's own "passed" is not believed. The report must show
+    every restore check passed, every injected fault refused, the secrets
+    step passed when it ran, and a restore of what the set's signed manifest
+    says it holds (`drill.report_problems`). A report that says PASSED but
+    does not show it is recorded as a FAILED drill (the watch then alerts)."""
+    from markx.backup.drill import report_problems
+    from markx.backup.restore import SetRefused, read_original_manifest
 
     config = _config(service=False)
     try:
         report = json.loads(Path(args.report).read_text(encoding="utf-8"))
         backup_id = str(report["backup_id"])
-        passed = report["passed"] is True
+        claimed = report["passed"] is True
         finished = datetime.fromisoformat(str(report["finished_at"]))
         started = datetime.fromisoformat(str(report.get("started_at") or report["finished_at"]))
     except (OSError, ValueError, KeyError, TypeError):
@@ -423,24 +437,189 @@ def cmd_record_drill(args: argparse.Namespace) -> int:
         raise SystemExit("the report's times are not possible")
     destination = make_destination(config)
     try:
-        read_manifest(destination, backup_id, _signers(args.signer, config))
+        manifest = read_original_manifest(destination, backup_id, _signers(args.signer, config))
     except SetRefused as exc:
         raise SystemExit(f"the report's set {backup_id} is refused: {exc.reason}") from None
-    restore = report.get("restore") or {}
+    problems = report_problems(report, manifest)
+    passed = not problems
+    restore = report.get("restore") if isinstance(report.get("restore"), dict) else {}
     record = RunRecord(kind="drill", environment=config.env, destination=destination.identity,
                        offsite=destination.offsite, started_at=started, backup_id=backup_id)  # fmt: skip
     record.status = "succeeded" if passed else "failed"
     record.finished_at, record.verified = finished, passed
     if not passed:
-        record.error_code = "drill_failed"
-        record.error_summary = "the off-server drill failed (its report has the details)"
-    record.details = {"offsite_report": True, "seconds": (restore.get("facts") or {}).get("seconds"),
-                      "injections": len(report.get("injections") or [])}  # fmt: skip
+        record.error_code = "drill_report_not_a_pass" if claimed else "drill_failed"
+        record.error_summary = (
+            "the report says PASSED but does not show it: " if claimed
+            else "the off-server drill failed: "
+        ) + "; ".join(problems)[:400]  # fmt: skip
+    overwritten = [str(k) for k in report.get("overwritten") or [] if isinstance(k, str)]
+    secrets_rows = [r for r in report.get("secrets") or [] if isinstance(r, dict)]
+    record.details = {"offsite_report": True,
+                      "seconds": ((restore or {}).get("facts") or {}).get("seconds"),
+                      "injections": len(report.get("injections") or []),
+                      "secrets_checked": bool(secrets_rows) and passed,
+                      "overwritten": {"count": len(overwritten), "keys": overwritten[:20]}}  # fmt: skip
     recorder = Recorder(PgServer.from_environment(), config.database)
     recorder.start(record)
     recorder.finish(record)
     say(f"drill of set {backup_id} recorded: {'PASSED' if passed else 'FAILED'}")
+    for problem in problems if claimed else []:
+        say(f"  not a pass: {problem}")
+    if overwritten:
+        say(f"  WARNING: the drill found {len(overwritten)} overwritten backup file(s)")
+    return EXIT_FAILED if claimed and not passed else 0
+
+
+# -- the secrets copy (BK-5) ----------------------------------------------------------------
+
+
+def cmd_escrow_secrets(args: argparse.Namespace) -> int:
+    """On the server (or wherever the secrets are): an encrypted copy of the
+    secrets a total-loss recovery needs, locked to the recovery key. Only
+    names and sizes are ever printed."""
+    config = _config(service=False)
+    if config.public_key_file is None or config.signing_key_file is None:
+        raise SystemExit(
+            "MARKX_BACKUP_PUBLIC_KEY_FILE and MARKX_BACKUP_SIGNING_KEY_FILE must be set"
+        )
+    recipient = crypto.load_recipient(config.public_key_file)
+    signing = crypto.load_signing(config.signing_key_file)
+    try:
+        if args.from_tar:
+            items = escrow.read_stdin_tar(sys.stdin.buffer)
+        else:
+            items = escrow.collect_from_folders(
+                Path(args.from_dir), Path(args.tls_dir) if args.tls_dir else None
+            )
+        now = datetime.now(UTC)
+        data = escrow.make_escrow(items, recipient=recipient, signing=signing,
+                                  environment=config.env, release=config.release, now=now)  # fmt: skip
+    except escrow.EscrowRefused as exc:
+        raise SystemExit(f"no secrets copy made: {exc.reason}") from None
+    names = sorted(items)
+    del items
+    name = escrow.escrow_name(now)
+    out_dir = Path(args.out_dir) if args.out_dir else config.work_dir / "escrow"
+    out_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = out_dir / name
+    with path.open("xb") as handle:
+        handle.write(data)
+    path.chmod(0o600)
+    sha = hashlib.sha256(data).hexdigest()
+    say(f"secrets copy written: {path}")
+    say(f"  holds {len(names)} files: {', '.join(names)}")
+    say(f"  locked to recovery key {recipient.key_id}; signed by {signing.key_id}")
+    say(f"  SHA-256 of the copy: {sha}")
+    if not any(n.startswith("tls/") for n in names):
+        say("  note: no certificate key was found to include")
+    if args.upload:
+        destination = make_destination(config)
+        destination.check_access()
+        destination.put_file(escrow.escrow_key(name), path, sha)
+        say(
+            f"  uploaded to {destination.identity} as {escrow.escrow_key(name)} (read back, matched)"
+        )
+    say("Keep a copy with the recovery key, never with the server (F-19). It is useless without "
+        "the recovery key and safe to store in a password manager or on a phone.")  # fmt: skip
     return 0
+
+
+def cmd_open_secrets(args: argparse.Namespace) -> int:
+    """On a recovery machine only (it needs the recovery key, BK-2)."""
+    config = _config(service=False)
+    _not_on_a_server(config, "opening a secrets copy", _RECOVERY_KEY_STAYS_OFF)
+    signers = _signers(args.signer)
+    try:
+        if args.file:
+            name, data = Path(args.file).name, Path(args.file).read_bytes()
+        else:
+            name, data = escrow.read_from_destination(make_destination(config), signers, args.name)
+        opened = escrow.open_escrow(data, keys=_keys(args.recovery_key), signers=signers)
+    except escrow.EscrowRefused as exc:
+        say(f"secrets copy refused: {exc.reason}")
+        return EXIT_FAILED
+    envelope = opened.envelope
+    say(f"secrets copy {name}: made {envelope.get('created_at')} on {envelope.get('environment')} "
+        f"(release {envelope.get('release')}); signature and contents verified")  # fmt: skip
+    for item in sorted(opened.items):
+        say(f"  {item}  {len(opened.items[item])} bytes")
+    if args.check:
+        return 0
+    try:
+        written = escrow.write_items(opened, Path(args.out))
+    except (escrow.EscrowRefused, OSError) as exc:
+        say(f"nothing written: {getattr(exc, 'reason', None) or type(exc).__name__}")
+        return EXIT_FAILED
+    say(f"{len(written)} files written to {args.out} (folder 700, files 600). Copy them to the new "
+        "server's /etc/markx (docs/runbooks/backup-and-restore.md), then delete this folder.")  # fmt: skip
+    return 0
+
+
+def _heartbeat_state(config: BackupConfig) -> str:
+    if config.heartbeat is None:
+        return ("outside heartbeat: OFF (MARKX_BACKUP_HEARTBEAT_URL is not set: the founder "
+                "chooses an outside monitor, F-18). Losing this server would be silent.")  # fmt: skip
+    return (
+        f"outside heartbeat: on, after each verified set, to {heartbeat.host_of(config.heartbeat)}"
+    )
+
+
+def cmd_heartbeat(args: argparse.Namespace) -> int:
+    config = _config(service=False)
+    say(_heartbeat_state(config))
+    if not args.send:
+        return 0
+    if config.heartbeat is None:
+        return EXIT_FAILED
+    result = heartbeat.ping(config.heartbeat, timeout=config.heartbeat_timeout_seconds)
+    say(f"heartbeat call: {result} (the monitor counts it as a check-in)")
+    return 0 if result == "sent" else EXIT_FAILED
+
+
+def _drill_secrets(args: argparse.Namespace, config: BackupConfig) -> Any:
+    """The secrets copy and the staff member who signs in (BK-5), or None."""
+    from markx.backup.drill import DrillSecrets
+    from markx.backup.staff_sign_in import StaffCredentials
+
+    if not (args.secrets or args.secrets_from_destination):
+        if args.staff_phone:
+            raise SystemExit("--staff-phone needs --secrets FILE or --secrets-from-destination")
+        return None
+    if not args.from_destination:
+        raise SystemExit("the secrets step is part of the off-server drill: add --from-destination")
+    if not args.staff_phone:
+        raise SystemExit(
+            "the secrets step signs a staff member in: give --staff-phone, and their password "
+            "in MARKX_DRILL_STAFF_PASSWORD"
+        )
+    password = os.environ.get("MARKX_DRILL_STAFF_PASSWORD")
+    if not password:
+        raise SystemExit("set MARKX_DRILL_STAFF_PASSWORD (never on the command line)")
+    signers = _signers(args.signer)
+    try:
+        if args.secrets:
+            data = Path(args.secrets).read_bytes()
+        else:
+            _, data = escrow.read_from_destination(make_destination(config), signers)
+        opened = escrow.open_escrow(data, keys=_keys(args.recovery_key), signers=signers)
+    except escrow.EscrowRefused as exc:
+        raise SystemExit(f"secrets copy refused: {exc.reason}") from None
+    secret = os.environ.get("MARKX_DRILL_STAFF_TOTP_SECRET")
+
+    def code() -> str:
+        if secret:  # the rehearsal's stand-in for the authenticator app
+            import pyotp
+
+            return str(pyotp.TOTP(secret).now())
+        if not sys.stdin.isatty():
+            raise EOFError
+        return getpass.getpass(
+            "The restore passed. Ask the staff member for the 6-digit code their authenticator "
+            "app shows NOW, and type it (it is not shown): "
+        ).strip()
+
+    return DrillSecrets(opened, StaffCredentials(args.staff_phone, password, code))
 
 
 # A 1x1 PNG and a 1x1 WebP: representative, and nobody's data.
@@ -505,6 +684,29 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--report", required=True)
     p.add_argument("--signer", action="append", default=[])
     p.set_defaults(func=cmd_record_drill)
+    p = sub.add_parser("escrow-secrets", help="an encrypted copy of the server's secrets (BK-5)")
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument("--from-dir", help="the settings folder (/etc/markx)")
+    source.add_argument("--from-tar", action="store_true",
+                        help="read the files as a tar stream on standard input")  # fmt: skip
+    p.add_argument("--tls-dir", help="with --from-dir: the certificate folder")
+    p.add_argument("--out-dir", help="where to write the copy (default: WORK_DIR/escrow)")
+    p.add_argument("--upload", action="store_true", help="also put it at the backup destination")
+    p.set_defaults(func=cmd_escrow_secrets)
+    p = sub.add_parser("open-secrets", help="open a secrets copy (a recovery machine only)")
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument("--file")
+    source.add_argument("--from-destination", action="store_true")
+    p.add_argument("--name", help="with --from-destination: this copy instead of the newest")
+    p.add_argument("--recovery-key", action="append", required=True)
+    p.add_argument("--signer", action="append", required=True)
+    what = p.add_mutually_exclusive_group(required=True)
+    what.add_argument("--check", action="store_true", help="verify and list; write nothing")
+    what.add_argument("--out", help="a NEW folder to write the secrets into")
+    p.set_defaults(func=cmd_open_secrets)
+    p = sub.add_parser("heartbeat", help="the outside heartbeat (BK-4): on or off")
+    p.add_argument("--send", action="store_true", help="call it now (counts as a check-in)")
+    p.set_defaults(func=cmd_heartbeat)
     for name, func in (("verify", cmd_verify), ("restore", cmd_restore)):
         p = sub.add_parser(name)
         p.add_argument("--set", required=True, help="the backup id")
@@ -540,6 +742,10 @@ def main(argv: list[str] | None = None) -> int:
         help="drill the newest complete set already there; take no backup (BK-2)",
     )
     p.add_argument("--set", help="with --from-destination: this set instead of the newest")
+    p.add_argument("--secrets", help="BK-5: a secrets copy (escrow-secrets) to restore with")
+    p.add_argument("--secrets-from-destination", action="store_true",
+                   help="BK-5: the newest secrets copy at the destination")  # fmt: skip
+    p.add_argument("--staff-phone", help="BK-5: the staff member who signs in to the restored copy")
     p.add_argument("--inject-failures", dest="inject_failures", action="store_true", default=None)
     p.add_argument("--no-inject-failures", dest="inject_failures", action="store_false")
     p.set_defaults(func=cmd_drill)
@@ -550,6 +756,9 @@ def main(argv: list[str] | None = None) -> int:
     except crypto.BackupKeyError as exc:
         say(f"key refused: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    except DestinationError as exc:
+        say(f"the backup destination failed: {exc.reason}", file=sys.stderr)
+        return EXIT_FAILED
     except SystemExit as exc:
         if isinstance(exc.code, str):
             say(exc.code, file=sys.stderr)

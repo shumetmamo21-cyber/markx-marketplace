@@ -1,0 +1,13 @@
+# The container watch (D-105, BK-4): a container that stays unhealthy,
+# stopped or missing alerts the staff Telegram group through the bot.
+# Installed by `deploy.sh watch install-timer`, which fills in the two paths.
+# It fails while a container is unhealthy, so `systemctl --failed` shows it.
+[Unit]
+Description=MarkX: alert when a container stays unhealthy or stopped
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=MARKX_COMPOSE_ENV=@COMPOSE_ENV@
+ExecStart=@DEPLOY@ watch
