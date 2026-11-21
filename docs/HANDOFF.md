@@ -9,8 +9,9 @@ A.00000000 was added on 19 November 2026 by the documents-repair session,
 Part A.000000000 the same day by the backup trust hardening session, and
 Part A.0000000000 on 20 November 2026 by the checks and secret-scan
 session (D-097), Part A.00000000000 the same day by the staff conflict
-and phone digits session (D-098), and Part A.000000000000 the same day by
-the order life-cycle hardening session (D-099).
+and phone digits session (D-098), Part A.000000000000 the same day by
+the order life-cycle hardening session (D-099), and Part A.0000000000000
+the same day by the frontend resilience session (D-100).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -19,6 +20,74 @@ the order life-cycle hardening session (D-099).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000000000000 — Frontend resilience (20 November 2026, D-100)
+
+On branch `claude/frontend-resilience-errors-g4z33c`, from `main` at
+`fae2514` (pull request #7, D-099, merged), with the complete history.
+One pull request into `main`. The founder's task approved the merge in
+advance on one condition: every check on the latest commit passes and the
+pull request has not changed since; then a normal merge (not a squash),
+pinned to that commit, keeping the branch. Whether it was merged, and the
+new `main` commit, are in the session's report: they cannot be written
+into the same pull request. **The website, its tests, one workflow step
+and documents only; the API is unchanged. Nothing deployed; no account; no
+money spent.** In plain words:
+
+- **The website no longer freezes when the connection drops.** Every part
+  of it that talks to the server (22 component files: add to cart, the
+  cart, checkout, the buyer's order buttons, reviews, reports, sign-in and
+  sign-out, the account, the shop's dashboard, every staff screen, photo
+  and document uploads, the CSV export) now goes through one safe call. If
+  the network drops, the request takes more than 30 seconds (uploads 120),
+  or something other than MarkX answers (a proxy's error page, a crash),
+  the person sees "No connection. Check your internet, then try again." or
+  "MarkX could not answer just now. Please try again in a moment." (in
+  Amharic on Amharic pages) with a **Try again** button, and every button
+  and form is usable again. MarkX's own refusals ("too many open orders")
+  are shown as before.
+- **Trying again never places an order twice.** Checkout keeps the same
+  order key when the person tries again, so the server returns the order
+  it already took.
+- **Proper error pages.** If a page cannot be built (for example the API
+  is down), the person sees "This page could not be shown", in Amharic or
+  English, with Try again and a way back (home, the seller area or the
+  staff area), and never a technical detail. One for the whole site, one
+  for each section.
+- **Proved in a real browser** (`e2e/network-recovery.mjs`, now in the
+  browser journeys on GitHub): add to cart offline, a fake proxy error,
+  "Place order" offline, the answer lost after the server took the order,
+  then Try again: exactly one order. Then the API is stopped: the error
+  page in both languages; started again: Try again brings the page back.
+  On the old website the same journey fails at the first step.
+- **An automatic accessibility check (axe)** runs on every page of that
+  journey and on the main public pages in both languages. It found two
+  problems on every storefront page (the logo link's name, the search
+  field's suggestion list); both are fixed.
+- **New question F-23 (OPEN):** may a member of staff edit the text,
+  variants, aliases or pictures of a product their own shop proposed?
+  Today they can (checked in the code).
+
+**For the next engineer:**
+
+- Call the API from the browser only through `browserApi`, `sendForm` or
+  `getSafely` (`src/lib/api/browser.ts`); they never throw. Show a failure
+  with `ProblemNotice` (`src/components/Resilience.tsx`): pass the error
+  code, the component's own words and either the call to repeat or
+  `"submit"` inside a form.
+- The error pages' words are in both message files and, for
+  `global-error.tsx` only, copied in `src/lib/fallback-text.ts`; a unit
+  test fails if the copy differs. Change the message files first.
+- `e2e/a11y.mjs` (`checkAccessibility(page, label)`) can be called from any
+  journey; the other journeys do not call it yet.
+- `e2e/network-recovery.mjs` needs `MARKX_E2E_STOP_API` and
+  `MARKX_E2E_START_API` (commands that stop and start the API); the
+  workflow sets them to Docker Compose commands.
+- For later (D-100): the 404 page's missing `lang` (needs an experimental
+  Next.js setting); a PWA for offline page moves; measuring the time limits
+  on real networks; native review of the new Amharic.
 
 ---
 

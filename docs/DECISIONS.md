@@ -3847,6 +3847,155 @@ No existing check or test was weakened, removed or changed.
 `migrations/versions/20261120_0900_commission_cap_on_order_lines.py`;
 `apps/web/messages/en.json`, `am.json`; the tests named above.
 
+## D-100 Frontend resilience: one safe way to call the API, "try again", error pages in both languages, a network-cut journey, axe in the journeys
+
+**Engineering decision, 20 November 2026.** Follows the independent audit
+(`docs/reports/2026-11-19-independent-audit.md`, section 10 and section 17
+item 9) and known defect **e** in `docs/DEVELOPMENT_STATUS.md`. The website,
+its tests, the browser-journeys workflow and documents only. **The API is
+not changed. Nothing deployed, no account created, no money spent.** Branch
+`claude/frontend-resilience-errors-g4z33c`, from `main` at `fae2514` with
+the complete history.
+
+### The problem (checked in the code first)
+
+Every browser call used `browserApi` (openapi-fetch) or `sendForm`, and
+about 20 components awaited them without a `try`. When the connection
+dropped, `fetch` threw, the code after the `await` never ran, and the
+button or form stayed disabled for good with no message. **Seen on `main`
+(`fae2514`) in Chromium:** after "Add to cart" with the browser offline,
+the button still read "Adding…" and was disabled 20 seconds later, and
+still 5 seconds after the connection came back; no message. A crash's
+plain "Internal Server Error" or a proxy's HTML 502 page gave the generic
+"something went wrong" at best. There was no `error.tsx` or
+`global-error.tsx`: a page whose server render failed showed Next.js's
+unlocalized default page.
+
+### What changed
+
+- **One safe call** (`src/lib/api/browser.ts`). `browserApi` keeps the same
+  typed client and the same header middleware (the `X-MarkX-Client` header
+  and the CSRF token are sent exactly as before; their code is unchanged).
+  Around it: every method is guarded and **never throws**; a call is given
+  up after **30 seconds** (uploads **120 seconds**, both PROVISIONAL), the
+  time limit also covering a body that stops halfway; a failure becomes one
+  of two codes shaped like the API's own errors: `network_unavailable` (no
+  connection, time-out, unreadable answer) and `server_unavailable` (an
+  answer of 500 or more that does not carry the API's error code: a proxy
+  page, a crash). The API's own refusals, its 5xx ones included
+  (`storage_unavailable`), pass through unchanged. `sendForm` (photos,
+  documents) and a new `getSafely` (the staff CSV download) follow the same
+  rules. `isConnectionProblem(code)` tells the two apart from refusals.
+- **One notice** (`src/components/Resilience.tsx`, `ProblemNotice`). For a
+  connection or server failure it shows the shared words ("No connection.
+  Check your internet, then try again." / "MarkX could not answer just now.
+  Please try again in a moment.", and their Amharic) and a **"Try again"**
+  button; inside a form the button sends the form again with what the
+  person typed, elsewhere it repeats the call. For the API's own refusals
+  it shows the component's words as before, without the button (trying
+  again would not help). The alert stays a `<p role="alert">`, so screen
+  readers and the journeys read the same element as before.
+- **Every part of the website that calls the server uses them** (22
+  component files, 104 calls to the server):
+  add to cart; the cart (reading it and each change, which keeps the cart
+  on screen when a change does not get through); checkout (reading the
+  cart, review, place order, new address); the buyer's order buttons and
+  problem report; problem messages; reviews; reports; product requests;
+  photo uploads and withdrawals; account forms and "sign out everywhere";
+  sign out (a connection failure now keeps the person on the page instead
+  of sending them home still signed in; any answer from the API leads home
+  as before); buyer and staff sign-in; the Telegram connection; the shop's
+  check-in, offer rows, order actions, review replies, every seller form
+  and opening a document; the product form; every staff form, the staff
+  account form, document links, synonym removal and the CSV export. The
+  search box's suggestions already caught failures and stay silent by
+  design. Four places that used to fail **without any message** now say
+  so: the shop's check-in, staff document links, synonym removal and
+  checkout's cart reading.
+- **Placing an order twice is impossible by retrying.** Checkout keeps its
+  idempotency key across "try again" (a new key only after a new review),
+  and the API returns the existing order for the same key (G.5). The
+  journey proves it with the answer lost after the server took the order.
+- **Error pages** in the page's language, never showing the error (no
+  message, code, digest or stack): `app/[lang]/error.tsx` (the whole site
+  under a language, and a section frame that fails), `(shop)/error.tsx`
+  (inside the shop's header and footer), `admin/error.tsx` and
+  `admin/(desk)/error.tsx`, `seller/error.tsx` and
+  `seller/[sellerId]/error.tsx`. Each has "Try again" (Next.js `retry()`,
+  which fetches the section again) and a way back (home, the seller area
+  or the staff area), and says "You seem to be offline" when the browser
+  knows it is. `app/global-error.tsx` replaces the root layout when even it
+  fails: both languages, Amharic first, like the 404 page.
+- **The words** live in both message files (`apiErrors.network_unavailable`,
+  `apiErrors.server_unavailable`, `errors.tryAgain`, `errors.retrying`,
+  `errors.pageTitle`, `errors.pageLead`, `errors.offlineLead`,
+  `errors.goSeller`, `errors.goAdmin`); the root layout hands them to every
+  page once. `global-error.tsx` cannot read the message files (they would
+  go into every page's script), so `src/lib/fallback-text.ts` holds a copy
+  that a unit test keeps identical to the message files. The Amharic is
+  the engineer's; a native editor has not reviewed it (as for all Amharic
+  text, audit §10).
+
+### Tests
+
+- `src/lib/api/browser.test.ts` (14 tests): a dropped connection, a request
+  that hangs, a body that stops halfway, a proxy page, a crash's text, an
+  unreadable success, the API's own refusals kept, success unchanged, and
+  the app header and CSRF token still sent on a change and not on a read;
+  the same for uploads and the CSV download.
+- `src/components/error-pages.test.ts` (26 tests): every section's error
+  page in both languages, with try again and the right way back, without
+  the error's message, digest or stack; the whole-site page; the notice;
+  the copy of the words equal to the message files.
+- `e2e/network-recovery.mjs`, in the browser-journeys workflow after the
+  other purchase journeys: add to cart offline; a proxy's 502 page on the
+  cart; "Place order" offline (nothing placed); the answer lost after the
+  server took the order; "Try again" shows that same order and exactly one
+  new order exists; then the API is stopped by the journey itself: the
+  error page in English and Amharic with no details, the API started
+  again, "Try again" shows the page. The shop then declines the test order
+  (a buyer's cancellation would count towards the D-099 cool-down).
+  **Against `main` it fails at step 1** (no message; the button stuck).
+
+### Accessibility check in the journeys (axe)
+
+`axe-core` 4.14.0 (released 5 October 2026, no dependencies, pinned
+exactly; the newer 4.14.1 was four days old and not taken) runs through
+`e2e/a11y.mjs` against the WCAG 2.1 A and AA rules on every page the new
+journey visits, the notices and error pages included, and on the main
+public pages in both languages; any violation fails the journey. It found
+two problems on every storefront page, both fixed: the header's MarkX link
+had a label different from its own words (`label-content-name-mismatch`;
+the label is removed and the drawn X gets screen-reader text, so it still
+reads "MarkX"), and the search field pointed to a suggestion list that was
+not there (`aria-valid-attr-value`; now only while the list is shown).
+**For later:** the 404 page for an address that matches no route has no
+`lang` on its `<html>` (axe `html-has-lang`). Next.js serves it without the
+app's layout; the fix (`global-not-found.js`) needs an experimental Next.js
+setting, so it is not done here. The other journeys do not yet call the
+check; adding it to them is a small follow-up.
+
+### Limits (UNKNOWN or not covered)
+
+- When the connection is lost **while moving to another page**, Next.js
+  falls back to a full page load and the browser shows its own offline
+  page; only a service worker (PWA, not built) could change that.
+- The 30- and 120-second limits are PROVISIONAL; how they suit real
+  Ethiopian mobile networks is UNKNOWN until measured.
+- A change that reached the server but whose answer was lost is reported
+  as "no connection". Trying again is safe for checkout (idempotency key);
+  for other actions the API answers the second attempt with its usual
+  refusal if the first one already took effect (for example "already
+  confirmed"), which the notice then shows.
+
+**Files:** `apps/web/src/lib/api/browser.ts`, `browser.test.ts`;
+`src/lib/fallback-text.ts`; `src/components/Resilience.tsx`,
+`error-pages.test.ts` and the 22 component files above; the seven error pages;
+`src/app/[lang]/layout.tsx`; `SiteHeader.tsx`, `Wordmark.tsx`,
+`SearchBox.tsx`; `messages/en.json`, `am.json`; `e2e/network-recovery.mjs`,
+`e2e/a11y.mjs`; `package.json`, `package-lock.json` (axe-core);
+`.github/workflows/journeys.yml` (one step).
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -3860,7 +4009,8 @@ decides. F-21 (D-098, staff conflict of interest) has a PROVISIONAL answer
 (P-098-1, no override) that the founder must confirm or change. D-099
 (order life-cycle hardening) sets seven PROVISIONAL values, P-099-1 to
 P-099-7, listed in D-099, and raises F-22, which has a PROVISIONAL answer
-(P-099-7).** Treat this list as part of the launch
+(P-099-7). F-23 (raised 20 November 2026, product editing by staff whose
+own shop proposed the product) is OPEN with no provisional answer.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -4231,6 +4381,27 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 - **To decide:** whether staff should be able to record "the goods are back
   at the shop" (releasing the stock) or "lost" on a shop's behalf, and with
   what evidence; and the six time limits and caps P-099-1 to P-099-6.
+- **Founder's approval required: yes.**
+
+### F-23 May staff edit a product their own shop proposed? (OPEN)
+
+**OPEN.** "May a staff member edit the text, variants, aliases or pictures
+of a product their own shop proposed? Today they can. Editing is not
+deciding, but product pages are shared by every seller."
+
+- **Today (checked in the code, 20 November 2026):** the D-098 check
+  (`_refuse_own_proposal` in `markx/catalog/service.py`) refuses such a
+  staff member only for approving, archiving and merging the product.
+  Changing its text (`update_product_text`), adding variants
+  (`add_variant`), adding or removing aliases (`add_alias`,
+  `remove_alias`) and adding catalogue pictures (`add_catalogue_image` in
+  `markx/images/service.py`) have no such check; removing a picture checks
+  only the shop that took it, and a catalogue picture has none. Every
+  change is in the audit log.
+- **To decide:** whether these edits should also be refused for a member
+  of the proposing shop (as decisions are), allowed but shown to another
+  member of staff, or left as they are. Nothing is changed until the
+  founder decides.
 - **Founder's approval required: yes.**
 
 ## Open questions carried over from session 1
