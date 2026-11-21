@@ -107,8 +107,15 @@ def _drain() -> None:
 
 
 def _pushed(telegram_id: int, template: str | None = None) -> list[dict[str, Any]]:
+    """What the fake sent, with the words the real Bot API adapter would send
+    (it renders them with `texts.render_telegram`)."""
     return [
-        line
+        {
+            **line,
+            "text": outside_texts.render_telegram(
+                line["template"], line["params"], line["language"]
+            ),
+        }
         for line in read_dev_push_outbox()
         if line["telegram_id"] == telegram_id and template in (None, line["template"])
     ]

@@ -153,12 +153,6 @@ class FakePushSender:
         }
         if reply_markup is not None:
             record["reply_markup"] = reply_markup
-        # The words a real bot would send (D-102), so a test can read them;
-        # None where the real adapter would refuse the text.
-        try:
-            record["text"] = texts.render_telegram(template, params, language)
-        except texts.UnsafeText:
-            record["text"] = None
         line = json.dumps(record, ensure_ascii=False)
         with self._outbox.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
