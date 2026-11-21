@@ -33,6 +33,13 @@ cannot run shell commands on the recovery machine. Restore on a throwaway
 PostgreSQL with no network and no secrets (docs/runbooks/backup-and-restore.md).
 The `restore`, `verify` and `drill` commands refuse to run on staging and
 production (BK-2): the recovery key never comes to the server.
+
+**An object written again (RN-1, D-105).** Every piece is read through
+`copies.Copies`: when the current version of a piece is missing or does not
+match what the signed manifest (or the index) records, an older version kept
+by the bucket's object lock is used instead, and the report warns that the
+set was OVERWRITTEN and lists what. A set's manifest is the OLDEST version
+that verifies, since a set writes its manifest exactly once.
 """
 
 from __future__ import annotations
@@ -53,6 +60,7 @@ from typing import Any
 import psycopg
 
 from markx.backup import manifest as manifest_mod
+from markx.backup.copies import Copies, download_matching, first_good
 from markx.backup.crypto import (
     DecryptionError,
     RecoveryKey,
@@ -106,10 +114,22 @@ class Report:
     backup_id: str
     checks: list[tuple[str, bool, str]] = field(default_factory=list)
     facts: dict[str, Any] = field(default_factory=dict)
+    # Not a failed check, but something a person must know (RN-1: overwritten files).
+    warnings: list[str] = field(default_factory=list)
 
     def check(self, name: str, ok: bool, detail: str = "") -> bool:
         self.checks.append((name, ok, detail))
         return ok
+
+    def note_copies(self, copies: Copies) -> None:
+        """What `copies` found: overwritten objects, older copies used (RN-1)."""
+        self.facts.update(copies.facts())
+        warning = copies.warning()
+        if warning and warning not in self.warnings:
+            self.warnings.append(warning)
+        for note in copies.notes:
+            if note not in self.warnings:
+                self.warnings.append(note)
 
     @property
     def passed(self) -> bool:
@@ -119,12 +139,14 @@ class Report:
         lines = [f"backup set {self.backup_id}"]
         for name, ok, detail in self.checks:
             lines.append(f"  {'ok  ' if ok else 'FAIL'}  {name}{': ' + detail if detail else ''}")
+        lines += [f"  WARN  {warning}" for warning in self.warnings]
         lines.append("RESULT: PASSED" if self.passed else "RESULT: FAILED")
         return "\n".join(lines)
 
     def as_dict(self) -> dict[str, Any]:
         return {"backup_id": self.backup_id, "passed": self.passed, "facts": self.facts,
-                "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in self.checks]}  # fmt: skip
+                "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in self.checks],
+                "warnings": self.warnings}  # fmt: skip
 
 
 # -- reading the set ----------------------------------------------------------------------
@@ -159,20 +181,50 @@ def read_manifest(
         raise SetRefused(exc.reason) from None
 
 
-def _download(
-    destination: Destination, key: str, path: Path, expected_sha: str, expected_size: int
-) -> None:
-    digest = hashlib.sha256()
-    size = 0
+def read_original_manifest(
+    destination: Destination, backup_id: str, signers: list[SignerKey],
+    copies: Copies | None = None,
+) -> dict[str, Any]:  # fmt: skip
+    """The set's ORIGINAL manifest (RN-1). A set writes its manifest once, so
+    when the bucket keeps several different versions of it, the oldest one
+    that verifies is the original and later ones were written by someone
+    else: they are recorded as an overwrite and never used."""
+    copies = copies or Copies(destination)
+    key = manifest_mod.manifest_key(backup_id)
     try:
-        with destination.reader(key) as stream, path.open("wb") as out:
-            while chunk := stream.read(_READ):
-                digest.update(chunk)
-                size += len(chunk)
-                out.write(chunk)
-    except ObjectMissing:
-        raise SetRefused(f"missing_piece:{key.rsplit('/', 1)[-1]}") from None
-    if size != expected_size or digest.hexdigest() != expected_sha:
+        versions = destination.versions(key)
+    except DestinationError as exc:
+        copies.notes.append(f"older copies could not be listed ({exc.reason})")
+        versions = []
+    if len({v.etag for v in versions}) <= 1:
+        return read_manifest(destination, backup_id, signers)
+    copies.overwritten.add(key)
+    first_reason: str | None = None
+    for version in sorted(versions, key=lambda v: v.last_modified):
+        try:
+            data = destination.read_bytes(
+                key, limit=manifest_mod.MAX_MANIFEST_BYTES,
+                version_id=None if version.is_latest else version.version_id,
+            )  # fmt: skip
+            body = manifest_mod.decode(data, signers, backup_id=backup_id)
+        except (ObjectMissing, manifest_mod.ManifestRefused) as exc:
+            first_reason = first_reason or str(getattr(exc, "reason", None) or "missing")
+            continue
+        if not version.is_latest:
+            copies.took(key, version.version_id)
+        return body
+    raise SetRefused(first_reason or "no_manifest: the set is unfinished or does not exist")
+
+
+def _download(
+    copies: Copies, key: str, path: Path, expected_sha: str, expected_size: int | None
+) -> None:
+    """The piece as the signed manifest records it: the current version, or
+    an older locked copy when the current one was written again (RN-1)."""
+    found = download_matching(copies, key, path, sha256=expected_sha, size=expected_size)
+    if found == "missing":
+        raise SetRefused(f"missing_piece:{key.rsplit('/', 1)[-1]}")
+    if found != "ok":
         raise SetRefused(f"altered_piece:{key.rsplit('/', 1)[-1]}")
 
 
@@ -202,6 +254,8 @@ class VerifiedSet:
     dump_path: Path
     entries: list[dict[str, Any]]
     workdir: Path
+    # Which versions were read, and what was found overwritten (RN-1).
+    copies: Copies
 
 
 def fetch_and_verify(
@@ -213,8 +267,12 @@ def fetch_and_verify(
     workdir: Path,
     accept_incomplete: bool = False,
     report: Report,
+    copies: Copies | None = None,
 ) -> VerifiedSet:
-    body = read_manifest(destination, backup_id, signers)
+    copies = copies or Copies(destination)
+    body = read_original_manifest(destination, backup_id, signers, copies)
+    # Every piece of a set is written once: any second, different version is an overwrite.
+    copies.scan(f"{manifest_mod.set_prefix(backup_id)}/")
     report.check("manifest signed by a trusted key", True, str(body.get("signer_key_id")))
     status = body.get("status")
     if status != manifest_mod.STATUS_COMPLETE:
@@ -229,7 +287,7 @@ def fetch_and_verify(
     if recipient not in keys:
         raise SetRefused(f"recovery_key_missing: the set needs recovery key {recipient}")
     dump_path = workdir / "database.dump.mxb"
-    _download(destination, database["object"], dump_path, database["ciphertext_sha256"],
+    _download(copies, database["object"], dump_path, database["ciphertext_sha256"],
               int(database["ciphertext_bytes"]))  # fmt: skip
     _verify_decrypts(
         dump_path, keys, database["plaintext_sha256"], int(database["plaintext_bytes"]), "dump"
@@ -238,12 +296,16 @@ def fetch_and_verify(
                  f"{database['plaintext_bytes']} bytes")  # fmt: skip
     index_path = workdir / "files.index.mxb"
     index_head = destination.head(files["index_object"])
-    if index_head is None:
-        raise SetRefused("missing_piece:files.index.mxb")
-    if index_head.size > MAX_INDEX_BYTES:
+    if (
+        index_head is not None
+        and index_head.size > MAX_INDEX_BYTES
+        and not copies.older(files["index_object"])
+    ):
         raise SetRefused("index_too_large")
-    _download(destination, files["index_object"], index_path, files["index_ciphertext_sha256"],
-              index_head.size)  # fmt: skip
+    # The manifest records the index's hash, not its size: the hash decides.
+    _download(copies, files["index_object"], index_path, files["index_ciphertext_sha256"], None)
+    if index_path.stat().st_size > MAX_INDEX_BYTES:
+        raise SetRefused("index_too_large")
     try:
         index_plain = b"".join(_plaintext(index_path, keys))
     except DecryptionError as exc:
@@ -274,7 +336,8 @@ def fetch_and_verify(
             raise SetRefused("index_repeats_a_file")
         seen.add((entry["store"], entry["key"]))
     report.check("file index intact", True, f"{len(entries)} files, {files['total_bytes']} bytes")
-    return VerifiedSet(body, dump_path, entries, workdir)
+    report.note_copies(copies)
+    return VerifiedSet(body, dump_path, entries, workdir, copies)
 
 
 def verify_blobs(
@@ -288,6 +351,7 @@ def verify_blobs(
     A blob whose encrypted bytes differ from the index's SHA-256 but decrypt
     to the right file was uploaded again after this set (the backup does that
     over an object it cannot prove unchanged); `deep` reports how many."""
+    copies = verified.copies
     missing: set[str] = set()
     damaged: set[str] = set()
     replaced: set[str] = set()
@@ -303,27 +367,35 @@ def verify_blobs(
         expected_size = entry.get("ciphertext_bytes")
         if not deep:
             head = destination.head(key)
-            if head is None:
+            if head is not None and (expected_size is None or head.size == expected_size):
+                continue
+            # Written again or hidden (RN-1): is the original still kept, locked?
+            older = [
+                v for v in copies.older(key) if v.size == expected_size or expected_size is None
+            ]
+            if older:
+                copies.overwritten.add(key)
+            elif head is None:
                 missing.add(blob)
-            elif expected_size is not None and head.size != expected_size:
+            else:
                 damaged.add(blob)
             continue
         try:
-            data, cipher_sha, cipher_size = _blob_plaintext_and_hash(destination, key, keys)
+            _, cipher_sha, cipher_size = read_blob(copies, key, entry, keys)
         except ObjectMissing:
             missing.add(blob)
             continue
         except DecryptionError:
             damaged.add(blob)
             continue
-        wrong_file = (
-            hashlib.sha256(data).hexdigest() != entry["sha256"] or len(data) != entry["size"]
-        )
         wrong_size = expected_size is not None and cipher_size != expected_size
-        if wrong_file or wrong_size:
+        if wrong_size and key not in copies.used:
             damaged.add(blob)
+        elif key in copies.used:
+            pass  # the current version was written again; the original was used
         elif entry.get("ciphertext_sha256") not in (None, cipher_sha):
             replaced.add(blob)
+    report.note_copies(copies)
     report.check(
         "every file's blob present"
         + (" and decrypts to its checksum" if deep else " with its recorded size"),
@@ -333,19 +405,34 @@ def verify_blobs(
     )
 
 
-def _blob_plaintext_and_hash(
-    destination: Destination, key: str, keys: dict[str, RecoveryKey]
+_MAX_BLOB_BYTES = 2**31
+
+
+def read_blob(
+    copies: Copies, key: str, entry: dict[str, Any], keys: dict[str, RecoveryKey]
 ) -> tuple[bytes, str, int]:
-    """The decrypted blob, and the SHA-256 and size of its encrypted bytes."""
-    with destination.reader(key) as stream:
-        encrypted = stream.read()
-    digest = hashlib.sha256(encrypted).hexdigest()
-    return b"".join(decrypt_stream(io.BytesIO(encrypted), keys)), digest, len(encrypted)
+    """The decrypted file of one index entry, and the SHA-256 and size of the
+    encrypted bytes it came from: the current version of its blob, or an older
+    locked copy when the current one does not decrypt to the file (RN-1).
+    Raises ObjectMissing when no version exists, DecryptionError when none is
+    the file."""
 
+    def accept(encrypted: bytes) -> tuple[bytes, str, int]:
+        data = b"".join(decrypt_stream(io.BytesIO(encrypted), keys))
+        if hashlib.sha256(data).hexdigest() != entry["sha256"] or len(data) != entry["size"]:
+            raise DecryptionError("checksum")
+        return data, hashlib.sha256(encrypted).hexdigest(), len(encrypted)
 
-def _blob_plaintext(destination: Destination, key: str, keys: dict[str, RecoveryKey]) -> bytes:
-    with destination.reader(key) as stream:
-        return b"".join(decrypt_stream(stream, keys))
+    try:
+        value, _ = first_good(copies, key, accept, limit=_MAX_BLOB_BYTES)
+    except DecryptionError:
+        raise
+    except (ObjectMissing, DestinationError):
+        raise
+    except Exception as exc:  # anything else a version's bytes could cause
+        raise DecryptionError(type(exc).__name__) from None
+    result: tuple[bytes, str, int] = value
+    return result
 
 
 # -- targets --------------------------------------------------------------------------------
@@ -423,9 +510,9 @@ def _restore_files(
     for entry in verified.entries:
         store = files.stores[entry["store"]]
         try:
-            data = _blob_plaintext(destination, manifest_mod.blob_key(entry["blob"]), keys)
-            if hashlib.sha256(data).hexdigest() != entry["sha256"]:
-                raise DecryptionError("checksum")
+            data, _, _ = read_blob(
+                verified.copies, manifest_mod.blob_key(entry["blob"]), entry, keys
+            )
             content_type = entry.get("content_type")
             if content_type is None:
                 raise StoredFileRefused("unknown type")
@@ -442,6 +529,7 @@ def _restore_files(
             failures["refused_by_store"] = failures.get("refused_by_store", 0) + 1
             continue
         restored.add((entry["store"], entry["key"]))
+    report.note_copies(verified.copies)
     counts = {s: sum(1 for st, _ in restored if st == s) for s in ("private", "public")}
     report.facts["restored_files"] = counts
     report.check(
@@ -605,12 +693,18 @@ def restore_set(
     except SetRefused as exc:
         report.check("set and targets accepted", False, exc.reason)
         return report
-    except (RestoreFailed, DestinationError, DecryptionError) as exc:
+    except (RestoreFailed, DestinationError, DecryptionError, psycopg.Error) as exc:
+        # psycopg.Error: the PostgreSQL given cannot be reached or refused us
+        # (RN-4: a socket path too long ends here as FAILED, not a traceback).
         reason = getattr(exc, "reason", None) or type(exc).__name__
         report.check("restore", False, str(reason))
         if created:
-            drop_database(server, target_db)
-            report.check("the half-restored database was removed", True, target_db)
+            try:
+                drop_database(server, target_db)
+                report.check("the half-restored database was removed", True, target_db)
+            except (RestoreFailed, psycopg.Error) as drop_error:
+                report.check("the half-restored database was removed", False,
+                             f"{target_db}: {type(drop_error).__name__}")  # fmt: skip
         return report
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

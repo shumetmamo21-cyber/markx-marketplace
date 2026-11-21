@@ -138,6 +138,16 @@ class BackupConfig(BaseSettings):
     # PROVISIONAL: 30 days, the blueprint's backup period (H.2); F-16 and F-20.
     object_lock_min_days: int = Field(default=30, ge=1, le=3650)
 
+    # -- the outside heartbeat (BK-4, D-105): OFF until the founder chooses a
+    # monitor (F-18). After each verified set the service calls this address;
+    # the outside monitor alerts when the calls stop. A secret: never logged.
+    heartbeat_url: SecretStr | None = None
+    heartbeat_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+    @property
+    def heartbeat(self) -> str | None:
+        return self.heartbeat_url.get_secret_value() if self.heartbeat_url else None
+
     @property
     def is_real_environment(self) -> bool:
         return self.env in ("staging", "production")
@@ -267,6 +277,11 @@ class BackupConfig(BaseSettings):
             problems.append(
                 "the backup bucket must be its own bucket, never the documents' or the pictures'"
             )
+        if self.heartbeat is not None and not _heartbeat_ok(self.heartbeat):
+            problems.append(
+                "MARKX_BACKUP_HEARTBEAT_URL must be a plain http(s) address with a host name, "
+                "and no user name or password in it"
+            )
         if self.require_object_lock and self.destination == "local":
             problems.append(
                 "MARKX_BACKUP_REQUIRE_OBJECT_LOCK needs object storage: a folder has no object lock"
@@ -286,6 +301,8 @@ class BackupConfig(BaseSettings):
             )
         elif not (self.destination_endpoint_url or "https://").startswith("https://"):
             problems.append("MARKX_BACKUP_DESTINATION_ENDPOINT_URL must be https://")
+        if self.heartbeat is not None and not self.heartbeat.startswith("https://"):
+            problems.append("MARKX_BACKUP_HEARTBEAT_URL must be https://")
         if problems:
             raise ValueError(
                 "unsafe backup settings for a real environment: " + "; ".join(problems)
@@ -323,6 +340,21 @@ class BackupConfig(BaseSettings):
         if self.release == "unknown":
             problems.append("MARKX_RELEASE must name the release being run")
         return problems
+
+
+def _heartbeat_ok(url: str) -> bool:
+    try:
+        parts = urlsplit(url)
+        _ = parts.port
+    except ValueError:
+        return False
+    return (
+        parts.scheme in ("http", "https")
+        and bool(parts.hostname)
+        and not parts.username
+        and not parts.password
+        and not parts.fragment
+    )
 
 
 def _region(provider: str, region: str | None) -> str:

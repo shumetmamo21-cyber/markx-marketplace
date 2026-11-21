@@ -23,6 +23,15 @@
 #                                                 a 7-day self-signed one, to start the proxy
 #   infra/production/deploy.sh certificate install-timer
 #                                                 the systemd timer that runs "renew" twice a day
+#   infra/production/deploy.sh alert-test [--send-heartbeat]
+#                                                 a test alert to the staff Telegram group, and
+#                                                 whether the outside heartbeat is on (BK-4)
+#   infra/production/deploy.sh watch              alert when a container stays unhealthy or stopped
+#   infra/production/deploy.sh watch install-timer
+#                                                 the systemd timer that runs "watch" every 5 minutes
+#   infra/production/deploy.sh escrow-secrets     an encrypted copy of the server's secrets, locked
+#                                                 to the recovery key, also put in the backup bucket
+#                                                 (BK-5; docs/runbooks/backup-and-restore.md)
 #
 # RELEASE names the images (PREFIX/api, PREFIX/web, PREFIX/backup:RELEASE, where
 # PREFIX is MARKX_IMAGE_PREFIX, default "markx"): use the Git commit being
@@ -83,6 +92,10 @@ tls_warn_days="$(setting MARKX_TLS_WARN_DAYS)"; tls_warn_days="${tls_warn_days:-
 certbot="${MARKX_CERTBOT_COMMAND:-certbot}"
 releases_log="$config_dir/releases.log"
 halt_file="$config_dir/deploy-halted"
+# D-105 (BK-4): the container watch. PROVISIONAL (P-105-2): a container that
+# stays unhealthy or stopped this many minutes alerts the staff group.
+watch_minutes="$(setting MARKX_CONTAINER_ALERT_MINUTES)"; watch_minutes="${watch_minutes:-15}"
+watch_state_dir="${MARKX_WATCH_STATE_DIR:-/var/lib/markx/watch}"
 
 [[ "$image_prefix" =~ ^[a-z0-9][a-z0-9._:/-]*[a-z0-9]$|^[a-z0-9]$ ]] \
   || fail "MARKX_IMAGE_PREFIX in $compose_env is not an image name prefix: '$image_prefix'"
@@ -91,6 +104,9 @@ halt_file="$config_dir/deploy-halted"
 [[ "$tls_warn_days" =~ ^[0-9]{1,2}$ ]] && (( 10#$tls_warn_days >= 8 && 10#$tls_warn_days <= 90 )) \
   || fail "MARKX_TLS_WARN_DAYS in $compose_env must be a number of days from 8 to 90"
 tls_warn_days=$((10#$tls_warn_days))
+[[ "$watch_minutes" =~ ^[0-9]{1,3}$ ]] && (( 10#$watch_minutes >= 5 && 10#$watch_minutes <= 720 )) \
+  || fail "MARKX_CONTAINER_ALERT_MINUTES in $compose_env must be a number of minutes from 5 to 720"
+watch_minutes=$((10#$watch_minutes))
 export MARKX_IMAGE_PREFIX="$image_prefix"
 
 case "$stage" in
@@ -257,6 +273,11 @@ cmd_check() {
   if MARKX_RELEASE="${MARKX_RELEASE:-check}" compose config --quiet; then say "  ok       valid"; else bad=1; fi
   if [[ -f "$halt_file" ]]; then
     say "  note     the last deployment HALTED ($halt_file): see deploy.sh status"
+  fi
+  # D-105 (BK-5): a total-loss recovery needs this server's secrets, too.
+  if ! compgen -G "$backup_dir/escrow/markx-secrets-*.json" >/dev/null; then
+    say "  note     no secrets copy has been made on this server: run deploy.sh escrow-secrets"
+    say "           after setting up, and again after any secret changes (BK-5)"
   fi
   if newer_schema_setting_on; then
     say "  WARNING  MARKX_ALLOW_NEWER_SCHEMA is on in $config_dir/api.env (a compatible rollback):"
@@ -651,6 +672,154 @@ cmd_certificate() {
   esac
 }
 
+# -- alerts that do not need the application (BK-4, D-105) ----------------------------------
+
+# One alert straight to the staff Telegram group through the bot, from a
+# throwaway container of the worker's image (it has the bot's settings and a
+# way out), so it works while the API, the worker or the database is down.
+# Exit 0 only when the group accepted it.
+notify() { # state (opened|resolved), key, text
+  # stdin from /dev/null: the watch calls this inside a loop reading its own input.
+  compose run --rm --no-deps -T worker python -m markx.ops.notify send \
+    --key "$2" --severity critical --state "$1" --text "$3" < /dev/null
+}
+
+cmd_alert_test() {
+  export MARKX_RELEASE="${MARKX_RELEASE:-$(last_release)}"
+  [[ -n "$MARKX_RELEASE" ]] || fail "no release deployed yet; give MARKX_RELEASE"
+  local rc=0
+  say "== a test alert to the staff Telegram group (it should reach your phone within a minute)"
+  compose run --rm --no-deps -T worker python -m markx.ops.notify test || rc=1
+  say "== the outside heartbeat (the alert that still works if this server is lost)"
+  if [[ "${1:-}" == "--send-heartbeat" ]]; then
+    compose run --rm --no-deps -T backup python -m markx.backup heartbeat --send || rc=1
+  else
+    compose run --rm --no-deps -T backup python -m markx.backup heartbeat || rc=1
+  fi
+  (( rc == 0 )) || fail "the test alert did not reach the staff Telegram group (see above)"
+  say "alert-test: PASSED. Confirm on the phone that the message arrived."
+}
+
+# The services that must always be running (migrate is a one-time step).
+watched_services=(postgres api worker web proxy backup)
+
+# "service state health" of each watched service's container, "missing" when
+# it has none; a `compose run` container is not the service.
+container_report() {
+  local lines; lines="$(compose ps -a --format '{{.Service}} {{.Name}} {{.State}} {{.Health}}' 2>/dev/null || true)"
+  local service line state health
+  for service in "${watched_services[@]}"; do
+    line="$(awk -v s="$service" '$1 == s && $2 !~ /-run-/ { print $3, ($4 == "" ? "-" : $4); exit }' <<< "$lines")"
+    read -r state health <<< "${line:-missing -}"
+    printf '%s %s %s\n' "$service" "$state" "$health"
+  done
+}
+
+# What is wrong with a container, in words; nothing when it is fine.
+container_problem() { # state, health
+  case "$1" in
+    running) if [[ "$2" == unhealthy ]]; then printf 'unhealthy'; fi ;;
+    missing) printf 'missing (no container)' ;;
+    *) printf '%s' "$1" ;;  # exited, dead, restarting, paused, created
+  esac
+  return 0
+}
+
+# Every five minutes (the markx-watch timer): a container that has been
+# unhealthy, stopped or missing for MARKX_CONTAINER_ALERT_MINUTES alerts the
+# staff group once, and once more when it is fine again. Docker's own
+# "unhealthy" status tells no one; this does. What it cannot see (the whole
+# server, or Docker itself, gone) is the outside heartbeat's job.
+cmd_watch() {
+  export MARKX_RELEASE="${MARKX_RELEASE:-$(last_release)}"
+  if [[ -z "$MARKX_RELEASE" ]]; then say "watch: nothing is deployed yet"; return 0; fi
+  mkdir -p "$watch_state_dir"; chmod 700 "$watch_state_dir"
+  local state_file="$watch_state_dir/containers" now; now="$(date +%s)"
+  declare -A since=() alerted=()
+  local service s a
+  if [[ -f "$state_file" ]]; then
+    while read -r service s a; do
+      [[ "$service" =~ ^[a-z]+$ && "$s" =~ ^[0-9]+$ && "$a" =~ ^[01]$ ]] || continue
+      since[$service]="$s"; alerted[$service]="$a"
+    done < "$state_file"
+  fi
+  local state health problem minutes bad=0 new_state=""
+  while read -r service state health; do
+    problem="$(container_problem "$state" "$health")"
+    if [[ -n "$problem" ]]; then
+      bad=1
+      s="${since[$service]:-$now}"; a="${alerted[$service]:-0}"
+      minutes=$(( (now - s) / 60 ))
+      say "  PROBLEM  $service: $problem for $minutes minute(s)"
+      if [[ "$a" == 0 ]] && (( now - s >= watch_minutes * 60 )); then
+        if notify opened "container.$service" "The $service container on the $stage server has been $problem for $minutes minutes. See: deploy.sh status (docs/runbooks/deploy.md)."; then
+          a=1
+        else
+          say "  the alert about $service could not be delivered; trying again next time"
+        fi
+      fi
+      new_state+="$service $s $a"$'\n'
+    else
+      if [[ "${alerted[$service]:-0}" == 1 ]]; then
+        notify resolved "container.$service" "The $service container on the $stage server is $state again." \
+          || say "  the all-clear about $service could not be delivered"
+      fi
+    fi
+  done < <(container_report)
+  printf '%s' "$new_state" > "$state_file.tmp"; mv -f "$state_file.tmp" "$state_file"
+  (( bad == 0 )) || fail "a container is not healthy (see above)"
+  say "watch: every container is running and healthy"
+}
+
+# A systemd service and timer from infra/production/systemd, with this
+# script's and the settings file's paths filled in.
+install_timer() { # unit name
+  local units="${MARKX_SYSTEMD_DIR:-/etc/systemd/system}" source="$here/systemd" name="$1"
+  mkdir -p "$units"
+  sed -e "s|@DEPLOY@|$here/deploy.sh|g" -e "s|@COMPOSE_ENV@|$compose_env|g" \
+    "$source/$name.service" > "$units/$name.service"
+  cp "$source/$name.timer" "$units/$name.timer"
+  chmod 644 "$units/$name.service" "$units/$name.timer"
+  if [[ -z "${MARKX_SYSTEMD_DIR:-}" ]]; then
+    systemctl daemon-reload && systemctl enable --now "$name.timer" \
+      || fail "the timer could not be enabled"
+    say "enabled: $name.timer"
+  else
+    say "written to $units (not enabled: MARKX_SYSTEMD_DIR is set)"
+  fi
+}
+
+# -- the secrets copy (BK-5, D-105) ---------------------------------------------------------
+
+# The secrets a total-loss recovery needs, read here as root and piped as a
+# tar stream (never a file on disk) into the backup image, which encrypts
+# them to the recovery key's PUBLIC half, signs the copy, writes it to
+# $backup_dir/escrow and puts it in the backup bucket (read back, locked).
+# Nothing secret is printed; only file names.
+cmd_escrow_secrets() {
+  export MARKX_RELEASE="${MARKX_RELEASE:-$(last_release)}"
+  [[ -n "$MARKX_RELEASE" ]] || fail "no release deployed yet; give MARKX_RELEASE"
+  local settings=() tls=() name
+  for name in api.env postgres.env migrate.env backup.env web.env compose.env \
+              backup-signing.key backup-public.key; do
+    [[ -f "$config_dir/$name" && ! -L "$config_dir/$name" ]] && settings+=("$name")
+  done
+  for name in privkey.pem fullchain.pem; do
+    [[ -f "$tls_dir/$name" && ! -L "$tls_dir/$name" ]] && tls+=("$name")
+  done
+  say "== an encrypted copy of this server's secrets (BK-5)"
+  say "   from $config_dir: ${settings[*]}"
+  say "   from $tls_dir: ${tls[*]:-(no certificate files)}"
+  local args=(-cf - --numeric-owner -C "$config_dir" "${settings[@]}")
+  (( ${#tls[@]} )) && args+=(-C "$tls_dir" --transform 's,^privkey\.pem$,tls/privkey.pem,' \
+                                --transform 's,^fullchain\.pem$,tls/fullchain.pem,' "${tls[@]}")
+  tar "${args[@]}" | compose run --rm --no-deps -T backup python -m markx.backup escrow-secrets \
+    --from-tar --out-dir /backups/escrow --upload \
+    || fail "no secrets copy was made (see above)"
+  say "The copy is in $backup_dir/escrow and in the backup bucket. Give the founder a copy to keep"
+  say "with the recovery key (F-19; docs/runbooks/backup-and-restore.md, 'The secrets copy')."
+}
+
 # Sourced (the tests call the functions one by one), it stops here.
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
 
@@ -668,5 +837,12 @@ case "$command" in
           backup_now ;;
   status) export MARKX_RELEASE="${MARKX_RELEASE:-$(last_release)}"; cmd_status ;;
   certificate) cmd_certificate "$@" ;;
-  *) sed -n '2,40p' "$0"; exit 2 ;;
+  alert-test) cmd_alert_test "$@" ;;
+  watch) case "${1:-}" in
+           "") cmd_watch ;;
+           install-timer) install_timer markx-watch ;;
+           *) fail "watch: (nothing) | install-timer" ;;
+         esac ;;
+  escrow-secrets) cmd_escrow_secrets ;;
+  *) sed -n '2,50p' "$0"; exit 2 ;;
 esac

@@ -1,0 +1,12 @@
+# Every five minutes (D-105). A container must stay unhealthy for
+# MARKX_CONTAINER_ALERT_MINUTES (default 15, PROVISIONAL P-105-2) first.
+[Unit]
+Description=MarkX: the container watch, every five minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

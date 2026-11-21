@@ -39,12 +39,12 @@ import hashlib
 import os
 import re
 import shutil
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Protocol
+from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from boto3.exceptions import S3UploadFailedError
 from boto3.s3.transfer import TransferConfig
@@ -126,6 +126,9 @@ class ObjectVersion:
     last_modified: datetime
     is_latest: bool
     delete_marker: bool
+    # A delete marker has neither.
+    size: int | None = None
+    etag: str | None = None
 
 
 def checked(key: str) -> str:
@@ -147,9 +150,11 @@ class Destination(Protocol):
 
     def head(self, key: str) -> RemoteObject | None: ...
 
-    def reader(self, key: str) -> AbstractContextManager[IO[bytes]]: ...
+    def reader(
+        self, key: str, version_id: str | None = None
+    ) -> AbstractContextManager[IO[bytes]]: ...
 
-    def read_bytes(self, key: str, *, limit: int) -> bytes: ...
+    def read_bytes(self, key: str, *, limit: int, version_id: str | None = None) -> bytes: ...
 
     def list(self, prefix: str) -> Iterator[RemoteObject]: ...
 
@@ -158,6 +163,8 @@ class Destination(Protocol):
     def purge(self, key: str) -> bool: ...
 
     def list_versions(self, prefix: str) -> Iterator[ObjectVersion]: ...
+
+    def versions(self, key: str) -> Sequence[ObjectVersion]: ...
 
     def extend_lock(self, key: str, until: datetime) -> datetime | None: ...
 
@@ -242,7 +249,9 @@ class LocalDestination:
                             _local_etag(info))  # fmt: skip
 
     @contextmanager
-    def reader(self, key: str) -> Iterator[IO[bytes]]:
+    def reader(self, key: str, version_id: str | None = None) -> Iterator[IO[bytes]]:
+        if version_id is not None:
+            raise ObjectMissing("missing")  # a folder keeps one version of each file
         try:
             handle = self._path(key).open("rb")
         except FileNotFoundError:
@@ -250,8 +259,8 @@ class LocalDestination:
         with handle:
             yield handle
 
-    def read_bytes(self, key: str, *, limit: int) -> bytes:
-        with self.reader(key) as stream:
+    def read_bytes(self, key: str, *, limit: int, version_id: str | None = None) -> bytes:
+        with self.reader(key, version_id) as stream:
             data = stream.read(limit + 1)
         if len(data) > limit:
             raise DestinationError("object_too_large")
@@ -279,7 +288,14 @@ class LocalDestination:
 
     def list_versions(self, prefix: str) -> Iterator[ObjectVersion]:
         for obj in self.list(prefix):
-            yield ObjectVersion(obj.key, None, obj.last_modified, True, False)
+            yield ObjectVersion(obj.key, None, obj.last_modified, True, False, obj.size, obj.etag)
+
+    def versions(self, key: str) -> Sequence[ObjectVersion]:
+        """A folder keeps only the current file: there is never an older copy."""
+        obj = self.head(key)
+        if obj is None:
+            return []
+        return [ObjectVersion(key, None, obj.last_modified, True, False, obj.size, obj.etag)]
 
     def extend_lock(self, key: str, until: datetime) -> datetime | None:
         return None
@@ -478,9 +494,15 @@ class S3Destination:
                             response.get("ETag"), response.get("ObjectLockRetainUntilDate"))  # fmt: skip
 
     @contextmanager
-    def reader(self, key: str) -> Iterator[IO[bytes]]:
+    def reader(self, key: str, version_id: str | None = None) -> Iterator[IO[bytes]]:
+        """The object's current bytes, or one older version's (RN-1): a
+        version kept by the bucket's versioning and object lock after the
+        object was written again."""
+        args: dict[str, str] = {"Bucket": self._bucket, "Key": self._full(key)}
+        if version_id is not None:
+            args["VersionId"] = version_id
         with _provider():
-            response = self._client.get_object(Bucket=self._bucket, Key=self._full(key))
+            response = self._client.get_object(**args)  # type: ignore[arg-type]
         body = response["Body"]
         try:
             with _provider():
@@ -488,8 +510,8 @@ class S3Destination:
         finally:
             body.close()
 
-    def read_bytes(self, key: str, *, limit: int) -> bytes:
-        with self.reader(key) as stream:
+    def read_bytes(self, key: str, *, limit: int, version_id: str | None = None) -> bytes:
+        with self.reader(key, version_id) as stream:
             data = stream.read(limit + 1)
         if len(data) > limit:
             raise DestinationError("object_too_large")
@@ -521,9 +543,18 @@ class S3Destination:
                 for item, marker in [(v, False) for v in page.get("Versions", [])] + [
                     (m, True) for m in page.get("DeleteMarkers", [])
                 ]:
+                    size = cast("int | None", item.get("Size"))
                     yield ObjectVersion(item["Key"][len(self._prefix) + 1 :],
                                         item.get("VersionId"), item["LastModified"],
-                                        bool(item.get("IsLatest")), marker)  # fmt: skip
+                                        bool(item.get("IsLatest")), marker,
+                                        int(size) if size is not None else None,
+                                        cast("str | None", item.get("ETag")))  # fmt: skip
+
+    def versions(self, key: str) -> Sequence[ObjectVersion]:
+        """Every stored version of exactly this object, newest first, without
+        delete markers (RN-1). An unversioned bucket reports one, id "null"."""
+        found = [v for v in self.list_versions(key) if v.key == key and not v.delete_marker]
+        return sorted(found, key=lambda v: (v.is_latest, v.last_modified), reverse=True)
 
     def purge(self, key: str) -> bool:
         """Remove EVERY version of one object and its delete markers, so that

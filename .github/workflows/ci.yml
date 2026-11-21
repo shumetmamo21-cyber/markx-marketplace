@@ -220,7 +220,10 @@ jobs:
           MARKX_RESTORE_TARGET_ACCESS_KEY_ID: markx-restore-target-dev-only
           MARKX_RESTORE_TARGET_SECRET_ACCESS_KEY: markx-restore-target-dev-only-secret
         run: |
-          uv run python -m scripts.seed_demo > /dev/null
+          # The demo staff member's authenticator secret: the stand-in for
+          # their phone in the off-server drill's sign-in (D-105). Demo data.
+          uv run python -m scripts.seed_demo | sed -n 's/^  Staff authenticator secret: //p' > "$RUNNER_TEMP/demo-staff-totp"
+          test -s "$RUNNER_TEMP/demo-staff-totp"
           keys="$RUNNER_TEMP/backup-keys"
           uv run python -m markx.backup keygen --out "$keys" > /dev/null
           export MARKX_BACKUP_PUBLIC_KEY_FILE="$keys/backup-public.key" MARKX_BACKUP_SIGNING_KEY_FILE="$keys/signing.key"
@@ -229,12 +232,26 @@ jobs:
             --recovery-key "$keys/recovery.key" --signer "$keys/signer-public.key" \
             --report "$RUNNER_TEMP/restore-drill-report.json" | tee "$RUNNER_TEMP/restore-drill.txt"
           grep -q "DRILL PASSED" "$RUNNER_TEMP/restore-drill.txt"
+          # D-105 (BK-5): this runner's secrets copy, as deploy.sh makes one on a
+          # server: the development keys the demo data was made with, encrypted
+          # to the recovery key, put in the bucket with the server's key.
+          settings="$RUNNER_TEMP/server-settings"; mkdir -m 700 "$settings"
+          uv run python -c "from markx.core.config import get_config as g; c = g(); print(f'MARKX_SECRET_KEY={c.secret_key}'); print(f'MARKX_ENCRYPTION_KEY={c.encryption_key}')" > "$settings/api.env"
+          printf '%s\n' POSTGRES_PASSWORD=postgres_dev_only MARKX_DB_MIGRATOR_PASSWORD=markx_migrator_dev-only \
+            MARKX_DB_APP_PASSWORD=markx_app_dev-only MARKX_DB_READONLY_PASSWORD=markx_readonly_dev-only > "$settings/postgres.env"
+          uv run python -m markx.backup escrow-secrets --from-dir "$settings" --upload | tee "$RUNNER_TEMP/escrow.txt"
+          rm -rf "$settings"
+          ! grep -q "dev-only" "$RUNNER_TEMP/escrow.txt"
       # D-096 (BK-2, BK-6): the monthly drill as the runbook has it, on a
       # separate recovery machine: this runner plays it. No backup is taken;
       # the newest set is read with the bucket's READ-ONLY key and restored
       # into a throwaway PostgreSQL 17.12 container with no network at all,
       # as the owner role, never the superuser. The server's signing key is
       # not used: only the recovery key and the signer's public key.
+      # D-105 (BK-5): with the newest secrets copy from the bucket, a staff
+      # member then signs in to the restored copy with the copied keys and
+      # their authenticator code; another server's key is refused. RN-2,
+      # RN-3: the socket folder is private and the script's own.
       - name: Off-server recovery drill (read-only key, throwaway PostgreSQL without network)
         env:
           MARKX_BACKUP_DESTINATION: minio
@@ -244,18 +261,41 @@ jobs:
           MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID: markx-backup-reader-dev-only
           MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY: markx-backup-reader-dev-only-secret
           MARKX_RECOVERY_SOCKET_DIR: ${{ runner.temp }}/recovery-socket
+          MARKX_DRILL_STAFF_PASSWORD: demo-only-staff-password-1
         run: |
           keys="$RUNNER_TEMP/backup-keys"
           eval "$(../../infra/backup/recovery-host.sh start)"
+          test "$(stat -c %a "$MARKX_RECOVERY_SOCKET_DIR")" = 700
+          MARKX_DRILL_STAFF_TOTP_SECRET="$(cat "$RUNNER_TEMP/demo-staff-totp")" \
           uv run python -m markx.backup drill --from-destination \
             --recovery-key "$keys/recovery.key" --signer "$keys/signer-public.key" \
+            --secrets-from-destination --staff-phone 0911000900 \
             --report "$RUNNER_TEMP/offsite-drill-report.json" | tee "$RUNNER_TEMP/offsite-drill.txt"
           ../../infra/backup/recovery-host.sh stop
+          test ! -e "$MARKX_RECOVERY_SOCKET_DIR"
           grep -q "DRILL PASSED" "$RUNNER_TEMP/offsite-drill.txt"
           grep -q "as the owner role (not a superuser)" "$RUNNER_TEMP/offsite-drill.txt"
+          grep -q "ok    secrets: a staff member signs in to the restored copy" "$RUNNER_TEMP/offsite-drill.txt"
+          grep -q "ok    injected: the secrets of another server" "$RUNNER_TEMP/offsite-drill.txt"
+          ! grep -q "demo-only-staff-password-1" "$RUNNER_TEMP/offsite-drill.txt" "$RUNNER_TEMP/offsite-drill-report.json"
+      # D-105 (RN-5): the drill's report entered on the server, which checks
+      # its contents against the set's signed manifest before counting it.
+      - name: Enter the off-server drill's report on the server
+        env:
+          MARKX_BACKUP_DESTINATION: minio
+          MARKX_BACKUP_DESTINATION_ENDPOINT_URL: http://127.0.0.1:9000
+          MARKX_BACKUP_DESTINATION_BUCKET: markx-backups
+          MARKX_BACKUP_DESTINATION_PREFIX: markx/ci
+          MARKX_BACKUP_DESTINATION_ACCESS_KEY_ID: markx-backup-writer-dev-only
+          MARKX_BACKUP_DESTINATION_SECRET_ACCESS_KEY: markx-backup-writer-dev-only-secret
+          MARKX_BACKUP_DATABASE: markx
+        run: |
+          uv run python -m markx.backup record-drill --report "$RUNNER_TEMP/offsite-drill-report.json" \
+            --signer "$RUNNER_TEMP/backup-keys/signer-public.key" | tee "$RUNNER_TEMP/record-drill.txt"
+          grep -q "recorded: PASSED" "$RUNNER_TEMP/record-drill.txt"
       - name: Remove the run's backup keys
         if: always()
-        run: rm -rf "$RUNNER_TEMP/backup-keys"
+        run: rm -rf "$RUNNER_TEMP/backup-keys" "$RUNNER_TEMP/demo-staff-totp"
       - name: Keep the restore drill's report
         if: always()
         uses: actions/upload-artifact@v4

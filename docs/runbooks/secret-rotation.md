@@ -10,6 +10,13 @@ reminders").
 After changing a file: `docker compose ... up -d --wait <services>` (an
 environment change recreates the container). `deploy.sh check` before.
 
+**Then always make a new secrets copy (D-105, BK-5):**
+`infra/production/deploy.sh escrow-secrets`, and give the founder the new
+file to keep with the recovery key (`backup-and-restore.md`, "The secrets
+copy"). Keep the older copies as long as any backup made while they were
+current is kept: restoring an older backup needs the secrets of its time
+(the `MARKX_ENCRYPTION_KEY` above all).
+
 | Secret | Where | Steps | Who restarts |
 | --- | --- | --- | --- |
 | A database role's password | `postgres.env` and the URL in `api.env`, `migrate.env` or `backup.env` | 1. `alter role markx_app password '<new>'` as the superuser inside the postgres container. 2. Change the files. 3. Restart. The variable in `postgres.env` only matters for a new volume, a restore or a drill | api, worker (app role); backup (migrator) |
