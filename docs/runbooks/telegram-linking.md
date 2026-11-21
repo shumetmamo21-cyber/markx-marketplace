@@ -125,8 +125,11 @@ secret, and names the missing setting without printing any value.
    for refusals or warnings.
 5. Register the webhook with Telegram's `setWebhook`, using the site's
    public HTTPS address `https://<domain>/api/v1/telegram/webhook`, the same
-   `secret_token`, and `allowed_updates=["message"]`. Re-read Telegram's Bot
-   API documentation first: this was written without reaching it.
+   `secret_token`, and `allowed_updates=["message","callback_query"]`
+   (`callback_query` carries the seller bot's button presses, D-102; with
+   `message` alone every button would silently do nothing). Re-read
+   Telegram's Bot API documentation first: this was written without
+   reaching it.
 6. Check `getWebhookInfo`: no `last_error_message`, `pending_update_count`
    falling to 0.
 7. Connect the founder's own Telegram from the account page; confirm the
@@ -144,7 +147,21 @@ secret, and names the missing setting without printing any value.
    page, which signs in by itself; the founder's MarkX number must be the
    one Telegram holds. Then the staff page: Telegram, then the password and
    authenticator code.
-9. Record the result in `docs/DEVELOPMENT_STATUS.md` with the date.
+9. **The seller bot (D-102) comes on with the same switch** (and its
+   messages with the push provider). Before switching on, re-read the Bot
+   API documentation for `callback_query` (its `from`, `message.chat`,
+   `message.message_id` and `data`), for `editMessageText` and
+   `sendMessage` returned in the webhook's own response, and for
+   `inline_keyboard` buttons with `callback_data` and `url` (a `url` must
+   be the site's public HTTPS address). MarkX does not call
+   `answerCallbackQuery`, so Telegram may show a pressed button as busy for
+   a moment (UNKNOWN until tried). Optionally list the commands with
+   `setMyCommands`: `orders`, `offers`, `price`, `stock`, `checkin`,
+   `help`. Then, on a phone, with a test order to the founder's own store:
+   the alert shows Accept and Decline; Accept turns the message into "You
+   accepted"; `/orders`, `/offers`, `/price`, `/stock`, `/checkin` answer;
+   a second account with the `catalogue` role is refused.
+10. Record the result in `docs/DEVELOPMENT_STATUS.md` with the date.
 
 To switch it off again: set `MARKX_TELEGRAM_LINKING_ENABLED=false` and
 restart (the webhook answers 404; Telegram will report errors until

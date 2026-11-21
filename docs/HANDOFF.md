@@ -13,8 +13,10 @@ and phone digits session (D-098), Part A.000000000000 the same day by
 the order life-cycle hardening session (D-099), Part A.0000000000000
 the same day by the frontend resilience session (D-100), Part
 A.00000000000000 on 21 November 2026 by the Telegram sign-in session
-(D-101), and Part A.000000000000000 the same day by the recycled-number
-fix session (D-101 section 2a).
+(D-101), Part A.000000000000000 the same day by the recycled-number
+fix session (D-101 section 2a), and Part A.0000000000000000 the same day
+by the session that reviewed and merged pull request #9 and finished
+Telegram for orders (D-102).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -23,6 +25,59 @@ fix session (D-101 section 2a).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000000000000000 — Pull request #9 merged; Telegram for orders (21 November 2026, D-102)
+
+**Part 1, the review.** Pull request #9 was reviewed read-only at
+`7eabf93` (not changed, commented on or pushed to), found to have **no
+problem that had to be fixed first**, and merged with a normal merge
+commit pinned to `7eabf93`: **`main` is `fe4546f`**, its files exactly
+those of `7eabf93`; the branch is kept. Evidence and the three non-blocking
+observations (a database rule that accepts a connected but unremembered
+account, a future conflict with erasing accounts, the Mini App after a
+disconnect): `docs/DEVELOPMENT_STATUS.md`, "Pull request #9 reviewed
+independently and merged".
+
+**Part 2, the work.** On `claude/markx-telegram-pr9-completion-nneqom`,
+from `fe4546f`; one pull request into `main`, **not merged** (an
+independent review follows). **No migration. Nothing deployed; no bot,
+token or account; nothing sent to Telegram; no SMS; no money.** In plain
+words, once the founder's bot exists and is switched on:
+
+- **A shop** gets each new order in Telegram with Accept and Decline
+  buttons, and a reminder with the same buttons 10 minutes before it
+  expires. `/orders` lists what waits for it; each order's buttons move it
+  on: accepted, packed and ready, on its way. Declining offers three
+  reasons. `/offers`, `/price`, `/stock` and `/checkin` keep listings
+  fresh. Handover codes are entered only on the website.
+- **A buyer** gets every order update in Telegram in their own words and
+  language, with a button to the order.
+- **Every Monday** the shop gets its figures in Telegram, with a button
+  for "all my prices are still right".
+- **Each press is checked again on the server** with the website's own
+  seller check and the website's own order and offer functions, so the
+  bot can never do what the website would refuse.
+
+**What needs you:** confirm or change P-102-1 to P-102-9 and answer F-26
+(`docs/DECISIONS.md`, D-102); when the bot exists, follow
+`docs/runbooks/telegram-linking.md`, steps 5 and 9 (the webhook must
+receive `callback_query`, or every button does nothing).
+
+**Commits:** `2376b1e` (the bot, the buttons, buyer and weekly texts),
+`dd262f9` (the next-best-offer text and the test that every order message
+has its own words), then the documents.
+
+**For the next engineer:** the bot is `apps/api/markx/telegram_bot/`
+(`service.py` answers an update; `keyboards.py` builds buttons; `texts.py`
+holds its words). `telegram_link.handle_update` sends button presses and
+commands there, and answers a repeated update with `replay=True`. Any new
+seller action in the bot must call `deps.seller_membership` and the same
+service function as the website; never check a role by hand. A new order
+message needs Telegram words in `notifications/texts.py`
+(`TELEGRAM_TEXTS`), or `test_every_order_message_has_its_own_words_in_telegram`
+fails.
 
 ---
 
