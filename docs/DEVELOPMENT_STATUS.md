@@ -1,7 +1,9 @@
 # Development status
 
-**Last updated:** 21 November 2026, by the **Telegram sign-in session**
-(D-101, decision SI-1), on branch `claude/telegram-signin-audit-fixes-q318w6`,
+**Last updated:** 21 November 2026, by the **recycled-number fix session**
+(D-101 section 2a), and before it by the **Telegram sign-in session**
+(D-101, decision SI-1), both on branch `claude/telegram-signin-audit-fixes-q318w6`
+(pull request #9, not merged),
 from `main` at `b79caab` with the complete history. See "Sign-in with
 Telegram" just below. Before it, the frontend resilience session (D-100,
 pull request #8) was merged into `main` as `b79caab`; the order life-cycle
@@ -10,6 +12,27 @@ conflict and phone digits session (D-098, pull request #6) as `c70b338`;
 the checks and secret-scan session (D-097, pull request #5) as `d01fef7`,
 and the backup trust hardening session (D-096, pull request #4) as
 `773bbb6`.
+
+## Fix before merging pull request #9: a recycled number could take over an account (21 November 2026, D-101 section 2a)
+
+An independent review found that after "Disconnect Telegram" MarkX forgot
+which Telegram account an account had, so a stranger later given the same
+(recycled) phone number could sign in with their own Telegram account and
+land in the old owner's account. **Fixed on the same branch, in pull
+request #9, not merged.** Product code, one migration (`0021`), tests and
+documents. **Nothing deployed; no bot, account or SMS; no money.**
+
+| Item | State | Proof (tests) |
+| --- | --- | --- |
+| The review's defect: disconnect, then a stranger with the recycled number signs in with Telegram | **Fixed.** MarkX remembers for ever which Telegram account an account belongs to (`users.bound_telegram_id`; unique; a trigger refuses to change or clear it); disconnecting only stops messages; only that Telegram account signs in; any other is refused (`phone_on_other_telegram`) and told to contact support (F-24) | `tests/api/test_telegram_recycled_number.py::test_a_recycled_number_cannot_take_over_an_account_after_disconnect` fails on `b89aeff` (the bot tells the stranger "You are signed in") and passes here |
+| An account that never had Telegram (invitation, staff, SMS) | **Unchanged:** claimed by the first Telegram sign-in with its number | the same file (invitation case); the existing SMS-account test |
+| Other ways found and closed | Connected by the bot link or the Mini App then disconnected; "Connect Telegram" with a second Telegram account after a disconnect; a remembered Telegram account reaching a second account; a disconnected person with a new number got a new, empty account | the same file, 13 tests in all (12 fail on `b89aeff`, 1 guard passes on both); web: 1 new test |
+
+**Outside this fix, said plainly:** signing in by SMS code (switched off)
+proves only the number; before SMS is switched back on, the same
+recycled-number question must be decided for it (with F-24). An account
+that disconnected before migration `0021` would stay unbound (its old
+Telegram id was never kept); nothing is deployed, so no real account is.
 
 ## Sign-in with Telegram, SMS off, M2, M3, M4 (21 November 2026, D-101)
 

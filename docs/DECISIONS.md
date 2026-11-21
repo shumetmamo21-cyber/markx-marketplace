@@ -4003,8 +4003,9 @@ sellers and staff) signs in with Telegram only. SMS is kept, switched off,
 as a later backup. Staff keep their existing second step on top of
 Telegram. **Engineering decisions below, 21 November 2026.** Follows the
 independent audit (`docs/reports/2026-11-19-independent-audit.md`, section
-9 and section 17 item 10), D-089, D-093 and N-1. Product code, one
-migration (`0020`), tests, one journey and documents. **Nothing deployed;
+9 and section 17 item 10), D-089, D-093 and N-1. Product code, two
+migrations (`0020`, and `0021` for the recycled-number fix in section
+2a), tests, one journey and documents. **Nothing deployed;
 no bot, token, SMS provider or account created; nothing sent to or
 received from Telegram; no money spent.** Branch
 `claude/telegram-signin-audit-fixes-q318w6`, from `main` at `b79caab` with
@@ -4118,8 +4119,9 @@ the Telegram account, P the number Telegram confirmed):
 | --- | --- | --- |
 | An account has both T and P | That account signs in | The normal case |
 | Neither exists | A new account with P and T | A new person |
-| An account has P and no Telegram (made by SMS before SI-1, or by staff for a new staff member) | T is connected to it; it signs in with its history | Telegram has just confirmed P belongs to this person, as an SMS code did |
-| An account has P and a **different** Telegram account | **Refused**; the page says to sign in with that Telegram account or contact support | Ethiopian numbers are recycled: a new owner of an old number must not take over the old owner's account, orders or shop. Support decides (F-24) |
+| An account has P and has **never had any** Telegram account (made by SMS before SI-1, by an invitation, or by staff for a new staff member) | T is connected to it; it signs in with its history, and belongs to T from then on | Telegram has just confirmed P belongs to this person, as an SMS code did |
+| An account has P and a **different** Telegram account, **connected or disconnected** | **Refused**; the page says to sign in with that Telegram account or contact support | Ethiopian numbers are recycled: a new owner of an old number must not take over the old owner's account, orders or shop. Support decides (F-24). See section 2a |
+| The account T belongs to was disconnected from Telegram | It signs in, and Telegram is connected again | Only T can; disconnecting stops messages, nothing more |
 | The account with T has another number, and P belongs to nobody | The account's number becomes P; recorded in the audit log (masked numbers) and told to the person in the app (`auth.phone_changed`) | The same person changed number; deliveries need the current one, and Telegram confirmed it |
 | The account with T has another number and P belongs to a second account | **Refused** | One number, one account; support decides |
 | The account is blocked or deleted | Refused | As before |
@@ -4128,6 +4130,102 @@ Locks: the users' rows (ascending id), then the Telegram account's advisory
 lock (D-093's order), then one per number; the unique constraints inside
 savepoints are the backstop. Two Telegram accounts sharing new numbers at
 the same moment make two accounts (tested).
+
+### 2a. A recycled number never takes over an account (rule P-101-6, fixed after the independent review of pull request #9)
+
+**The defect.** An independent review of pull request #9 found that
+"Disconnect Telegram" made MarkX forget which Telegram account an account
+had. Person A signs in with Telegram, then disconnects; later the phone
+company gives A's old number to a stranger, who signs in with Telegram and
+the row "an account has P and no Telegram" put the stranger into A's
+account, with A's orders, addresses and shop.
+
+**The rule now applied (the founder's rule P-101-6: a recycled number must
+never take over someone else's account), recorded 21 November 2026:**
+
+- Once an account has had a Telegram account, MarkX **always remembers
+  which one**, even after "Disconnect Telegram". Disconnecting only stops
+  messages.
+- **Only that same Telegram account may sign in to it again.** Any other
+  Telegram account bringing the same number is refused
+  (`phone_on_other_telegram`) and told to contact support (F-24, later).
+- An account that has **never** had any Telegram account (made by an
+  invitation, by staff, or by SMS before SI-1) may still be claimed by the
+  first Telegram sign-in with its number, as before.
+
+**How.** A new column `users.bound_telegram_id` (migration `0021`), the
+Telegram account the account belongs to. It is set the first time **any**
+Telegram account is attached, by any of the three ways (signing in with
+Telegram, the bot's connection link, the Mini App), and is never cleared:
+"Disconnect Telegram" clears only `telegram_id`, which carries messages.
+The database backs it three times: it is unique (one Telegram account
+belongs to at most one MarkX account), `telegram_id` when set must equal
+it (a CHECK), and a trigger refuses to change or clear it once set, for
+every role. Existing connected accounts were bound to their Telegram
+account by the migration. **UNKNOWN for real data, and irrelevant today:**
+an account that disconnected before `0021` has no record of its Telegram
+account (the id was cleared and was never written to the audit log), so it
+would stay unbound; nothing is deployed, so no real account is in that
+state.
+
+**Every other way a different Telegram account could reach an existing
+account, searched in the sign-in and account code, and closed the same
+way:**
+
+1. **Connected by the bot's link or the Mini App, then disconnected** (not
+   signed in with Telegram at all). Same takeover; closed because those
+   ways bind too.
+2. **"Connect Telegram" with a different Telegram account after a
+   disconnect** (bot link or Mini App). It would have bound the account to
+   a second Telegram account, which could then sign in. Now refused (the
+   link ends `failed`/`already_connected`; the Mini App answers 409
+   `telegram_already_linked`, the same words as every refusal). Only the
+   account's own Telegram account can be connected again.
+3. **A remembered Telegram account connected to, or signing in to, a
+   second MarkX account** after disconnecting from the first. Refused
+   (`telegram_in_use`; signing in with the second account's number is
+   `phone_in_use`).
+4. **Found on the way, not a takeover but a split:** a person who
+   disconnected and then changed number signed in with their own Telegram
+   account and got a new, empty account. Now the lookup by Telegram uses the
+   remembered account, so they reach their own account and the number
+   follows (as section 2 says for connected accounts); their old number is
+   free for its next owner, who gets a new account of their own.
+
+Checked and not a way in: Mini App sign-in (`POST /auth/telegram`) finds
+only a *connected* Telegram account, so after a disconnect it answers
+`telegram_not_linked` for everyone; collecting a sign-in (`check`) uses
+the account chosen when Telegram confirmed it; staff and team-member
+creation make accounts with no Telegram account. **Outside this rule, said
+plainly:** signing in by SMS code (switched off by SI-1) proves only the
+number, so a stranger with a recycled number could sign in by SMS if SMS is
+switched back on. That is the SMS backup's own question, not changed here;
+it should be decided with F-24 before SMS returns.
+
+**A refused sign-in does not reconnect anything.** When the account's own
+Telegram account signs in with a new number that belongs to someone else,
+the sign-in is refused and Telegram stays disconnected (tested).
+
+**Website words changed** (English and Amharic, native review still
+pending): the connection page no longer says "disconnect it first to
+connect another" or "disconnect it there first", which would no longer
+work; it says a MarkX account can only be connected to the Telegram
+account it first used and to contact MarkX support to change it.
+
+**Tests:** `tests/api/test_telegram_recycled_number.py`, 13 tests. The
+first, `test_a_recycled_number_cannot_take_over_an_account_after_disconnect`,
+plays exactly the review's steps (A has a shop and an address, signs in
+with Telegram, disconnects; a stranger brings the number with another
+Telegram account): **on the branch before the fix (`b89aeff`) it fails
+because the bot answers the stranger "✅ You are signed in"**; after the
+fix the stranger is refused with `phone_on_other_telegram`, gets no
+session and no account, and A still signs in. On `b89aeff` 12 of the 13
+fail (the takeover, the bot-link and Mini App ways, the second Telegram
+account connected, the remembered account reaching a second account, the
+split account, and the database guards); one guard passes on both (no
+answer names the Telegram account). Web: one test that the refusal's words
+say to contact support, in both languages. **No existing check or test was
+weakened, removed or changed.**
 
 ### 3. SMS switched off
 
@@ -4244,7 +4342,7 @@ where they live (checked by `test_the_rules_are_marked_provisional_where_they_li
 | P-101-3 | `auth.telegram_init_data_max_age_seconds` | 300 seconds | A Mini App sends its start-up data as it opens; five minutes allows a slow network and a phone clock a little wrong, instead of the hour before (M4) |
 | P-101-4 | `auth.staff_failures_before_lock`, `auth.staff_lock_minutes`; the lock per address | 5 failures, 15 minutes, per address | The values staff had before; only who is locked changes (the address that failed, not the account) |
 | P-101-5 | `auth.staff_failure_alert_per_hour` | 10 in an hour | Twice what locks one address: a person mistyping does not reach it; a guess spread over addresses does |
-| P-101-6 | (a rule) changing Telegram account or number | The table in section 2 | Telegram's confirmation is trusted for a new number on the same Telegram account; never for moving a number to another Telegram account, because numbers are recycled |
+| P-101-6 | (a rule) changing Telegram account or number | The table in section 2, and section 2a: an account that ever had a Telegram account belongs to it for good, even after "Disconnect Telegram" | Telegram's confirmation is trusted for a new number on the same Telegram account; never for moving a number or an account to another Telegram account, because numbers are recycled |
 | P-101-7 | `auth.sms_daily_share_per_phone_percent`, `..._per_ip_percent`, `..._per_network_percent` | 2%, 5%, 10% of the daily budget, never under one hour's allowance | 10 codes a day is far more than one honest person needs; an address and a network get more because customers share them (CGNAT); 20 networks would be needed to spend the whole budget |
 | P-101-8 | (a rule) staff without Telegram | Refused while SMS is off; allowed (with M3's fixes) when SMS is on again | SI-1 means no way around Telegram; when SMS is back as the backup, staff need a backup too |
 
@@ -4702,9 +4800,12 @@ deciding, but product pages are shared by every seller."
 ### F-24 Who may move a phone number to another Telegram account, and how (D-101)
 
 - **Today (P-101-6):** never automatically. A person whose number is on a
-  MarkX account tied to another Telegram account is refused and told to
-  contact support; **no staff tool exists** to move it, so support cannot
-  yet help them.
+  MarkX account tied to another Telegram account (connected or, since the
+  fix in D-101 section 2a, disconnected) is refused and told to contact
+  support; **no staff tool exists** to move it, so support cannot yet help
+  them. The database refuses to change `users.bound_telegram_id` once set
+  (migration `0021`'s trigger), so the tool will need its own migration
+  that allows exactly an audited move.
 - **Why:** Ethio telecom and Safaricom recycle numbers; the new owner of an
   old number must not get the old owner's account, orders or shop.
 - **Options:** (a) staff move it after checking identity (a staff tool,

@@ -11,9 +11,10 @@ Part A.0000000000 on 20 November 2026 by the checks and secret-scan
 session (D-097), Part A.00000000000 the same day by the staff conflict
 and phone digits session (D-098), Part A.000000000000 the same day by
 the order life-cycle hardening session (D-099), Part A.0000000000000
-the same day by the frontend resilience session (D-100), and Part
+the same day by the frontend resilience session (D-100), Part
 A.00000000000000 on 21 November 2026 by the Telegram sign-in session
-(D-101).
+(D-101), and Part A.000000000000000 the same day by the recycled-number
+fix session (D-101 section 2a).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -22,6 +23,42 @@ A.00000000000000 on 21 November 2026 by the Telegram sign-in session
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.000000000000000 — Fix before merging pull request #9: a recycled number (21 November 2026, D-101 section 2a)
+
+On the same branch, `claude/telegram-signin-audit-fixes-q318w6`, so the fix
+is in pull request #9; nobody had pushed to it since `b89aeff`. **Not
+merged**: another independent review follows. **Nothing deployed; no bot,
+account or SMS; no money.** In plain words:
+
+- **The defect.** After pressing "Disconnect Telegram", MarkX forgot which
+  Telegram account an account had. If the phone company later gave that
+  number to a stranger, the stranger could sign in with Telegram and land
+  in the old owner's account, with their orders, addresses and shop.
+- **The fix (the founder's rule P-101-6).** MarkX now always remembers
+  which Telegram account an account belongs to, even after disconnecting;
+  disconnecting only stops messages. Only that Telegram account can sign
+  in again. Anyone else bringing the same number is refused and told to
+  contact support. An account that never had Telegram (made by an
+  invitation, by staff or by SMS) can still be claimed by its first
+  Telegram sign-in, as before. The database itself refuses to forget or
+  change it.
+- **Other ways closed the same way:** Telegram connected by the bot's link
+  or the Mini App and then disconnected; connecting a second Telegram
+  account after disconnecting; one Telegram account reaching a second
+  MarkX account; and a person who disconnected and changed number no
+  longer gets a new, empty account.
+- **Not covered, for the founder:** signing in by SMS (switched off) proves
+  only the number; decide the same question for it before SMS returns.
+
+**For the next engineer:** `users.bound_telegram_id` (migration `0021`) is
+the account's Telegram account for good; `telegram_id` is only "messages
+on". Lookups "which account does this Telegram account have" use
+`bound_telegram_id`. The trigger `trg_users_keep_bound_telegram` refuses
+any change once set, so F-24's support tool needs its own migration. Tests:
+`tests/api/test_telegram_recycled_number.py`.
 
 ---
 

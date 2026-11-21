@@ -20,7 +20,10 @@ one-time link inside Telegram.
 This flow, connecting Telegram from the account page, signs nobody in.
 Since D-101 (decision SI-1) people *sign in* with the same bot through a
 separate flow (below, "Signing in with Telegram"); disconnecting Telegram
-here means the next Telegram sign-in connects it again.
+here means the next Telegram sign-in with the same Telegram account
+connects it again. Disconnecting only stops messages: the account still
+belongs to its Telegram account (`users.bound_telegram_id`, D-101 section
+2a), so no other Telegram account can sign in to it or be connected to it.
 
 ## The protocol
 
@@ -189,10 +192,13 @@ published address ranges.
   cleared, `telegram_unlinked_at` is set, waiting links are revoked, the
   audit log records `telegram.unlinked`. Every later notification records the
   Telegram delivery `skipped` / `no_telegram_linked` (the delivery reads the
-  link at each attempt).
+  link at each attempt). `users.bound_telegram_id` is **kept** (a database
+  trigger refuses to clear or change it): only that Telegram account may
+  sign in to the account or be connected to it again, so a stranger given
+  the same recycled number cannot take the account over (P-101-6).
 - **Staff** have no screen to disconnect someone. If a person has lost their
-  Telegram account, they disconnect it themselves after signing in by phone
-  code. A staff tool is a separate future task.
+  Telegram account, disconnecting does not let them use a new one: they
+  must contact support, and no support tool exists yet (F-24).
 
 ## What is recorded
 
