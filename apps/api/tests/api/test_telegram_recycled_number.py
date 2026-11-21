@@ -17,7 +17,7 @@ import itertools
 from typing import Any
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import Engine, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -322,6 +322,54 @@ def test_the_database_allows_one_account_per_remembered_telegram_account(db: Ses
             text(f"update users set bound_telegram_id = {A_TG} where phone = '+251922556677'")
         )
     db.rollback()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        # Never connected: nothing remembered, then a Telegram id appears.
+        f"update users set telegram_id = {A_TG}, telegram_linked_at = now()",
+        # A new account written straight into the table, connected and unbound.
+        "insert into users (id, phone, telegram_id, telegram_linked_at) "
+        f"values (gen_random_uuid(), '+251922556600', {STRANGER_TG}, now())",
+    ],
+)
+def test_the_database_refuses_a_connected_account_with_no_remembered_telegram_account(
+    db: Session, migrator_engine: Engine, statement: str
+) -> None:
+    """D-104 (the pull request #9 review): `telegram_id` set while
+    `bound_telegram_id` is empty. `telegram_id = null` is not false, so the
+    first rule let it through; the database now refuses it, for the API's
+    role and for the migrations' role alike."""
+    ApiClient().sign_in(LOCAL)
+    assert (_user(db).telegram_id, _user(db).bound_telegram_id) == (None, None)
+    with pytest.raises(IntegrityError, match="ck_users_telegram_id_is_the_bound_one"):
+        db.execute(text(statement))
+    db.rollback()
+    with (
+        pytest.raises(IntegrityError, match="ck_users_telegram_id_is_the_bound_one"),
+        migrator_engine.begin() as connection,
+    ):
+        connection.execute(text(statement))
+    user = _user(db)
+    assert (user.telegram_id, user.bound_telegram_id) == (None, None)
+    assert db.scalar(select(User.id).where(User.telegram_id == STRANGER_TG)) is None
+
+
+def test_the_database_still_takes_a_connection_with_its_remembered_account(db: Session) -> None:
+    """The rule refuses only the unbound state: binding and connecting in one
+    write, as every way of connecting does, is accepted."""
+    ApiClient().sign_in(LOCAL)
+    db.execute(
+        text(
+            f"update users set telegram_id = {A_TG}, bound_telegram_id = {A_TG}, "
+            "telegram_linked_at = now()"
+        )
+    )
+    db.commit()
+    user = _user(db)
+    db.refresh(user)
+    assert (user.telegram_id, user.bound_telegram_id) == (A_TG, A_TG)
 
 
 def test_no_answer_to_the_browser_names_the_remembered_telegram_account() -> None:
