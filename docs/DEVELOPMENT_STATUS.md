@@ -1884,7 +1884,30 @@ Be careful with these. They were written and never exercised.
 with `MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1`.
 
 ```text
-(the results are added in the next commit, once the runs have finished)
+uv run pytest -q -p no:cacheprovider                     ->  2061 passed, 0 skipped, in 22 min 57 s (2041 + the 20 new)
+tests/deployment/test_deploy_newer_schema.py (new, 17)    ->  17 passed
+  + 3 new in test_preflight_and_worker_heartbeat.py       ->  3 passed
+the 20 new tests on 9d0c888 (worktree, the files only)    ->  18 failed, 2 passed (the two that check what must still work:
+                                                             a rollback to a release that accepts the database, a backup
+                                                             with no safe stop)
+  the same, with only a "may be sourced" line added       ->  the reviewer's case fails with "...running again, verified":
+    to the old deploy.sh                                     the defect itself
+uv run ruff check .  /  ruff format --check .            ->  passed  /  258 files already formatted
+uv run mypy markx                                        ->  no issues found in 152 source files
+check_openapi_copy --exact openapi.json                  ->  matches the API exactly (no API change)
+infra/check-image-pins.sh                                ->  every pulled image is pinned to its digest
+sudo infra/production/rehearsal/rehearse.sh (local; MARKX_BUILD_CA for this machine's proxy)
+  run 2 (final)                                          ->  rehearsal: 124 passed, 0 failed (was 116; 8 new checks)
+  run 1                                                  ->  122 passed, 2 failed, both in the new checks, not in deploy.sh:
+                                                             the reviewer's case looked for any "auto-rollback" in the log
+                                                             (an earlier check rightly wrote one) and the roll forward did
+                                                             not pass its release's Compose file; then the run broke because
+                                                             the script was edited while it ran (not a finding)
+  with the new rehearsal and the OLD deploy.sh (9d0c888)  ->  118 passed, 6 failed: the 6 new checks of the fix; the
+                                                             reviewer's case printed "rehearsal-2 is running again, verified"
+GitHub on 704d15e (pull request #11)                     ->  CI #173 success (all 8 checks; 2061 passed; rehearsal 124
+                                                             passed, 0 failed), Browser journeys #49 success
+  on 46ca31a                                             ->  CI #172 cancelled by the newer push; Browser journeys #48 success
 ```
 
 **Server readiness** (D-103), on 21 November 2026, branch
