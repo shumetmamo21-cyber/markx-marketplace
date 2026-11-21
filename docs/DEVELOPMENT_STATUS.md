@@ -14,7 +14,7 @@ trust hardening session (D-096, pull request #4) as `773bbb6`.
 
 ## Three small fixes: product names in the seller bot, the review confirmation, the remembered Telegram account (21 November 2026, D-104)
 
-One pull request into `main` (PR_LINE). **One migration (0022). Nothing
+One pull request into `main`: **#12**. **One migration (0022). Nothing
 deployed; no server, domain, account, bot, SMS or paid resource.** Details
 and two PROVISIONAL values (P-104-1, P-104-2): `docs/DECISIONS.md`, D-104.
 

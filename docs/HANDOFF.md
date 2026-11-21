@@ -42,7 +42,7 @@ suite (2061 passed, 0 skipped) and every GitHub check passed, including the
 production rehearsal (124 passed, 0 failed). Nothing in it had to be fixed
 first. Main stayed green after the merge (CI #175, Browser journeys #51).
 
-Then three small fixes, in one pull request (PR_LINE). **One database
+Then three small fixes, in one pull request, **#12**. **One database
 change (migration 0022). Nothing deployed; no server, domain, account,
 bot, SMS or paid resource.**
 
