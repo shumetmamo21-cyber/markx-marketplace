@@ -52,19 +52,30 @@ step (blueprint F.0, F.13):
 
 | Service | Image | What it does | Health check | Stop grace |
 | --- | --- | --- | --- | --- |
-| `proxy` | `nginxinc/nginx-unprivileged:1.28.2-alpine` | TLS, HTTP to HTTPS, routing, limits, HSTS | internal `/health` on 127.0.0.1:8081 | 15 s |
-| `web` | `markx/web:<release>` (`apps/web/Dockerfile`) | Pages, server-side calls to the API | `GET /healthz` (liveness) | 30 s |
-| `api` | `markx/api:<release>` (`apps/api/Dockerfile`) | Every business rule | `GET /api/v1/healthz/ready` (readiness) | 30 s (uvicorn drains for 20 s) |
+| `proxy` | `nginxinc/nginx-unprivileged:1.28.2-alpine`, by digest | TLS, HTTP to HTTPS, routing, limits, HSTS | internal `/health` on 127.0.0.1:8081 | 15 s |
+| `web` | `<prefix>/web:<release>` (`apps/web/Dockerfile`) | Pages, server-side calls to the API | `GET /healthz` (liveness) | 30 s |
+| `api` | `<prefix>/api:<release>` (`apps/api/Dockerfile`) | Every business rule | `GET /api/v1/healthz/ready` (readiness) | 30 s (uvicorn drains for 20 s) |
 | `worker` | the API image, `python -m markx.worker` | Scheduled jobs, the outbox, pictures; also the scheduler | `--check-heartbeat` (a pass in the last 5 min) | 60 s (finishes the row in hand) |
-| `postgres` | `postgres:17.12` | The database, on a named volume, data checksums on | `pg_isready` | 60 s |
-| `backup` | `markx/backup:<release>` (the `backup` stage of `apps/api/Dockerfile`), `python -m markx.backup serve` | A backup set (database and files) at start-up and daily: encrypted, uploaded, read back, signed; retries (D-094). It never deletes a backup and never runs retention (D-096); on staging and production it does not start without the bucket's object lock | a verified set under 26 h old, off-server on staging and production | 30 s |
+| `postgres` | `postgres:17.12`, by digest | The database, on a named volume, data checksums on | `pg_isready` | 60 s |
+| `backup` | `<prefix>/backup:<release>` (the `backup` stage of `apps/api/Dockerfile`), `python -m markx.backup serve` | A backup set (database and files) at start-up and daily: encrypted, uploaded, read back, signed; retries (D-094). It never deletes a backup and never runs retention (D-096); on staging and production it does not start without the bucket's object lock | a verified set under 26 h old, off-server on staging and production | 30 s |
 | `migrate` | the API image, `alembic upgrade head` | The one-time migration step; never started by `up` | — | — |
 
+`<prefix>` is `MARKX_IMAGE_PREFIX` (default `markx`); `deploy`, `rollback`
+and the automatic return after a failed deployment all use it (D-103).
+
 Hardening on the application containers (**Tested** by the rehearsal):
-unprivileged users, read-only root file systems with `tmpfs` for `/tmp`,
-`no-new-privileges`, every Linux capability dropped, `init` for signal
-handling, memory limits sized for a 2 GB server (blueprint M.3; each can be
-changed in `compose.env`), and log rotation (5 files of 10 MB per container).
+unprivileged users whose ids are set in the Dockerfiles (uid and gid 999
+for the API, worker and backup images; the web image's `node` user checked
+to be 1000 at build time; D-103), read-only root file systems with `tmpfs`
+for `/tmp`, `no-new-privileges`, every Linux capability dropped, `init` for
+signal handling, memory, **CPU and process** limits on every service
+including the migration step (D-103; sized for a small server, no CPU limit
+above 1.0 so a one-CPU server starts; PROVISIONAL P-103-2, each can be
+changed in `compose.env`), and log rotation (5 files of 10 MB per
+container). Every image pulled from outside (PostgreSQL, nginx, and the
+Python, PostgreSQL and Node.js base images) is pinned to its **digest** as
+well as its version, so a re-pushed tag cannot change what runs;
+`infra/check-image-pins.sh`, in CI, refuses a tag alone (D-103).
 
 ### Liveness and readiness
 
@@ -107,13 +118,17 @@ never a value, if a rule below is broken (**Tested**:
 | `MARKX_PUBLIC_ORIGIN` | web | yes | `https://<hostname>`; the API has the same value in `api.env` |
 | `MARKX_MEDIA_ORIGIN` | web (build and run) | yes | the picture CDN's own origin (F.6; **Founder**, F-15) |
 | `MARKX_HSTS_MAX_AGE` | proxy | default 31536000 | HTTPS-only memory in browsers |
-| `MARKX_TLS_DIR` | proxy | default `/etc/markx/tls` | `fullchain.pem` (644), `privkey.pem` (owner 101, 400) |
+| `MARKX_TLS_DIR` | proxy, worker | default `/etc/markx/tls` | `fullchain.pem` (644), `privkey.pem` (owner 101, 400); the worker reads the certificate's expiry |
 | `MARKX_ACME_DIR` | proxy | default `/var/lib/markx/acme` | certificate challenges |
+| `MARKX_TLS_RENEWAL` | deploy.sh | default `none` | `none`: certificates are installed by hand (`deploy.sh certificate install`); `certbot`: Let's Encrypt, renewed by the timer (D-103). **Founder** (F-17): no domain yet |
+| `MARKX_ACME_EMAIL` | deploy.sh | with `certbot` | Let's Encrypt's account address. **Founder** |
+| `MARKX_TLS_WARN_DAYS` | worker, deploy.sh | default 21 (8 to 90) | days before expiry the watch alerts and `certificate check` fails (PROVISIONAL, P-103-1) |
+| `MARKX_IMAGE_PREFIX` | all, deploy.sh | default `markx` | the images' name prefix (D-103) |
 | `MARKX_BACKUP_HOST_DIR` | backup | default `/var/backups/markx` | where dumps are written (owner 999) |
 | `MARKX_FRONTEND_SUBNET` | api, networks | default `172.30.10.0/24` | the proxy network; becomes `MARKX_TRUSTED_PROXIES` |
 | `MARKX_API_WORKERS` | api | default 2 | uvicorn processes |
 | `MARKX_PUBLIC_BIND`, `MARKX_HTTP_PORT`, `MARKX_HTTPS_PORT` | proxy | defaults `0.0.0.0`, 80, 443 | where the proxy listens |
-| `MARKX_*_MEMORY` | each service | defaults in the file | memory limits |
+| `MARKX_*_MEMORY`, `MARKX_*_CPUS`, `MARKX_*_PIDS` | each service | defaults in the file | memory, CPU and process limits (D-103; PROVISIONAL, P-103-2: set them with the server's real size; a CPU limit above the server's CPU count stops that service from starting) |
 | `MARKX_RELEASE` | all | set by `deploy.sh` | the image tag (the Git commit) |
 
 ### API, worker and migration step (`api.env`, `migrate.env`)
@@ -237,6 +252,18 @@ certificate; **Real world** with a real certificate):
   enabled. `snippets/cloudflare-real-ip.conf.example` says exactly what to
   change, and why the server's firewall must then admit Cloudflare only.
 
+## Deploying, and when a deployment fails (D-103)
+
+`deploy.sh deploy RELEASE`: check the server, build, the configuration
+check, a fresh verified backup, the one-time migration, the new release's
+preflight, start, verify. A failure **before** the migration changes
+nothing. A failure **after** it never leaves a half-working site: the last
+working release is started again automatically when it accepts the
+migrated database; otherwise the API, the worker and the web app are
+stopped, `/etc/markx/deploy-halted` records it, and the script prints what
+to do (`docs/runbooks/rollback.md`, "A deployment halted"). Both outcomes
+are **Tested** by the rehearsal with a deliberately broken release.
+
 ## Migrations
 
 Forward only (AGENTS.md). Run once per release by `deploy.sh`, after a fresh
@@ -252,8 +279,11 @@ simultaneous runs). The API, the web app and the worker never migrate. See
 **Prepared, not connected** (the account or the thing does not exist):
 
 - Any server. `deploy.sh` has run only in the local rehearsal.
-- The site's domain and a real TLS certificate (F-17); the certificate tool
-  itself (certbot or a Cloudflare origin certificate) is not in the stack
+- The site's domain and a real TLS certificate (F-17). The install step,
+  automatic renewal (certbot, on a systemd timer) and the expiry alert are
+  built and rehearsed (D-103); renewal stays **off**
+  (`MARKX_TLS_RENEWAL=none`) until the founder has a domain and chooses
+  Let's Encrypt or a Cloudflare origin certificate
   (`docs/runbooks/tls-certificates.md`).
 - Turnstile's production widget; an SMS provider (F-11); the buckets (F-01)
   and the picture CDN and its domain (F-15); the Telegram alert group.

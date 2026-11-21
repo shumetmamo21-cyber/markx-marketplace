@@ -16,8 +16,10 @@ Rehearsed by `rehearse.sh` up to the lines marked **real server**.
 - [ ] **Real server:** `infra/production/deploy.sh check` passes (settings
       files, owners and modes, no example values, the certificate, the
       backup folder, the Compose file).
-- [ ] **Real server:** the certificate is valid for at least 14 more days
-      (`openssl x509 -enddate -noout -in /etc/markx/tls/fullchain.pem`).
+- [ ] **Real server:** the certificate is valid for longer than the
+      warning time (`infra/production/deploy.sh certificate check` passes;
+      D-103), and `systemctl list-timers markx-certificate.timer` shows the
+      next run.
 - [ ] **Real server:** free disk space for at least two more database dumps
       and two more images (`df -h`, `docker system df`).
 - [ ] **Real server:** the last nightly backup exists and the backup

@@ -4552,6 +4552,162 @@ the website does not show anything new (none was needed); the bot cannot
 answer a reported problem or record a direct payment (the website does);
 staff alerts in Telegram are not part of this.
 
+## D-103 Server readiness: certificate install, renewal and expiry alert; rollback by prefix with the backup service; no half-working site after a failed deployment; images by digest, CPU and process limits, fixed user ids
+
+**21 November 2026.** From `main` at `9b3658f` (pull request #10 merged
+after an independent review). Answers the infrastructure defects of the
+independent audit of 19 November 2026 (`docs/reports/2026-11-19-independent-audit.md`,
+section 13). **No server exists; nothing was deployed, no domain,
+certificate authority, account or paid resource was used.** Every fix is
+proven in the production rehearsal on GitHub's machines
+(`infra/production/rehearsal/rehearse.sh`) and, for the alert, by tests.
+
+### 1. The certificate can no longer expire silently
+
+The audit: "Certificate renewal missing: certificates will silently
+expire." The runbook named a deploy hook that did not exist.
+
+- **The install step** (`deploy.sh certificate install DIR`): checks the
+  new pair first (it parses, the key is the certificate's own, it names
+  `MARKX_SITE_HOSTNAME`, at least one more day of validity) and refuses it
+  otherwise; writes both files with the owners `deploy.sh check` requires
+  (root 644; uid 101, 400), renames them over the old ones, then the proxy
+  tests its configuration and reloads **without a restart**; if it refuses,
+  the previous pair is put back. `certificate temporary` makes a 7-day
+  self-signed one for the very first start.
+- **Automatic renewal**: `MARKX_TLS_RENEWAL=certbot` makes `certificate
+  issue` get a Let's Encrypt certificate (HTTP challenge, the path the proxy
+  already serves) with `deploy.sh certificate install-renewed` as certbot's
+  deploy hook, and `certificate renew` run `certbot renew`.
+  `certificate install-timer` installs a systemd timer
+  (`infra/production/systemd/`) that runs `renew` twice a day at a random
+  minute, catching up after a boot. **Off by default** (`MARKX_TLS_RENEWAL=none`):
+  there is no domain (F-17). With renewal off the timer still runs the check.
+- **The alert before expiry, independent of renewal**: the worker's watch
+  has a new check, `tls_certificate` (`markx/ops/checks.py`). The production
+  Compose file mounts the proxy's certificate folder read-only into the
+  worker (`MARKX_TLS_CERTIFICATE_FILE`); the check reads the first
+  certificate of `fullchain.pem` and raises `tls.certificate_expiring`
+  21 days before expiry (warning), critical in the last 7 days and once
+  expired, and `tls.certificate_unreadable` when it cannot be read. It goes
+  through the existing alert channel (the founder's Telegram group once it
+  exists, the log until then), once, again on escalation, and resolves when
+  a renewed certificate is in place. The folder is mounted, not the file,
+  so a renamed-in renewal is seen; the private key in it (uid 101, mode 400)
+  is unreadable to the worker (uid 999, no capabilities), which the
+  rehearsal checks. `deploy.sh certificate check` (exit 1 inside the
+  warning time) and `deploy.sh check` (refuses an expired certificate, a
+  foreign key or another hostname; warns inside the warning time) say the
+  same on the server.
+
+### 2. Rollback uses the image prefix and rolls back the backup service
+
+The audit: rollback hard-coded `markx/`, ignoring `MARKX_IMAGE_PREFIX`, and
+left the backup service on the newer release. `deploy.sh` now reads
+`MARKX_IMAGE_PREFIX` (an exported value wins, as it does for Compose),
+checks that **all three** images of the release (`api`, `web`, `backup`)
+exist, starts the API, worker, web app and proxy (waited for) and then the
+backup service (not waited for: it reports healthy only once a set newer
+than 26 hours exists, which is not the rollback's to decide), and verifies.
+The whole rehearsal now runs with `MARKX_IMAGE_PREFIX=markx-rehearsal`.
+
+### 3. A failed check after the migration never leaves a half-working site
+
+The audit: "A failed post-migration verify leaves the system half-up"
+(before this, `up` replaced the worker with the new release even when its
+API never became ready). Now, after the migration, any failure of the new
+release's preflight, its start or the readiness checks goes to recovery:
+
+1. **Back to the last working release** (the last `deploy`, `rollback` or
+   `auto-rollback` in `releases.log`; a failed release is never recorded)
+   when its images are present **and its own preflight accepts the
+   migrated database**. Every service, the backup service included, runs it
+   again, verified; `releases.log` says `auto-rollback`; `deploy` exits 1.
+2. **Otherwise a safe stop**: the API, the worker and the web app are
+   stopped (PostgreSQL and the backup service keep running; the proxy
+   answers 502 or 504), `MARKX_CONFIG_DIR/deploy-halted` (mode 600) records the
+   failed and the last working release, and the script prints the three
+   ways out in order: roll forward; only for a backward-compatible migration
+   `MARKX_ALLOW_NEWER_SCHEMA=true` and `rollback`; only with the founder's
+   written approval a restore from the backup taken just before. `status`
+   and `check` show the stop; a successful `deploy` or `rollback` ends it.
+
+Recovery never sets `MARKX_ALLOW_NEWER_SCHEMA` itself: whether a migration
+is backward-compatible is a person's judgement (`docs/runbooks/rollback.md`).
+A failed migration changes nothing (PostgreSQL runs it in one transaction)
+and `deploy` now says so.
+
+### 4. Containers
+
+- **Digests**: PostgreSQL 17.12, nginx-unprivileged 1.28.2, and the Python
+  3.13.18, PostgreSQL 17.12-bookworm and Node.js 22.23.5 base images are
+  pinned to the digest of their multi-platform index, besides their tag,
+  in the production and laptop Compose files, both Dockerfiles and CI.
+  `infra/check-image-pins.sh` (new CI step) refuses a tag alone.
+- **CPU and process limits** next to the memory limits, on every service
+  and the migration step (`MARKX_*_CPUS`, `MARKX_*_PIDS`). PROVISIONAL
+  (P-103-2): no CPU limit above 1.0, so every service starts on a one-CPU
+  server (a limit above the server's CPU count stops a container from
+  starting); process limits 64 to 256.
+- **User ids set in the Dockerfiles**: the API, worker and backup images
+  create `markx` as uid and gid 999 explicitly (`ARG MARKX_UID`, checked at
+  build) and run as `999:999`; the web image checks that the base image's
+  `node` user is 1000:1000 and runs as `1000:1000`. CI and the rehearsal
+  check the ids.
+
+### PROVISIONAL values (the engineer's guess; the founder confirms or changes them before going live)
+
+- **P-103-1**: the certificate warning starts 21 days before expiry
+  (`MARKX_TLS_WARN_DAYS`, 8 to 90), critical in the last 7.
+- **P-103-2**: the CPU and process limits above, for a server whose size is
+  not chosen yet (blueprint M.3 says 2 GB of memory; the CPU count is
+  UNKNOWN).
+- **P-103-3**: renewal twice a day at a random minute (03:00 and 15:00
+  UTC plus up to an hour).
+
+### Settings left for the founder (switched off or unset)
+
+- `MARKX_TLS_RENEWAL` (`none`) and `MARKX_ACME_EMAIL` (unset): F-17, the
+  domain and how its certificate is made.
+- `MARKX_TLS_WARN_DAYS`, `MARKX_*_CPUS`, `MARKX_*_PIDS`: defaults above.
+
+### Tests
+
+- `tests/api/test_tls_certificate_watch.py`, 7 tests: nothing checked
+  without a file; quiet with time left; a warning with the date; critical
+  in the last week and once expired; the first certificate of the chain
+  counts; a missing or broken file is critical; through the scheduled
+  watch: one alert, sent again only when critical, resolved after renewal.
+  All 7 fail on `9b3658f` (the check does not exist; through the scheduled
+  watch no alert is raised at all).
+- The rehearsal's new checks (each listed in "Tests executed",
+  `docs/DEVELOPMENT_STATUS.md`): limits, user ids and digests of every
+  container; the worker reads the certificate but not its key; the alert
+  opens for the rehearsal's 2-day certificate and resolves after a new one;
+  a certificate for another host and one with a foreign key refused, the
+  old one still served; install served without a proxy restart, with the
+  required modes; renewal off says so, `issue` refuses; renewal on, through
+  a stand-in for certbot, installs via the deploy hook; the timer's units
+  accepted by `systemd-analyze verify`; rollback of every service by
+  prefix, and refused when the backup image is missing; a broken release
+  after its migration: back on the last working release, every service,
+  never recorded as deployed; a broken release with a newer migration: the
+  safe stop, its record, `status`, 502 or 504 from the proxy, the old release still refused, then
+  the documented way out (`schema: ahead`).
+- No existing test or check was weakened or removed. Two existing
+  rehearsal checks now ask more: the rollback check also requires the
+  worker's and the backup service's images, under the prefix; `deploy.sh
+  check` also checks the certificate itself.
+
+### Not done or not verified
+
+- A real server, domain, certificate authority and certbot (UNKNOWN: Let's
+  Encrypt's real challenge from outside; the rehearsal uses a stand-in).
+- Where alerts reach a person: the Telegram alert group does not exist yet,
+  so an expiry alert reaches the log only (as every other alert today).
+- A visitor-facing maintenance page during a safe stop (the proxy answers
+  502 or 504), zero-downtime deploys, log shipping: unchanged from the audit.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -4570,7 +4726,8 @@ own shop proposed the product) is OPEN with no provisional answer. SI-1
 (sign-in with Telegram for everyone, SMS off as a backup) was decided on
 21 November 2026: see D-101, which sets eight PROVISIONAL values and rules,
 P-101-1 to P-101-8, and raises F-24 and F-25 (OPEN; recommendations
-given).** Treat this list as part of the launch
+given). D-103 (server readiness) sets three PROVISIONAL values, P-103-1 to
+P-103-3, and leaves certificate renewal off until F-17 is decided.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -4878,6 +5035,11 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   `www.` exists and redirects. Whether HSTS later includes subdomains.
 - **Founder's approval required: yes** (the domain, DNS, a Cloudflare
   account). Together with F-15 (the picture domain).
+- **Since D-103:** the install step, renewal with certbot on a timer and the
+  watch's expiry alert are built and rehearsed. Deciding F-17 is then
+  configuration: `MARKX_TLS_RENEWAL=certbot` and `MARKX_ACME_EMAIL` for
+  Let's Encrypt, or `none` with a Cloudflare origin certificate installed
+  by `deploy.sh certificate install` (`docs/runbooks/tls-certificates.md`).
 
 ### F-18 An outside uptime monitor and error tracking (blueprint F.12)
 
