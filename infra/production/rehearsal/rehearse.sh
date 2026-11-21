@@ -786,7 +786,7 @@ if broken_release broken-c yes; then
       && grep -q "rehearsal-2 refuses the migrated database" "$work/deploy-6.txt" \
       && grep -q "DEPLOYMENT HALTED in a safe state" "$work/deploy-6.txt" \
       && ! grep -q "running again, verified" "$work/deploy-6.txt" \
-      && ! grep -q "auto-rollback" "$config/releases.log" \
+      && [[ "$(tail -1 "$config/releases.log" | cut -d' ' -f2-)" == "$running_release_line" ]] \
       && [[ "$(psql_markx "select version_num from alembic_version")" == rehearsal_newer ]] \
       && (( stopped )); then
       pass "the reviewer's case: a newer database and the setting on; the automatic return checks rehearsal-2 with it forced off, refuses, and stops safely"
@@ -806,7 +806,8 @@ fi
 # The way out the runbook prefers: roll forward. The run ends with the
 # setting off everywhere and the schema current.
 if broken_release fixed yes healthy; then
-  if "$prod/deploy.sh" deploy rehearsal-7 > "$work/deploy-7.txt" 2>&1 \
+  if MARKX_COMPOSE_OVERRIDE="$MARKX_COMPOSE_OVERRIDE:$work/fixed.yaml" "$prod/deploy.sh" deploy rehearsal-7 \
+    > "$work/deploy-7.txt" 2>&1 \
     && [[ "$(https "$url/api/v1/healthz/ready")" == *'"schema":"current"'* ]] \
     && [[ "$(release_images_of)" == "$(images_of_release rehearsal-7)" ]] \
     && [[ ! -e "$config/deploy-halted" ]]; then
