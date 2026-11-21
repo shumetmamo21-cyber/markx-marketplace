@@ -155,6 +155,10 @@ TELEGRAM_TEXTS: dict[str, dict[str, str]] = {
         "it answers.",
         "am": "MarkX፦ ትዕዛዝዎ {code} ወደ ሱቁ ተልኳል። ሱቁ እንደመለሰ እዚህ ይነገርዎታል።",
     },
+    "order.next_best_offer": {
+        "en": "MarkX: another shop has what you ordered in {code}. Open MarkX to see the offer.",
+        "am": "MarkX፦ በ{code} ያዘዙትን ሌላ ሱቅ አለው። ቅናሹን በMarkX ይመልከቱ።",
+    },
     "order.ready": {
         "en": "MarkX: order {code} is packed and ready. It will be on its way soon.",
         "am": "MarkX፦ ትዕዛዝ {code} ታሽጎ ዝግጁ ነው። በቅርቡ ይላካል።",

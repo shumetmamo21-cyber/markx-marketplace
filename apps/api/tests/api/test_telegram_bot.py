@@ -653,3 +653,23 @@ def test_every_button_fits_telegrams_limit() -> None:
         for data in _buttons(markup):
             assert len(data.encode()) <= 64
             assert keyboards.CALLBACK.fullmatch(data)
+
+
+def test_every_order_message_has_its_own_words_in_telegram() -> None:
+    """C-10 and S-07: no order message reaches Telegram as the generic "You
+    have a new message". The templates are read from the order code itself,
+    so a new one without words fails here."""
+    import pathlib
+
+    source = (pathlib.Path(orders.__file__)).read_text(encoding="utf-8")
+    notify = r"(?:_notify_buyer|_notify_seller|notifications\.notify)\("
+    sent = set(re.findall(notify + r'[^"]*"((?:order|dispute)\.[a-z_]+)"', source))
+    # `mark_ready` chooses its template in a variable first.
+    sent |= set(re.findall(r'"(order\.ready(?:_for_collection)?)"', source))
+    assert {"order.placed", "order.placed_for_seller", "order.ready", "order.delivered"} <= sent
+    assert len(sent) >= 27
+    for template in sorted(sent):
+        for language in ("en", "am"):
+            words = outside_texts.render_telegram(template, {"order_code": "MX-ACDEFG"}, language)
+            assert words != outside_texts.GENERIC_TEXT[language], template
+            assert "MX-ACDEFG" in words, template
