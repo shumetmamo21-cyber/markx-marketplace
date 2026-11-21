@@ -103,9 +103,16 @@ def test_five_failures_lock_the_staff_account(client: ApiClient, db: DbSession) 
     for _ in range(5):
         assert _sign_in(client, secret, password="wrong password!!").status_code == 401
     locked = _sign_in(client, secret)
-    assert locked.status_code == 429
-    assert error_code(locked) == "staff_locked"
+    # D-101 (audit M3): a lock answers exactly like a wrong password, so it
+    # never tells a stranger that the number belongs to staff. Before D-101
+    # this was 429 staff_locked. The lock itself is unchanged: the right
+    # password and code are still refused.
+    assert locked.status_code == 401
+    assert error_code(locked) == "staff_credentials_invalid"
+    # Since D-101 the lock is kept per address (P-101-4) in the rate-limit
+    # counters; the lock period is over once they are gone.
     db.execute(text("update staff_members set locked_until = now() - interval '1 second'"))
+    db.execute(text("delete from rate_limit_counters where bucket like 'staff-login:fail:%'"))
     db.commit()
     assert _sign_in(client, secret).status_code == 200
 

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from markx.accounts import service, telegram_link
+from markx.accounts import telegram_sign_in as web_sign_in
 from markx.accounts.deps import (
     CSRF_COOKIE,
     SESSION_COOKIE,
@@ -28,10 +29,15 @@ from markx.accounts.schemas import (
     ProfileIn,
     SellerMembershipOut,
     SessionOut,
+    SignInMethodsOut,
     StaffOut,
     StaffSignInIn,
+    StaffStepUpIn,
     TelegramConnectionOut,
     TelegramSignInIn,
+    TelegramWebSignInIn,
+    TelegramWebSignInOut,
+    TelegramWebSignInStateOut,
 )
 from markx.core.config import get_config
 from markx.core.errors import AppError
@@ -163,6 +169,117 @@ def staff_sign_in(body: StaffSignInIn, request: Request, response: Response, db:
         ip=client_ip(request),
         user_agent=request.headers.get("user-agent"),
         previous_session_token=_previous_token(request),
+    )
+    _set_session_cookies(response, token, SessionKind.STAFF)
+    return SessionOut(me=_me(db, user, SessionKind.STAFF, token, staff))
+
+
+# The browser's private half of a Telegram sign-in (D-101). HttpOnly, and
+# sent only to the Telegram sign-in routes.
+TELEGRAM_SIGN_IN_COOKIE = "markx_tg_sign_in"
+_TELEGRAM_SIGN_IN_PATH = "/api/v1/auth/telegram/sign-in"
+
+
+@router.get("/auth/methods", response_model=SignInMethodsOut, tags=["auth"])
+def sign_in_methods() -> SignInMethodsOut:
+    """The ways of signing in this server offers (D-101, decision SI-1)."""
+    sms_on = get_config().sms_on
+    return SignInMethodsOut(
+        telegram=web_sign_in.available(), sms=sms_on, staff_phone_password=sms_on
+    )
+
+
+@router.post(
+    "/auth/telegram/sign-in", response_model=TelegramWebSignInOut, status_code=201, tags=["auth"]
+)
+def start_telegram_sign_in(
+    body: TelegramWebSignInIn, request: Request, response: Response, db: Db
+) -> TelegramWebSignInOut:
+    """Start signing in with Telegram on the website (D-101): a one-time link
+    to MarkX's bot, and a private secret for this browser in a cookie. An
+    earlier sign-in this browser had not finished stops working."""
+    started = web_sign_in.start(
+        db,
+        ip=client_ip(request),
+        language=body.language,
+        previous_secret=request.cookies.get(TELEGRAM_SIGN_IN_COOKIE),
+    )
+    response.set_cookie(
+        TELEGRAM_SIGN_IN_COOKIE,
+        started.browser_secret,
+        max_age=int((started.expires_at - service._now()).total_seconds()) + 60,
+        path=_TELEGRAM_SIGN_IN_PATH,
+        secure=get_config().cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+    return TelegramWebSignInOut(link=started.link, expires_at=started.expires_at)
+
+
+@router.post(
+    "/auth/telegram/sign-in/check", response_model=TelegramWebSignInStateOut, tags=["auth"]
+)
+def check_telegram_sign_in(
+    request: Request, response: Response, db: Db
+) -> TelegramWebSignInStateOut:
+    """Where this browser's Telegram sign-in stands. Once Telegram confirmed
+    the person and their phone number, this answer signs the browser in,
+    exactly once (D-101)."""
+    previous = _previous_token(request)
+
+    def open_session(user: User) -> str:
+        if previous:
+            service.end_session_by_token(db, previous)
+        return service.start_session(
+            db,
+            user,
+            kind=SessionKind.CUSTOMER,
+            transport="cookie",
+            ip=client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+
+    checked = web_sign_in.check(
+        db,
+        browser_secret=request.cookies.get(TELEGRAM_SIGN_IN_COOKIE),
+        start_session=open_session,
+    )
+    if checked.state != web_sign_in.State.SIGNED_IN:
+        return TelegramWebSignInStateOut(
+            state=checked.state.value,
+            expires_at=checked.expires_at,
+            reason=checked.reason,
+        )
+    assert checked.user is not None
+    assert checked.session_token is not None
+    response.delete_cookie(TELEGRAM_SIGN_IN_COOKIE, path=_TELEGRAM_SIGN_IN_PATH)
+    _set_session_cookies(response, checked.session_token, SessionKind.CUSTOMER)
+    return TelegramWebSignInStateOut(
+        state=checked.state.value,
+        me=_me(db, checked.user, SessionKind.CUSTOMER, checked.session_token, None),
+        is_new_account=checked.is_new_account,
+    )
+
+
+@router.post("/auth/staff/step-up", response_model=SessionOut, tags=["auth"])
+def staff_step_up(
+    body: StaffStepUpIn,
+    request: Request,
+    response: Response,
+    principal: CurrentPrincipal,
+    db: Db,
+) -> SessionOut:
+    """The staff step on top of a Telegram sign-in (D-101): the password and
+    the authenticator code. The signed-in session becomes a staff session."""
+    user, staff, token = service.staff_step_up(
+        db,
+        session=principal.session,
+        user=principal.user,
+        password=body.password,
+        totp_code=body.totp_code,
+        ip=client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        session_token=principal.token,
     )
     _set_session_cookies(response, token, SessionKind.STAFF)
     return SessionOut(me=_me(db, user, SessionKind.STAFF, token, staff))

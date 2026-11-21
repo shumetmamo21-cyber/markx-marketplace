@@ -147,6 +147,21 @@ def telegram_linking(monkeypatch: pytest.MonkeyPatch) -> Any:
     return config
 
 
+@pytest.fixture
+def sms_off(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """SMS switched off (`MARKX_SMS_PROVIDER=off`), as a server where
+    everyone signs in with Telegram has it (D-101, decision SI-1). The test
+    environment, like a laptop, has the fake SMS sender on by default."""
+    from markx.accounts import router, service
+    from markx.core.config import get_config
+    from markx.notifications import delivery, sms
+
+    config = get_config().model_copy(update={"sms_provider": "off"})
+    for module in (service, router, delivery, sms):
+        monkeypatch.setattr(module, "get_config", lambda: config)
+    return config
+
+
 class ApiClient:
     """Behaves like the web app: sends the MarkX client header on every request
     and echoes the CSRF cookie back as a header on requests that change data."""

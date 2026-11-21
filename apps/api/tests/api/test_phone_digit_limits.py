@@ -124,8 +124,10 @@ def test_five_failed_staff_sign_ins_in_mixed_digit_styles_lock_the_account(
             json={"phone": style(phone), "password": STAFF_PASSWORD,
                   "totp_code": pyotp.TOTP(secret).now()},
         )  # fmt: skip
-        assert locked.status_code == 429, style(phone)
-        assert error_code(locked) == "staff_locked"
+        # D-101 (audit M3): a lock answers like a wrong password (before:
+        # 429 staff_locked); the right password and code are still refused.
+        assert locked.status_code == 401, style(phone)
+        assert error_code(locked) == "staff_credentials_invalid"
 
 
 # -- one number, one account -------------------------------------------------------------------

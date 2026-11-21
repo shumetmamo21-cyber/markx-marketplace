@@ -22,6 +22,13 @@ LIVE. They are settings, so changing them needs no code.
   settings only ever read the newest. Fixed periods, not settings: neither
   table is a record anyone reads later, and neither holds a token.
 
+* `telegram_sign_ins`: website sign-ins with Telegram (D-101), kept
+  `TELEGRAM_SIGN_INS_KEPT` (30 days), like connection links: each lives 30
+  minutes at most and holds no token, secret or phone number.
+* `telegram_init_data_uses`: keyed hashes of Mini App start-up data already
+  accepted (D-101, M4), kept `TELEGRAM_INIT_DATA_KEPT` (2 days): data older
+  than an hour is refused for its age anyway (`TELEGRAM_AUTH_MAX_AGE`).
+
 The daily job `retention.prune` deletes them all and, when it deleted anything,
 records how many rows of each in the audit log, which nothing can rewrite.
 """
@@ -34,7 +41,12 @@ from typing import Any, cast
 from sqlalchemy import CursorResult, delete
 from sqlalchemy.orm import Session
 
-from markx.accounts.models import TelegramLinkToken, TelegramUpdate
+from markx.accounts.models import (
+    TelegramInitDataUse,
+    TelegramLinkToken,
+    TelegramSignIn,
+    TelegramUpdate,
+)
 from markx.audit.service import Actor, record_by
 from markx.core import ratelimit, settings_store
 from markx.core.models import RateLimitCounter
@@ -42,6 +54,8 @@ from markx.search.models import SearchQuery
 
 TELEGRAM_UPDATES_KEPT = timedelta(days=7)
 TELEGRAM_LINKS_KEPT = timedelta(days=30)
+TELEGRAM_SIGN_INS_KEPT = timedelta(days=30)
+TELEGRAM_INIT_DATA_KEPT = timedelta(days=2)
 
 
 def _deleted(result: Any) -> int:
@@ -73,7 +87,19 @@ def prune(db: Session, now: datetime) -> int:
             )
         )
     )
-    if searches or counters or updates or links:
+    sign_ins = _deleted(
+        db.execute(
+            delete(TelegramSignIn).where(TelegramSignIn.created_at < now - TELEGRAM_SIGN_INS_KEPT)
+        )
+    )
+    init_data = _deleted(
+        db.execute(
+            delete(TelegramInitDataUse).where(
+                TelegramInitDataUse.used_at < now - TELEGRAM_INIT_DATA_KEPT
+            )
+        )
+    )
+    if searches or counters or updates or links or sign_ins or init_data:
         record_by(
             db, Actor.system(), "retention.prune", "retention", now.date().isoformat(),
             after={
@@ -81,6 +107,7 @@ def prune(db: Session, now: datetime) -> int:
                 "rate_limit_counters": counters,
                 "rate_limit_counters_before": counter_cutoff.isoformat(),
                 "telegram_updates": updates, "telegram_link_tokens": links,
+                "telegram_sign_ins": sign_ins, "telegram_init_data_uses": init_data,
             },
         )  # fmt: skip
-    return searches + counters + updates + links
+    return searches + counters + updates + links + sign_ins + init_data

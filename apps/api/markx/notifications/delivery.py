@@ -56,6 +56,7 @@ from sqlalchemy.orm import Session
 from markx.accounts.models import User, UserStatus
 from markx.accounts.permissions import SellerCapability, seller_can
 from markx.core import ratelimit, settings_store
+from markx.core.config import get_config
 from markx.core.db import session_scope
 from markx.core.errors import RateLimited
 from markx.core.ids import uuid7
@@ -428,7 +429,8 @@ def _sms(
         _record(notification, channel, status=DeliveryStatus.UNKNOWN, reason=Reason.INTERRUPTED)
         _log(notification, channel, DeliveryStatus.UNKNOWN.value, Reason.INTERRUPTED)
         return
-    if not settings_store.get_bool(db, "notifications.sms_enabled"):
+    if not get_config().sms_on or not settings_store.get_bool(db, "notifications.sms_enabled"):
+        # SMS switched off for the whole server (D-101), or for notifications.
         _record(notification, channel, status=DeliveryStatus.SKIPPED, reason=Reason.SMS_DISABLED)
         return
     if existing is not None and recipient_may_receive(db, notification, user) is not None:

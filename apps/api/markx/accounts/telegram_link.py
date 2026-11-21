@@ -168,6 +168,11 @@ def linking_available() -> bool:
     return get_config().telegram_linking_ready
 
 
+def bot_username() -> str | None:
+    """The bot's public username, for t.me links (D-093, D-101)."""
+    return get_config().telegram_bot_username
+
+
 def _messages_on() -> bool:
     return push.get_push_sender() is not None
 
@@ -425,8 +430,13 @@ class WebhookReply:
         return {"ok": True}
 
     @staticmethod
-    def message(chat_id: int, text: str) -> dict[str, Any]:
-        return {"method": "sendMessage", "chat_id": chat_id, "text": text}
+    def message(
+        chat_id: int, text: str, *, reply_markup: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        reply: dict[str, Any] = {"method": "sendMessage", "chat_id": chat_id, "text": text}
+        if reply_markup is not None:
+            reply["reply_markup"] = reply_markup
+        return reply
 
 
 def _int(value: Any, upper: int) -> int | None:
@@ -491,7 +501,11 @@ def handle_update(db: DbSession, body: bytes) -> dict[str, Any]:
     if not isinstance(message, dict):
         return _ignored("not_a_message")
     chat, sender, text = message.get("chat"), message.get("from"), message.get("text")
-    if not isinstance(chat, dict) or not isinstance(sender, dict) or not isinstance(text, str):
+    # A shared phone number carries no text (D-101: signing in with Telegram).
+    contact = isinstance(message.get("contact"), dict) and text is None
+    if not isinstance(chat, dict) or not isinstance(sender, dict):
+        return _ignored("not_a_text_message")
+    if not isinstance(text, str) and not contact:
         return _ignored("not_a_text_message")
     chat_id = _int(chat.get("id"), _MAX_TELEGRAM_ID)
     sender_id = _int(sender.get("id"), _MAX_TELEGRAM_ID)
@@ -503,12 +517,23 @@ def handle_update(db: DbSession, body: bytes) -> dict[str, Any]:
         or chat_id != sender_id
     ):
         return _ignored("not_a_private_chat_with_a_person")
+    # Imported here: the sign-in module builds on this one.
+    from markx.accounts import telegram_sign_in
+
+    if contact:
+        answer = telegram_sign_in.contact_from_telegram(db, message, sender_id)
+        return answer if answer is not None else _ignored("rate_limited")
+    assert isinstance(text, str)
     match = _START.fullmatch(text) if len(text) <= 4096 else None
     if match is None:
         return _ignored("not_start")
     payload = match.group(1)
     if payload is None:
         return WebhookReply.message(chat_id, REPLIES["help"])
+    sign_in = telegram_sign_in.PAYLOAD.fullmatch(payload)
+    if sign_in is not None:
+        answer = telegram_sign_in.open_from_telegram(db, sign_in.group(1), sender_id)
+        return answer if answer is not None else _ignored("rate_limited")
 
     try:
         ratelimit.hit(
