@@ -144,12 +144,22 @@ def load_seller_context(
         raise PermissionDenied(
             "seller_session_required", "Sign in with your phone code to manage a store."
         )
+    member, seller = seller_membership(db, principal.user.id, seller_id, capability)
+    return SellerContext(principal=principal, seller=seller, member=member)
+
+
+def seller_membership(
+    db: Db, user_id: uuid.UUID, seller_id: uuid.UUID, capability: SellerCapability | None
+) -> tuple[SellerMember, Seller]:
+    """The one seller check (blueprint C.3, C.5), for the website and the
+    Telegram bot alike (D-102): an active member of a store that is not
+    closed, whose role holds the capability. Anything else is refused."""
     row = db.execute(
         select(SellerMember, Seller)
         .join(Seller, Seller.id == SellerMember.seller_id)
         .where(
             SellerMember.seller_id == seller_id,
-            SellerMember.user_id == principal.user.id,
+            SellerMember.user_id == user_id,
             SellerMember.is_active,
         )
     ).first()
@@ -162,7 +172,7 @@ def load_seller_context(
         raise PermissionDenied("seller_closed", "This store is closed.")
     if capability is not None and not seller_can(member.role, capability):
         raise PermissionDenied("permission_denied", "Your role in this store does not allow this.")
-    return SellerContext(principal=principal, seller=seller, member=member)
+    return member, seller
 
 
 def require_seller(

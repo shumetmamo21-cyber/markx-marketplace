@@ -19499,7 +19499,7 @@
     },
     "/api/v1/telegram/webhook": {
       "post": {
-        "description": "Updates from MarkX's Telegram bot (D-093). Only `/start <token>` in a\nprivate chat does anything. Authenticated by the secret Telegram sends in\nX-Telegram-Bot-Api-Secret-Token; switched off unless Telegram linking is\nconfigured and enabled.",
+        "description": "Updates from MarkX's Telegram bot (D-093). In a private chat:\n`/start <token>` links or signs in (D-093, D-101); the seller bot's\ncommands and buttons answer orders and change listings, with the same\nchecks as the website (D-102). Everything else is ignored. Authenticated\nby the secret Telegram sends in X-Telegram-Bot-Api-Secret-Token; switched\noff unless Telegram linking is configured and enabled.",
         "operationId": "telegram_webhook_api_v1_telegram_webhook_post",
         "responses": {
           "200": {

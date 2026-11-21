@@ -220,6 +220,9 @@ def _send_one(
                 "seller_id": str(seller_id), "report_id": str(report.id),
                 "week_start": week_start.isoformat(),
                 "orders_received": numbers["orders_received"],
+                # D-102: the Telegram text (S-26) also says these two.
+                "orders_confirmed": numbers["orders_confirmed"],
+                "prices_to_confirm": numbers["prices_to_confirm"],
                 "completed": numbers["completed"],
                 "completed_value_santim": numbers["completed_value_santim"],
             },

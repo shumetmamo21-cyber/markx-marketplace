@@ -110,6 +110,92 @@ ORDER_TEXTS: dict[str, dict[str, str]] = {
     },
 }
 
+# Telegram only (D-102). Telegram costs nothing per message, so these never
+# make a template SMS-worthy: SMS still uses ORDER_TEXTS alone. Where both
+# exist, Telegram uses its own: a seller's new order and its reminder carry
+# Accept and Decline buttons, which an SMS cannot.
+TELEGRAM_TEXTS: dict[str, dict[str, str]] = {
+    # -- to the shop's order handlers ------------------------------------------------
+    "order.placed_for_seller": {
+        "en": "MarkX: new order {code}. Tap Accept or Decline below before the deadline. "
+        "/orders shows every order waiting for you.",
+        "am": "MarkX፦ አዲስ ትዕዛዝ {code}። ጊዜው ሳያልፍ ከታች «ተቀበል» ወይም «አትቀበል»ን ይጫኑ። "
+        "እርስዎን የሚጠብቁ ትዕዛዞችን ሁሉ /orders ያሳያል።",
+    },
+    "order.approaching_response_deadline": {
+        "en": "MarkX: order {code} is still waiting for your answer and expires in a few "
+        "minutes. Tap Accept or Decline below.",
+        "am": "MarkX፦ ትዕዛዝ {code} መልስዎን እየጠበቀ ነው፤ በጥቂት ደቂቃዎች ውስጥ ጊዜው ያልፋል። "
+        "ከታች «ተቀበል» ወይም «አትቀበል»ን ይጫኑ።",
+    },
+    "order.completed_for_seller": {
+        "en": "MarkX: order {code} is completed.",
+        "am": "MarkX፦ ትዕዛዝ {code} ተጠናቋል።",
+    },
+    "order.cancelled_not_fulfilled_for_seller": {
+        "en": "MarkX: order {code} was cancelled because it was not sent in time.",
+        "am": "MarkX፦ ትዕዛዝ {code} በጊዜው ስላልተላከ ተሰርዟል።",
+    },
+    "order.problem_buyer_added": {
+        "en": "MarkX: the buyer added to the problem report on order {code}.",
+        "am": "MarkX፦ ገዢው በትዕዛዝ {code} የችግር ሪፖርት ላይ ተጨማሪ ጽፈዋል።",
+    },
+    # The weekly message (S-26): counts only, never money, names or products.
+    "seller.weekly_report": {
+        "en": "MarkX weekly report, week from {week}: {received} orders received, "
+        "{confirmed} accepted, {completed} completed. {to_confirm} of your prices need "
+        "checking: send /checkin if they are all still right.",
+        "am": "የMarkX ሳምንታዊ ሪፖርት፣ ከ{week} ጀምሮ ያለው ሳምንት፦ {received} ትዕዛዞች ደርሰዋል፣ "
+        "{confirmed} ተቀብለዋል፣ {completed} ተጠናቀዋል። {to_confirm} ዋጋዎችዎ መረጋገጥ አለባቸው፤ "
+        "ሁሉም አሁንም ትክክል ከሆኑ /checkin ይላኩ።",
+    },
+    # -- to the buyer (C-10) -------------------------------------------------------------
+    "order.placed": {
+        "en": "MarkX: your order {code} was sent to the shop. You will hear here as soon as "
+        "it answers.",
+        "am": "MarkX፦ ትዕዛዝዎ {code} ወደ ሱቁ ተልኳል። ሱቁ እንደመለሰ እዚህ ይነገርዎታል።",
+    },
+    "order.ready": {
+        "en": "MarkX: order {code} is packed and ready. It will be on its way soon.",
+        "am": "MarkX፦ ትዕዛዝ {code} ታሽጎ ዝግጁ ነው። በቅርቡ ይላካል።",
+    },
+    "order.delivery_failed": {
+        "en": "MarkX: the delivery of order {code} did not succeed. Open MarkX to see what "
+        "happens next.",
+        "am": "MarkX፦ የትዕዛዝ {code} ማድረስ አልተሳካም። ቀጥሎ የሚሆነውን በMarkX ይመልከቱ።",
+    },
+    "order.returned": {
+        "en": "MarkX: order {code} went back to the shop.",
+        "am": "MarkX፦ ትዕዛዝ {code} ወደ ሱቁ ተመልሷል።",
+    },
+    "order.payment_recorded": {
+        "en": "MarkX: the shop recorded your payment for order {code}.",
+        "am": "MarkX፦ ሱቁ ለትዕዛዝ {code} ክፍያዎን መዝግቧል።",
+    },
+    "order.handover_code_reissued": {
+        "en": "MarkX: you have a new handover code for order {code}. Open MarkX to see it.",
+        "am": "MarkX፦ ለትዕዛዝ {code} አዲስ የማስረከቢያ ኮድ አለዎት። በMarkX ይመልከቱት።",
+    },
+    "order.problem_seller_replied": {
+        "en": "MarkX: the shop answered your problem report on order {code}.",
+        "am": "MarkX፦ ሱቁ በትዕዛዝ {code} ላይ ላቀረቡት የችግር ሪፖርት መልስ ሰጥቷል።",
+    },
+}
+
+# The placeholders a Telegram text may use, each with the one parameter it
+# is filled from (D-102). Besides the order code: the weekly message's week
+# and counts, which must be plain whole numbers.
+TELEGRAM_PLACEHOLDERS: dict[str, str] = {
+    "code": "order_code",
+    "week": "week_start",
+    "received": "orders_received",
+    "confirmed": "orders_confirmed",
+    "completed": "completed",
+    "to_confirm": "prices_to_confirm",
+}
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+MAX_COUNT = 1_000_000
+
 # What a Telegram message says for a template with no text of its own: the
 # person opens MarkX to read it. Telegram costs nothing per message, so every
 # notification is pushed; SMS goes only for ORDER_TEXTS.
@@ -148,4 +234,31 @@ def render(template: str, params: Mapping[str, Any], language: str) -> str:
             # that leaves the server.
             raise UnsafeText(f"text for {template!r} needs a plain order code")
         return words.replace("{code}", code)
+    return words
+
+
+def render_telegram(template: str, params: Mapping[str, Any], language: str) -> str:
+    """The Telegram text for one notification (D-102): Telegram's own words
+    where they exist, else the SMS words, else the generic line. Only the
+    order code, the week and whole-number counts are ever filled in."""
+    lang = "en" if language == "en" else "am"
+    words = (TELEGRAM_TEXTS.get(template) or ORDER_TEXTS.get(template) or GENERIC_TEXT)[lang]
+    used = placeholders(words)
+    if not used <= set(TELEGRAM_PLACEHOLDERS):
+        raise UnsafeText(f"text for {template!r} uses {sorted(used - set(TELEGRAM_PLACEHOLDERS))}")
+    for name in sorted(used):
+        value = params.get(TELEGRAM_PLACEHOLDERS[name])
+        if name == "code":
+            if not isinstance(value, str) or not is_order_code(value):
+                raise UnsafeText(f"text for {template!r} needs a plain order code")
+            filled = value
+        elif name == "week":
+            if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
+                raise UnsafeText(f"text for {template!r} needs a plain date")
+            filled = value
+        else:
+            if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= MAX_COUNT:
+                raise UnsafeText(f"text for {template!r} needs a whole number for {name!r}")
+            filled = str(value)
+        words = words.replace("{" + name + "}", filled)
     return words

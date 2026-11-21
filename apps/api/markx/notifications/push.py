@@ -3,7 +3,7 @@
 Provider-independent, like SMS (D-089):
 
 * `PushSender` is the one interface: `send(*, telegram_id, template, params,
-  language, idempotency_key) -> PushResult`, or `PushSendError` with a
+  language, idempotency_key, reply_markup=None) -> PushResult`, or `PushSendError` with a
   provider-independent code and a status (`failed`: certainly not sent;
   `unknown`: it may have been).
 * `FakePushSender` never sends anything: it appends to a file on a laptop and
@@ -120,6 +120,7 @@ class PushSender(Protocol):
         params: dict[str, Any],
         language: str,
         idempotency_key: str,
+        reply_markup: dict[str, Any] | None = None,
     ) -> PushResult | None: ...
 
 
@@ -139,19 +140,26 @@ class FakePushSender:
         params: dict[str, Any],
         language: str,
         idempotency_key: str,
+        reply_markup: dict[str, Any] | None = None,
     ) -> PushResult:
         self._outbox.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(
-            {
-                "telegram_id": telegram_id,
-                "template": template,
-                "params": params,
-                "language": language,
-                "idempotency_key": idempotency_key,
-                "sent_at": datetime.now(UTC).isoformat(),
-            },
-            ensure_ascii=False,
-        )
+        record: dict[str, Any] = {
+            "telegram_id": telegram_id,
+            "template": template,
+            "params": params,
+            "language": language,
+            "idempotency_key": idempotency_key,
+            "sent_at": datetime.now(UTC).isoformat(),
+        }
+        if reply_markup is not None:
+            record["reply_markup"] = reply_markup
+        # The words a real bot would send (D-102), so a test can read them;
+        # None where the real adapter would refuse the text.
+        try:
+            record["text"] = texts.render_telegram(template, params, language)
+        except texts.UnsafeText:
+            record["text"] = None
+        line = json.dumps(record, ensure_ascii=False)
         with self._outbox.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
         return PushResult(provider_message_id=f"fake-{idempotency_key}")
@@ -222,15 +230,22 @@ class BotApiPushSender:
         params: dict[str, Any],
         language: str,
         idempotency_key: str,
+        reply_markup: dict[str, Any] | None = None,
     ) -> PushResult:
         try:
-            text = texts.render(template, params, language)
+            text = texts.render_telegram(template, params, language)
         except texts.UnsafeText as exc:
             raise self._fail(PushErrorCode.UNSAFE_TEXT, idempotency_key) from exc
-        body = json.dumps(
-            {"chat_id": telegram_id, "text": text, "disable_web_page_preview": True},
-            ensure_ascii=False,
-        ).encode("utf-8")
+        message: dict[str, Any] = {
+            "chat_id": telegram_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+        if reply_markup is not None:
+            # Buttons (D-102): Accept and Decline on a new order, a link to
+            # the order page. Their data names an order id, never more.
+            message["reply_markup"] = reply_markup
+        body = json.dumps(message, ensure_ascii=False).encode("utf-8")
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json; charset=utf-8",
