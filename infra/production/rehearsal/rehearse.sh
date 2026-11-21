@@ -29,6 +29,12 @@
 #   backups        the backup service makes a verified, signed set; a real
 #                  server refuses a same-server destination; the recovery
 #                  drill restores database and files and refuses tampering
+#   alerts and    (D-105) the secrets copy made by deploy.sh holds no secret in
+#   secrets copy   plain form and opens with the recovery key from the bucket;
+#                  the test alert says nobody was told while alerts are off;
+#                  a paused container is found by the watch, which tries to
+#                  alert; the recovery PostgreSQL's socket folder is private
+#                  and a folder that is not its own is left alone
 #   containers     (D-103) every outside image by digest; memory, CPU and
 #                  process limits on every service; the user ids the images set
 #   certificate    (D-103) a new certificate installed and served without a
@@ -481,6 +487,87 @@ else
 fi
 [[ -z "$(psql_markx "select datname from pg_database where datname like 'markx_drill%'")" ]] \
   && pass "the drill removed its own database" || fail "a drill database was left behind"
+
+# -- 6b. alerts that do not need the server, and the secrets copy (D-105) ----------------
+
+echo "== alerts without the application, the secrets copy (D-105)"
+# BK-5: deploy.sh pipes the settings and the certificate key into the backup
+# image, which encrypts them to the recovery key's public half and puts the
+# copy in the bucket too.
+if "$prod/deploy.sh" escrow-secrets > "$work/escrow.txt" 2>&1; then
+  pass "deploy.sh escrow-secrets makes a secrets copy and puts it in the backup bucket"
+else
+  fail "deploy.sh escrow-secrets"; cat "$work/escrow.txt"
+fi
+escrow_file="$(find "$backups/escrow" -name 'markx-secrets-*.json' 2>/dev/null | head -1)"
+[[ -n "$escrow_file" && "$(stat -c %u "$escrow_file")" == 999 && "$(stat -c %a "$escrow_file")" == 600 ]] \
+  && pass "the secrets copy is owner 999, mode 600" || fail "secrets copy file: $escrow_file"
+check "the secrets copy holds none of this run's secrets in plain form" leaks_none "$escrow_file"
+check "deploy.sh escrow-secrets printed none of this run's secrets" leaks_none "$work/escrow.txt"
+if compose run --rm --no-deps -T \
+    -v "$work/recovery.key:/run/recovery/recovery.key:ro" -v "$work/signer-public.key:/run/recovery/signer-public.key:ro" \
+    backup python -m markx.backup open-secrets --from-destination \
+    --recovery-key /run/recovery/recovery.key --signer /run/recovery/signer-public.key --check \
+    > "$work/escrow-open.txt" 2>&1 \
+   && grep -q "signature and contents verified" "$work/escrow-open.txt" \
+   && grep -q "  api.env " "$work/escrow-open.txt" && grep -q "  postgres.env " "$work/escrow-open.txt" \
+   && grep -q "  tls/privkey.pem " "$work/escrow-open.txt"; then
+  pass "the copy in the bucket opens with the recovery key: api.env, postgres.env, the certificate key"
+else
+  fail "opening the secrets copy"; cat "$work/escrow-open.txt"
+fi
+check "opening the copy printed none of this run's secrets" leaks_none "$work/escrow-open.txt"
+# BK-4: alerts are off until the founder's group exists (F-18): the test
+# alert must say that nobody was told, and fail.
+if "$prod/deploy.sh" alert-test > "$work/alert-test.txt" 2>&1; then
+  fail "alert-test passed although no alert group is configured"
+else
+  grep -q "NOT DELIVERED TO ANY PERSON" "$work/alert-test.txt" \
+    && grep -q "outside heartbeat: OFF" "$work/alert-test.txt" \
+    && pass "the test alert says nobody was told while alerts and the heartbeat are off" \
+    || { fail "alert-test output"; cat "$work/alert-test.txt"; }
+fi
+# BK-4: the container watch on real containers. A paused container is a
+# problem; seen for longer than the alert time (aged in the watch's state),
+# the watch tries to alert through the worker's image; then all clear.
+export MARKX_WATCH_STATE_DIR="$work/watch"
+if "$prod/deploy.sh" watch > "$work/watch.txt" 2>&1 && grep -q "every container is running and healthy" "$work/watch.txt"; then
+  pass "the container watch finds every container running and healthy"
+else
+  fail "container watch"; cat "$work/watch.txt"
+fi
+docker pause "$(compose ps -q backup)" >/dev/null
+"$prod/deploy.sh" watch > "$work/watch.txt" 2>&1 || true
+sed -i "s/^backup [0-9]* /backup $(( $(date +%s) - 3600 )) /" "$work/watch/containers"
+"$prod/deploy.sh" watch > "$work/watch2.txt" 2>&1 && watch_status=0 || watch_status=$?
+docker unpause "$(compose ps -q backup)" >/dev/null
+if [[ $watch_status -ne 0 ]] && grep -q "PROBLEM  backup: paused" "$work/watch2.txt" \
+   && grep -q "NOT DELIVERED TO ANY PERSON" "$work/watch2.txt"; then
+  pass "a paused container is found and the watch tries to alert the staff group through the bot"
+else
+  fail "the watch and a paused container"; cat "$work/watch.txt" "$work/watch2.txt"
+fi
+"$prod/deploy.sh" watch > "$work/watch3.txt" 2>&1 \
+  && pass "unpaused, the watch is clear again" || { fail "watch after unpause"; cat "$work/watch3.txt"; }
+unset MARKX_WATCH_STATE_DIR
+# RN-2, RN-3: the recovery machine's PostgreSQL, for real.
+recovery_sock="$work/rsock"
+if MARKX_RECOVERY_SOCKET_DIR="$recovery_sock" MARKX_RECOVERY_CONTAINER=markx-rehearsal-recovery \
+     "$repo/infra/backup/recovery-host.sh" start > "$work/recovery.env" 2> "$work/recovery.txt" \
+   && [[ "$(stat -c %a "$recovery_sock")" == 700 ]] \
+   && (source "$work/recovery.env" && pg_isready -q 2>/dev/null || [[ -S "$PGHOST/.s.PGSQL.5432" ]]); then
+  pass "the recovery PostgreSQL starts with no network and a private (700) socket folder"
+else
+  fail "recovery PostgreSQL"; cat "$work/recovery.txt"
+fi
+MARKX_RECOVERY_SOCKET_DIR="$recovery_sock" MARKX_RECOVERY_CONTAINER=markx-rehearsal-recovery \
+  "$repo/infra/backup/recovery-host.sh" stop 2>/dev/null
+[[ ! -e "$recovery_sock" ]] && ! docker container inspect markx-rehearsal-recovery >/dev/null 2>&1 \
+  && pass "and stop removes its container and its socket folder" || fail "recovery stop"
+mkdir -p "$work/not-ours"; echo keep > "$work/not-ours/precious.txt"
+refuse "the recovery script refuses a socket folder that is not its own" \
+  env MARKX_RECOVERY_SOCKET_DIR="$work/not-ours" "$repo/infra/backup/recovery-host.sh" stop
+[[ -f "$work/not-ours/precious.txt" ]] && pass "and leaves that folder's files alone" || fail "a foreign folder was emptied"
 
 # -- 7. the certificate (D-103) ------------------------------------------------------
 
