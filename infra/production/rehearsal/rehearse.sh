@@ -131,6 +131,9 @@ mkdir -p "$config" "$tls" "$acme/.well-known/acme-challenge" "$backups"
 superuser_pw="rehearsal-$(random)"; migrator_pw="rehearsal-$(random)"
 app_pw="rehearsal-$(random)"; readonly_pw="rehearsal-$(random)"
 secret_key="rehearsal-$(random)$(random)"
+# D-105: a real server has its own encryption key (the secrets copy refuses
+# an api.env without one); a random Fernet key for this run.
+encryption_key="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_')"
 
 cat > "$MARKX_COMPOSE_ENV" <<EOF
 MARKX_ENV=local
@@ -153,6 +156,7 @@ cat > "$config/api.env" <<EOF
 MARKX_DATABASE_URL=postgresql+psycopg://markx_app:$app_pw@postgres:5432/markx
 MARKX_MIGRATION_DATABASE_URL=postgresql+psycopg://markx_migrator@postgres:5432/markx
 MARKX_SECRET_KEY=$secret_key
+MARKX_ENCRYPTION_KEY=$encryption_key
 MARKX_PUBLIC_ORIGIN=https://$host
 MARKX_COOKIE_SECURE=true
 MARKX_LOG_LEVEL=INFO
@@ -215,7 +219,7 @@ chown 101:101 "$tls/privkey.pem"; chmod 400 "$tls/privkey.pem"; chmod 644 "$tls/
 echo "rehearsal-token-content" > "$acme/.well-known/acme-challenge/rehearsal-token"
 chmod -R a+rX "$acme"
 
-secrets_of_this_run=("$superuser_pw" "$migrator_pw" "$app_pw" "$readonly_pw" "$secret_key")
+secrets_of_this_run=("$superuser_pw" "$migrator_pw" "$app_pw" "$readonly_pw" "$secret_key" "$encryption_key")
 leaks_none() { # file: none of this run's secrets appears in it
   local s; for s in "${secrets_of_this_run[@]}"; do ! grep -qF -- "$s" "$1" || return 1; done
 }
@@ -502,7 +506,9 @@ fi
 escrow_file="$(find "$backups/escrow" -name 'markx-secrets-*.json' 2>/dev/null | head -1)"
 [[ -n "$escrow_file" && "$(stat -c %u "$escrow_file")" == 999 && "$(stat -c %a "$escrow_file")" == 600 ]] \
   && pass "the secrets copy is owner 999, mode 600" || fail "secrets copy file: $escrow_file"
-check "the secrets copy holds none of this run's secrets in plain form" leaks_none "$escrow_file"
+[[ -n "$escrow_file" ]] && leaks_none "$escrow_file" \
+  && pass "the secrets copy holds none of this run's secrets in plain form" \
+  || fail "the secrets copy is missing or holds a secret in plain form"
 check "deploy.sh escrow-secrets printed none of this run's secrets" leaks_none "$work/escrow.txt"
 if compose run --rm --no-deps -T \
     -v "$work/recovery.key:/run/recovery/recovery.key:ro" -v "$work/signer-public.key:/run/recovery/signer-public.key:ro" \
@@ -529,19 +535,24 @@ else
 fi
 # BK-4: the container watch on real containers. A paused container is a
 # problem; seen for longer than the alert time (aged in the watch's state),
-# the watch tries to alert through the worker's image; then all clear.
+# the watch tries to alert through the worker's image; then all clear. The
+# worker is paused for a few seconds only (its health check, every 30 s with
+# 3 tries, stays healthy), and is waited for before the all-clear.
 export MARKX_WATCH_STATE_DIR="$work/watch"
 if "$prod/deploy.sh" watch > "$work/watch.txt" 2>&1 && grep -q "every container is running and healthy" "$work/watch.txt"; then
   pass "the container watch finds every container running and healthy"
 else
   fail "container watch"; cat "$work/watch.txt"
 fi
-docker pause "$(compose ps -q backup)" >/dev/null
+docker pause "$(compose ps -q worker)" >/dev/null
 "$prod/deploy.sh" watch > "$work/watch.txt" 2>&1 || true
-sed -i "s/^backup [0-9]* /backup $(( $(date +%s) - 3600 )) /" "$work/watch/containers"
+sed -i "s/^worker [0-9]* /worker $(( $(date +%s) - 3600 )) /" "$work/watch/containers"
 "$prod/deploy.sh" watch > "$work/watch2.txt" 2>&1 && watch_status=0 || watch_status=$?
-docker unpause "$(compose ps -q backup)" >/dev/null
-if [[ $watch_status -ne 0 ]] && grep -q "PROBLEM  backup: paused" "$work/watch2.txt" \
+docker unpause "$(compose ps -q worker)" >/dev/null
+for _ in $(seq 1 40); do
+  [[ "$(docker inspect "$(compose ps -q worker)" --format '{{.State.Health.Status}}')" == healthy ]] && break; sleep 3
+done
+if [[ $watch_status -ne 0 ]] && grep -q "PROBLEM  worker: paused" "$work/watch2.txt" \
    && grep -q "NOT DELIVERED TO ANY PERSON" "$work/watch2.txt"; then
   pass "a paused container is found and the watch tries to alert the staff group through the bot"
 else
