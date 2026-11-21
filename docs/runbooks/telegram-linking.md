@@ -1,4 +1,4 @@
-# Connecting people's Telegram accounts (D-093)
+# Connecting people's Telegram accounts (D-093) and signing in with Telegram (D-101)
 
 **Status: built and tested locally and in CI against stand-ins only. No bot
 exists, no webhook is registered, nothing has ever been sent to or received
@@ -17,8 +17,10 @@ MarkX never believes a Telegram username, number or id typed into the
 browser: the person proves they control the Telegram account by opening a
 one-time link inside Telegram.
 
-Telegram is only a message channel. It never signs anyone in through this
-flow, and disconnecting it never changes how the person signs in.
+This flow, connecting Telegram from the account page, signs nobody in.
+Since D-101 (decision SI-1) people *sign in* with the same bot through a
+separate flow (below, "Signing in with Telegram"); disconnecting Telegram
+here means the next Telegram sign-in connects it again.
 
 ## The protocol
 
@@ -128,13 +130,41 @@ secret, and names the missing setting without printing any value.
    page turns "Connected" and the bot answers. Then place a test order to a
    store the founder owns and confirm the alert arrives and its delivery
    record says `accepted`.
-8. Record the result in `docs/DEVELOPMENT_STATUS.md` with the date.
+8. **Signing in with Telegram (D-101) comes on with the same switch.**
+   Before switching on, re-read the Bot API documentation for the
+   `contact` message (its `user_id` must be the sender's own id for a
+   number shared with the `request_contact` button) and for a webhook reply
+   carrying `reply_markup` (the keyboard with the share button, then
+   `remove_keyboard`); both were written without reaching the
+   documentation. Then sign the founder in on a phone: "Sign in with
+   Telegram", Open Telegram, Start, "Share my phone number", back to the
+   page, which signs in by itself; the founder's MarkX number must be the
+   one Telegram holds. Then the staff page: Telegram, then the password and
+   authenticator code.
+9. Record the result in `docs/DEVELOPMENT_STATUS.md` with the date.
 
 To switch it off again: set `MARKX_TELEGRAM_LINKING_ENABLED=false` and
 restart (the webhook answers 404; Telegram will report errors until
 `deleteWebhook` is called). Existing connections stay and can still be
 disconnected; to stop all Telegram messages, set the push provider to
 `none`.
+
+## Signing in with Telegram (D-101, decision SI-1)
+
+Everyone signs in on the website with this bot. The browser asks
+`POST /api/v1/auth/telegram/sign-in` and gets a one-time link
+`https://t.me/<bot>?start=si-<token>` plus a private secret in an HttpOnly
+cookie (`markx_tg_sign_in`, path `/api/v1/auth/telegram/sign-in`). The bot,
+on `/start si-<token>`, answers with a keyboard of one button that asks
+Telegram for the person's own number (`request_contact`). The contact that
+comes back is accepted only if its `user_id` is the sender's id and it was
+not forwarded, and only for an Ethiopian mobile number. The browser asks
+`POST /api/v1/auth/telegram/sign-in/check` until it is signed in (once).
+Which account a number and a Telegram account reach, and what happens when
+either changed, is the table in D-101 (PROVISIONAL P-101-6). Staff then add
+their password and code at `POST /api/v1/auth/staff/step-up`. Off whenever
+linking is off: `POST /auth/telegram/sign-in` answers 503
+`telegram_sign_in_unavailable` and the page offers no Telegram button.
 
 ## How the webhook is verified
 

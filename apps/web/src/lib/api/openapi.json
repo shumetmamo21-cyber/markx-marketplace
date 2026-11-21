@@ -16010,7 +16010,7 @@
     },
     "/api/v1/me/telegram": {
       "delete": {
-        "description": "Disconnect Telegram and cancel any link not used yet (D-093). Always\nallowed; signing in to MarkX does not depend on Telegram.",
+        "description": "Disconnect Telegram and cancel any link not used yet (D-093). Always\nallowed; the next sign-in with Telegram connects it again (D-101).",
         "operationId": "disconnect_telegram_api_v1_me_telegram_delete",
         "responses": {
           "200": {

@@ -367,7 +367,7 @@ def disconnect_telegram(
     request: Request, principal: CurrentPrincipal, db: Db
 ) -> TelegramConnectionOut:
     """Disconnect Telegram and cancel any link not used yet (D-093). Always
-    allowed; signing in to MarkX does not depend on Telegram."""
+    allowed; the next sign-in with Telegram connects it again (D-101)."""
     return _connection_out(telegram_link.disconnect(db, principal.user, principal.actor(request)))
 
 

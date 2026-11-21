@@ -2142,7 +2142,7 @@ export interface paths {
         /**
          * Disconnect Telegram
          * @description Disconnect Telegram and cancel any link not used yet (D-093). Always
-         *     allowed; signing in to MarkX does not depend on Telegram.
+         *     allowed; the next sign-in with Telegram connects it again (D-101).
          */
         delete: operations["disconnect_telegram_api_v1_me_telegram_delete"];
         options?: never;

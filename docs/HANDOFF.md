@@ -10,8 +10,10 @@ Part A.000000000 the same day by the backup trust hardening session, and
 Part A.0000000000 on 20 November 2026 by the checks and secret-scan
 session (D-097), Part A.00000000000 the same day by the staff conflict
 and phone digits session (D-098), Part A.000000000000 the same day by
-the order life-cycle hardening session (D-099), and Part A.0000000000000
-the same day by the frontend resilience session (D-100).
+the order life-cycle hardening session (D-099), Part A.0000000000000
+the same day by the frontend resilience session (D-100), and Part
+A.00000000000000 on 21 November 2026 by the Telegram sign-in session
+(D-101).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -20,6 +22,66 @@ the same day by the frontend resilience session (D-100).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.00000000000000 — Sign-in with Telegram, SMS off, M2, M3, M4 (21 November 2026, D-101)
+
+On branch `claude/telegram-signin-audit-fixes-q318w6`, from `main` at
+`b79caab` (pull request #8, D-100, merged), with the complete history. One
+pull request into `main`, **not merged**: this is security work and an
+independent review follows; never merge without the founder's written
+approval. **Nothing deployed; no bot, token, SMS provider or account; no
+money spent.** In plain words:
+
+- **Everyone signs in with Telegram (decision SI-1).** On the sign-in page
+  a buyer or seller taps "Sign in with Telegram", then "Open Telegram". The
+  Telegram app opens; they press Start, then the bot's "📱 Share my phone
+  number" button, and go back to the page, which signs them in by itself.
+  They type nothing; MarkX pays nothing. **Staff** do the same on the staff
+  page, then give their password and authenticator code as before.
+- **The phone number is confirmed by Telegram.** It must be an Ethiopian
+  mobile number; one number is still one account. A new number on the same
+  Telegram account becomes the account's number. A number already used
+  with another Telegram account is refused and the person is told to
+  contact support (numbers are recycled). These rules are PROVISIONAL.
+- **SMS is switched off** by one setting, `MARKX_SMS_PROVIDER=off`. A real
+  server can now start without an SMS provider and still refuses the fake
+  one. The SMS code is kept for later. **While the bot does not exist,
+  nobody can sign in on a real server**: the page says so.
+- **The audit's three sign-in findings are fixed:** Telegram start-up data
+  works once and for five minutes (M4); an outsider can no longer lock a
+  staff member out or tell staff numbers from others (M3); no one number,
+  address or network can use up the shared SMS budget (M2).
+- **Saved tests** prove that two orders of one buyer at the same moment
+  cannot pass the buying limits and that expired orders never count.
+- **Proved in a real browser** (`e2e/telegram-sign-in.mjs`, in the
+  journeys on GitHub): with SMS off, a new person signs in with Telegram
+  (the journey plays Telegram) and places an order; a foreign number is
+  refused in English and Amharic; the staff page asks for Telegram first.
+- **Eight PROVISIONAL values and rules** (P-101-1 to P-101-8) and two new
+  questions, **F-24** (who may move a number to another Telegram account;
+  no staff tool exists yet) and **F-25** (whether to add a matching code),
+  are in D-101.
+
+**For the next engineer:**
+
+- Telegram sign-in lives in `markx/accounts/telegram_sign_in.py`; the
+  webhook in `telegram_link.py` hands it `/start si-<token>` and shared
+  contacts. It is on exactly when Telegram linking is on (the same bot and
+  secret). Lock order: users' rows (ascending id), then the Telegram
+  account's advisory lock, then the number's.
+- Tests play Telegram with `tests/telegram_play.py`; the `sms_off` fixture
+  (in `tests/conftest.py`) switches SMS off for a test.
+- The staff lock on the phone-and-password route lives in the rate-limit
+  counters (`staff-login:fail:<staff id>:<address>`); the Telegram route's
+  lock is still `staff_members.locked_until`.
+- Before the bot goes live, re-read the Bot API documentation for the
+  `contact` message and `reply_markup` in a webhook reply
+  (`docs/runbooks/telegram-linking.md`, step 8); this session could not
+  reach it.
+- The CI journeys recreate the API with SMS `off` for the new step only;
+  every other step keeps the fake SMS sender.
 
 ---
 

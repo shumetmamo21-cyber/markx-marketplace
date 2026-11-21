@@ -1,13 +1,43 @@
 # Development status
 
-**Last updated:** 20 November 2026, by the **frontend resilience session**
-(D-100), on branch `claude/frontend-resilience-errors-g4z33c`, from `main`
-at `fae2514` with the complete history. See "Frontend resilience" just
-below. Before it, the order life-cycle hardening session (D-099, pull
-request #7) was merged into `main` as `fae2514`; the staff conflict and
-phone digits session (D-098, pull request #6) as `c70b338`; the checks and
-secret-scan session (D-097, pull request #5) as `d01fef7`, and the backup
-trust hardening session (D-096, pull request #4) as `773bbb6`.
+**Last updated:** 21 November 2026, by the **Telegram sign-in session**
+(D-101, decision SI-1), on branch `claude/telegram-signin-audit-fixes-q318w6`,
+from `main` at `b79caab` with the complete history. See "Sign-in with
+Telegram" just below. Before it, the frontend resilience session (D-100,
+pull request #8) was merged into `main` as `b79caab`; the order life-cycle
+hardening session (D-099, pull request #7) as `fae2514`; the staff
+conflict and phone digits session (D-098, pull request #6) as `c70b338`;
+the checks and secret-scan session (D-097, pull request #5) as `d01fef7`,
+and the backup trust hardening session (D-096, pull request #4) as
+`773bbb6`.
+
+## Sign-in with Telegram, SMS off, M2, M3, M4 (21 November 2026, D-101)
+
+Product code, one migration (`0020`), tests, one browser journey, one
+workflow step, the production example settings and documents. **Nothing
+deployed; no bot, token, SMS provider or account; nothing sent to or
+received from Telegram; no money.** Details, the reasons and the eight
+PROVISIONAL values and rules (P-101-1 to P-101-8): `docs/DECISIONS.md`,
+D-101; new founder questions F-24 and F-25 (OPEN, recommendations given).
+
+| Item | State | Proof (tests) |
+| --- | --- | --- |
+| **1** Everyone signs in on the website with Telegram (decision SI-1); staff keep their second step | **Built, OFF until the bot exists.** One button opens the Telegram app; the person presses Start and "Share my phone number"; the page signs in by itself. Staff then give their password and authenticator code. A link works once, for 10 minutes, and only for the browser that started it | `tests/api/test_telegram_sign_in.py` (32, all fail on `main`: no such feature); `src/lib/telegram-sign-in.test.ts` (3); journey `e2e/telegram-sign-in.mjs` |
+| **2** A phone number confirmed by Telegram; Ethiopian mobile only; one number, one account; rules for a changed Telegram account or number | **Built.** Accounts are made only once Telegram confirms the number. A new number on the same Telegram account becomes the account's number; a number already tied to another Telegram account is refused (support decides, F-24) (PROVISIONAL P-101-6) | the same file: own number only, not forwarded, foreign numbers refused, the change rules, two at once |
+| **3** SMS switched off by a setting; a real server starts with it off and still refuses the fake | **Done.** `MARKX_SMS_PROVIDER=off`: no code, no notification SMS; the code is kept. The production example says `off` | `tests/api/test_sign_in_abuse.py` (SMS section) |
+| **4** M4 Telegram start-up data reusable for an hour | **Fixed.** Five minutes (P-101-3), and a sign-in uses it up | the same file (M4 section) |
+| **5** M3 staff lock-out by an outsider; staff numbers told apart | **Fixed.** Locks per address (P-101-4); a lock answers like a wrong password; many failures alert the founder (P-101-5); with SMS off, no way around Telegram (P-101-8) | the same file (M3 section); two existing assertions changed from 429 to 401 (D-101 says why) |
+| **6** M2 one person can spend the shared SMS budget | **Fixed** for when SMS is on again: daily shares per number, address and network (P-101-7); the budget stays the final limit; the 80% warning stays | the same file (M2 section): 28 of its 37 tests fail or error on `main`; 9 guards pass on both |
+| **7** Pull request #7 review: one buyer's simultaneous orders and expired orders | **Saved.** They pass on `main` (the protection existed); breaking the code on purpose makes them fail | `tests/db/test_buyer_limit_contention.py` (23) |
+
+**For later:** a real bot and a real phone (nothing was tried with
+either); the Bot API's `contact` and `reply_markup` shapes re-read at
+activation (UNKNOWN until then); the matching-code step (F-25); a staff
+tool to move a number (F-24); the Mini App sign-in with the contact step;
+native review of the new Amharic (website and bot). Someone without
+Telegram cannot sign in while SMS is off.
+
+**Test results:** see "Tests executed", 21 November 2026 (D-101).
 
 ## Frontend resilience (20 November 2026, D-100)
 
@@ -258,9 +288,12 @@ point into
 - Backend and security (audit §8 and §9):
   - M1: fake reviews through self-orders;
   - M2: one global SMS budget of 500 a day can be used up, blocking all
-    sign-ins;
-  - M3: targeted lockout of staff and staff-number enumeration;
-  - M4: Telegram sign-in data can be replayed for an hour;
+    sign-ins (**fixed by D-101**: daily shares per number, address and
+    network);
+  - M3: targeted lockout of staff and staff-number enumeration (**fixed by
+    D-101**: locks per address, one answer);
+  - M4: Telegram sign-in data can be replayed for an hour (**fixed by
+    D-101**: five minutes, single use);
   - M5: fees can be avoided by marking an order failed or returned after
     cash was collected; payments are seller-attested only; no staff tool
     for commission rules;
@@ -523,8 +556,9 @@ settings their Amharic descriptions (D-078). **Files** (documents,
 pictures, problem photos) go through one storage interface that works with
 the local folders, MinIO, Amazon S3 or Cloudflare R2 by configuration
 (D-090), tested against MinIO; no S3 or R2 bucket exists yet (F-01). **Not
-built:** Telegram sign-in and the bot (they need the bot the founder
-creates); Telegram *linking* is built and switched off (D-093), deployment. Nothing is deployed anywhere.
+built:** the bot (the founder creates it); Telegram *linking* (D-093)
+and Telegram *sign-in* for everyone (D-101, decision SI-1) are built and
+switched off until it exists; SMS is switched off (D-101); deployment. Nothing is deployed anywhere.
 
 ## Sessions so far
 
@@ -633,6 +667,13 @@ All of it is in `apps/api`. Test command and result are at the end.
 
 ### Sign-in and permissions (blueprint D.2, C, H.2)
 
+- **Sign-in with Telegram (D-101, decision SI-1).** Everyone signs in on
+  the website through the bot's one-time link and shares their number with
+  Telegram's own button; staff then give their password and authenticator
+  code. OFF until the bot exists. SMS is switched off on real servers
+  (`MARKX_SMS_PROVIDER=off`); the phone-code sign-in below is kept as the
+  backup, with daily shares of the SMS budget (M2) and staff locks per
+  address (M3).
 - **Phone-code sign-in.** Six-digit code stored only as a keyed hash, five
   minute expiry, five attempts, then a 15-minute lock. Limits per number and
   per network address, a bot-check hook before any SMS, and a daily SMS budget
@@ -1145,8 +1186,9 @@ API types are generated from the API's OpenAPI description.
   catalogue setup and the products screens. `e2e/setup-and-account.mjs` (13
   steps) drives them all. The settings screen shows Amharic descriptions on
   the Amharic page (D-078).
-- **Known gaps:** Telegram sign-in and linking (`/auth/telegram`,
-  `/me/telegram`) wait for the bot. Variant
+- **Known gaps:** the Mini App (`/auth/telegram`, `/me/telegram`) waits for
+  the bot; website sign-in with Telegram is built (D-101) and waits for it
+  too. Variant
   labels ("Black · 128 GB") come from the API in the cart, the seller's
   offers and the shop's price list, built by the same code as the product
   page (`catalog.selectors.variant_labels`).
@@ -1363,8 +1405,9 @@ Be careful with these. They were written and never exercised.
 
 ## What does not exist
 
-- On the web: Telegram sign-in (the bot does not exist yet). Connecting
-  Telegram is built and switched off (D-093).
+- The Telegram bot itself (the founder creates it). Signing in with
+  Telegram (D-101) and connecting Telegram (D-093) are built and switched
+  off until it exists.
   Every other route a person uses has its screen (D-070 to D-078); the
   remaining unused routes are the development SMS inbox, the health checks
   and the file links the API hands out.
@@ -2638,8 +2681,9 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0017` | `20261118_1752_telegram_account_linking.py` | `telegram_link_tokens` (keyed hash of a one-time token, account, session, expiry, status and failure reason; one pending per account; CHECKs pairing status, end time and reason) and `telegram_updates` (handled update ids); `users.telegram_linked_at` (set exactly when `telegram_id` is, by a CHECK; existing links given their `updated_at`) and `users.telegram_unlinked_at` (D-093) |
 | `0015` | `20261118_1014_sms_delivery_records.py` | `sms_messages`: one delivery record per SMS, with its CHECKs (purpose and reference agree, a failure has its error code, a 32-byte keyed hash of the number, no text or code column) and three indexes (D-089). A new table only; nothing existing changed |
 | `0018` | `20261118_1916_backup_runs.py` | `backup_runs`: every backup, drill and verification: when it ran, its final status, the destination's identity (never a credential), whether it is off the server, whether the set was verified, sizes, object counts and a short error code; the worker's watch alerts from it. The application role may only read it (D-094). Added to this table on 19 November 2026 |
+| `0020` | `20261121_0900_telegram_sign_in.py` | `telegram_sign_ins`: each website sign-in with Telegram (keyed hashes of the link's token and of the browser's secret, the Telegram account that opened it, the account it reached, expiry, status and refusal reason; CHECKs tie each status to its fields) and `telegram_init_data_uses`: keyed hashes of Mini App start-up data already used to sign in (M4). Two new tables only (D-101) |
 
-The schema has 75 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`, `telegram_link_tokens`, `telegram_updates`, `backup_runs`; corrected on 19 November 2026 from 74, which left out `backup_runs`). P9 and P10 needed no new table and no migration at
+The schema has 77 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`, `telegram_link_tokens`, `telegram_updates`, `backup_runs`, and in `0020` `telegram_sign_ins` and `telegram_init_data_uses`; corrected on 19 November 2026 from 74, which left out `backup_runs`). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.
@@ -2729,8 +2773,8 @@ The earlier sessions' notes: two sessions may work in parallel, one owning
    routes: `cd apps/api && uv run python -m scripts.export_openapi
    ../web/src/lib/api/openapi.json`, then `cd ../web && npm run gen:api`
    (D-061). Session ten did this; it was current at its last commit.
-3. Every route a person uses has its screen (D-070 to D-078, D-093) except
-   Telegram sign-in, which waits for the bot (founder). To check
+3. Every route a person uses has its screen (D-070 to D-078, D-093,
+   D-101); the Mini App waits for the bot (founder). To check
    again, compare `apps/api/openapi.json` with the `/api/v1/...` paths in
    `apps/web/src` (the handoff gives the command). A new screen gets its line
    in the admin or seller `menu.ts` and `menu.test.ts`, its words in both
