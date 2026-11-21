@@ -523,7 +523,12 @@ website refuses. A repeated update is answered with the current state and
 changes nothing (`replay=True`). Answers are one Bot API method in the
 webhook's response. Alerts get their buttons in `notifications.delivery`
 (`telegram_bot.keyboards.for_notification`) and their words from
-`notifications.texts.render_telegram`.
+`notifications.texts.render_telegram`. A store's order messages, the
+inbox and an order's card name the products ordered (F-26, D-104), made by
+`telegram_bot.products` from the order lines' own copies, cleaned and
+shortened; `notifications.delivery` adds them at sending time, only for a
+recipient `recipient_may_receive` allowed, and never stores them or puts
+them in an SMS.
 
 ## Outside services
 

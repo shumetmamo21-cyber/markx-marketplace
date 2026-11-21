@@ -761,6 +761,27 @@ def test_long_and_many_product_names_are_shortened_sensibly() -> None:
     ).endswith(worst)
 
 
+def test_a_full_inbox_with_the_longest_names_fits_one_telegram_message() -> None:
+    """Ten orders (P-102-3), each with the longest product line this rule can
+    make, in either language, stay under Telegram's 4096 characters."""
+    from markx.telegram_bot.service import INBOX_LIMIT
+
+    worst = products.describe(["W" * 90 + str(n) for n in range(50)], "am")
+    for language in ("en", "am"):
+        line = texts.say(
+            "order_line", language, code="MX-ACDEFG",
+            state=texts.say("state_ready_collection", language) + ", "
+            + texts.say("minutes_left", language, minutes=99_999),
+            items=999,
+        ) + "\n" + texts.say("order_products", language, products=worst)  # fmt: skip
+        inbox = "\n".join(
+            [texts.say("inbox_title", language)]
+            + ["• " + line] * INBOX_LIMIT
+            + [texts.say("inbox_more", language, more=999_999)]
+        )
+        assert len(inbox) < 4096, (language, len(inbox))
+
+
 def test_a_telegram_text_refuses_product_names_that_are_not_one_short_line() -> None:
     seller = {"order_code": "MX-ACDEFG", "seller_order_id": "x"}
     for bad in ("", "Phone\n+251911223344", "x" * 201, 7, ["Phone"]):
