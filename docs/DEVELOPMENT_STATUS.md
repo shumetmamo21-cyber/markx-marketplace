@@ -2036,6 +2036,54 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Five Release 1 features** (D-106), on 22 November 2026, branch
+`claude/sharp-albattani-dp65ad` from `main` at `6378764` (complete
+history). PostgreSQL 17.12 and MinIO in containers, with
+`MARKX_TEST_MINIO_REQUIRED=1` and `MARKX_TEST_BACKUP_REQUIRED=1`. First,
+pull request #13 at `ad774aa`, reviewed before merging it:
+
+```text
+pull request #13 at ad774aa, the whole suite              ->  2126 passed, 0 failed, 0 skipped, in 26 min 11 s
+  ruff check / ruff format --check / mypy markx           ->  passed / 268 files already formatted / no issues in 158 files
+GitHub on ad774aa: CI #180 (8 of 8 jobs), Browser journeys #56 ->  passed
+merged (normal merge, pinned to ad774aa)                   ->  6378764; main's own runs: CI #181 passed, Browser journeys #57 passed
+```
+
+Then this branch:
+
+```text
+uv run pytest -q -p no:cacheprovider (this branch)        ->  2161 passed, 0 failed, 0 skipped, in 26 min 12 s
+  = 2126 + 32 new tests + 3 new cases of the seller isolation test (its 68 routes against main's 65:
+    GET /seller/{id}/customers, POST and DELETE /seller/{id}/store/logo)
+  tests/api/test_d106_release1_features.py                ->  16 passed
+  tests/unit/test_ethiopian_calendar.py                   ->  16 passed
+the new tests on 6378764 (a checkout with only the new test files)
+  tests/api/test_d106_release1_features.py                ->  16 of 16 fail (404 and 405 for the new routes, no logo_url,
+                                                              a logo counted as an unclassified backup file)
+  tests/unit/test_ethiopian_calendar.py                   ->  cannot load (markx.core.ethiopian is new); the old weekly
+                                                              message had "ከ2026-11-16 ጀምሮ" and accepted 2026-02-30
+uv run ruff check . / ruff format --check . / mypy markx   ->  passed / 272 files already formatted / no issues in 160 files
+alembic upgrade head / alembic check                      ->  at 0022 / no new upgrade operations (no migration)
+check_openapi_copy --exact openapi.json, and the web copy ->  both match the API exactly
+apps/web: npm run lint / typecheck / test / build         ->  passed / passed / 159 passed in 17 files (146 before; 13 new) / built
+  the new web tests on the old code                       ->  format.test.ts: 3 of its 4 new cases fail on the old format.ts
+                                                              (the fourth guards the unchanged English); ethiopian.test.ts
+                                                              and price-chart.test.ts: their modules are new
+journeys on this machine (demo data, the production build, Chromium 1243 with Playwright 1.63.0):
+  node e2e/seller-dashboard.mjs                           ->  passed: logo uploaded and shown on the public page; Customers
+                                                              fits 360 px in both languages; console errors: none
+  node e2e/buyer-journey.mjs                              ->  passed: the chart on the product page; the shop's customer list
+                                                              shows "Demo Buyer" after it accepts; "Order again" lands on
+                                                              the cart; console errors: none
+  node e2e/page-weight.mjs                                ->  every page within its budget
+  page weight, this branch against main, same machine, fresh demo data:
+    product (am)  207.5 KB -> 208.9 KB (+1.4 KB); product (en) 204.8 -> 206.1 KB; home 198.6 -> 198.8 KB;
+    search 190.4 -> 190.6 KB; sign-in 189.9 -> 190.6 KB (script 159.1 -> 159.8 KB: the calendar in the
+    date formatting the sign-in page's client code uses). This machine counts 24 to 32 requests a page
+    where GitHub counts 13 to 15 (main on GitHub, Browser journeys #57: product 181.4 KB), so its
+    totals run about 25 KB higher; the difference between the two builds is what this change costs.
+```
+
 **Backups finished** (D-105), on 21 November 2026, branch
 `claude/backup-audit-findings-0icpm4` from `main` at `9daaf57` (complete
 history). PostgreSQL 17.12 and MinIO in containers (the least-privilege
