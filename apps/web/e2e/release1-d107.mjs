@@ -1,7 +1,8 @@
 // D-107's five Release 1 features in a real browser, against a running API
 // (port 8000) and web app (port 3000) filled by scripts/seed_demo.py (DEMO
-// data). It cancels the order it places, so the journeys after it see the
-// same demo data as before.
+// data). It leaves the order it places accepted: it cancels nothing, since
+// cancelling starts the demo buyer's cooldown (D-099). Run it after the other
+// journeys that place orders, as the journeys workflow does.
 //
 //   node e2e/release1-d107.mjs [screenshot-folder]
 //
@@ -180,17 +181,6 @@ function bigPhoto() {
     console.log(`C-08 ${store} accepted and sees the buyer's gate photo`);
     await shop.screenshot({ path: join(SHOTS, 'shop-gate-photo.png'), fullPage: true });
   }
-  // Leave the demo data as it was: the buyer cancels what is still open.
-  const cancelled = await buyer.evaluate(async () => {
-    const csrf = decodeURIComponent(document.cookie.split('; ').find((c) => c.startsWith('markx_csrf=')).split('=')[1]);
-    let n = 0;
-    for (const o of await (await fetch('/api/v1/me/orders')).json()) for (const p of o.seller_orders) if (p.can_cancel) {
-      const r = await fetch(`/api/v1/me/orders/${o.id}/seller-orders/${p.id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MarkX-Client': 'web', 'X-CSRF-Token': csrf }, body: '{}' });
-      if (r.ok) n++;
-    }
-    return n;
-  });
-  console.log('     cancelled the order it placed:', cancelled);
   await browser.close();
   console.log('console errors:', errors.length ? errors : 'none');
   if (errors.length) process.exit(1);

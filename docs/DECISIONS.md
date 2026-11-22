@@ -5370,6 +5370,226 @@ files, the buyer and seller-dashboard journeys.
   seller-dashboard journey uploads a logo and sees it on the public page, and
   checks the Customers screen at 360 pixels in both languages.
 
+## D-107 Five Release 1 features: the total to the door and delivery speed in search (C-03), a gate photo on an address (C-08), lite mode (C-12), photos made smaller on the phone (S-06), share cards and a QR code (S-10)
+
+22 November 2026. Branch `claude/release-1-five-features-g0sl7o`, from `main`
+at `e1849be` (the merge of pull request #14) with the complete history; no
+other pull request was open. **Follows** the blueprint: D.8 and D.27 (C-03),
+D.10, G.2 and the `addresses` table (C-08), D.1 and I.1 (C-12), F.6 (S-06),
+D.4, B and E.2 (S-10). **One migration (0023).** **Nothing deployed; no
+account, server, bucket, bot or paid resource.** Business choices are safe
+defaults marked PROVISIONAL (below); every new word is in English and
+Amharic.
+
+### 1. C-03: the total to the door and delivery speed in search
+
+- `GET /api/v1/search` takes `zone` (a delivery zone's code),
+  `max_delivery_hours` (1 to 720) and `sort=total`. With a zone the reply's
+  new `delivered` list gives, for each result on the page that is delivered
+  there, the **cheapest price plus delivery fee to the door**
+  (`total_santim`) and the fastest promised time (`fastest_hours`);
+  `zone_code` says which zone. `sort=total` orders by that total (products
+  nobody delivers there come last; a paid placement never changes it, D.9);
+  `max_delivery_hours` keeps only products delivered there within that time,
+  and then the total is the cheapest way to have it in time. `sort=total` or
+  a speed without a zone is refused (`zone_required`): a total or a time is
+  never guessed for a buyer who has not said where.
+- **Computed on every read, never stored** (like the best offer, D.7), from
+  exactly the offers the product page lists: active, in stock, from a
+  trading shop at the publishing level, on an active version. The total on a
+  card is the product page's own total for that zone (tested). Collection at
+  the shop is not delivery to the door and counts for neither.
+- The product card schema is unchanged (an existing test checks it field by
+  field); the totals are a separate list on the search reply.
+- The search page has "Deliver to" (the areas) and "Delivery speed" (within
+  24, 48 or 72 hours) and the sort "Lowest total to my door"; each card then
+  says "ETB 11,350 to your door" and "Arrives within 24 hours", or "Not
+  delivered to your area". Without an area, the page asks for one.
+
+### 2. C-08: a photo of the buyer's gate on an address
+
+- `POST /api/v1/me/addresses/{id}/gate-photo` (a JPEG, PNG or WebP as
+  `file`) adds or replaces it; `DELETE` the same path removes it from the
+  address. `AddressOut.gate_photo_url` is a five-minute link for the buyer.
+- **Stored privately, like problem photos** (`markx/images/gate_photos.py`):
+  the upload is checked like every picture (`clean_upload`: the upload limit,
+  the bytes must be a picture), decoded and written again as WebP within
+  1,200 pixels and 300 KB, so nothing but its pixels survives (**no camera
+  metadata, no location**), into private storage under an unguessable key.
+  Migration 0023: `gate_photos` is append-only (a trigger refuses UPDATE and
+  DELETE; the application role has neither), and `addresses.gate_photo_id`
+  has a foreign key on (photo, owner), so the database refuses an address
+  holding another buyer's photo. A replaced or removed photo's file stays:
+  each order keeps the photo's id in its address snapshot, so an order
+  always shows the photo it was placed with.
+- **Only the people delivering that order see it.** Opened only through a
+  five-minute link signed for the viewer (and, for a shop, the order), and
+  the viewer must still be allowed when the file is fetched: the buyer who
+  took it; or an active member of the order's shop in a role that handles
+  orders **and** sees buyers' contacts (owner, manager, orders; C.3), while
+  the shop is delivering it to the door: from its confirmation until the
+  goods change hands (confirmed, paid, ready, out for delivery, delivery
+  failed), by the shop's rider or the partner courier, **never for
+  collection at the shop**. **Staff never see it** (they do not deliver; the
+  dispatch board shows no address), nor does another shop (the isolation
+  test attacks the new route automatically). Every view by a shop is audited
+  (`gate_photo.viewed`); setting and removing are audited too.
+  `SellerOrderOut.has_gate_photo` says when the shop's link
+  (`GET /seller/{id}/orders/{id}/gate-photo`) will answer.
+- The backup and the copy tool know gate photos are private files to keep
+  (`gate_photo`), as D-106 learnt with the logo.
+- The account page has the photo under each saved address (upload, see,
+  remove, made smaller on the phone first); the shop's order page shows "The
+  buyer's gate" with "Do not save or share it."
+
+### 3. C-12: lite mode
+
+- A remembered choice (`markx_lite` cookie) set by a plain link in the
+  footer, "Lite mode (smaller pictures)", which works without JavaScript: the
+  switch route sets it and goes back to the page it came from (the path of
+  the Referer, judged by `safeNext`, never another site). **Without a
+  choice, the phone's own data-saver setting decides** (`Save-Data: on`).
+- In lite mode: no photos on product cards; the product page shows one small
+  picture (the 320-pixel thumbnail, at most 30 KB) instead of the large one,
+  and its picture strips (more pictures, shops' photos) become plain links.
+  There was already no carousel anywhere (D.1).
+
+### 4. S-06: photos made smaller on the phone
+
+- Every photo upload (a shop's real photos and logo, problem evidence, the
+  gate photo, staff catalogue pictures) is drawn again on the phone before
+  it is sent (`src/lib/shrink-photo.ts`): upright, within 1,600 pixels (the
+  server's largest size, so nothing it keeps is lost), JPEG at quality 0.82,
+  a PNG or WebP as WebP (transparency kept). Drawing it again also leaves the
+  location and camera data behind. A photo already within the size and under
+  400 KB, anything that is not a picture, and anything the browser cannot
+  draw are sent unchanged; the smaller file is sent only if it is smaller.
+- **The server's own checks are unchanged**: its size limit, that the bytes
+  are a picture, the metadata stripping and its own sizes (D-062).
+- Sellers' identity and licence documents are **not** shrunk: staff must be
+  able to read them.
+
+### 5. S-10: share cards and a QR code for a shop and its products
+
+- The shop page and the product page each have a "Share" link to a share
+  page (`/[lang]/s/{slug}/share`, `/[lang]/p/{slug}/share`); the shop's own
+  store settings page shows the same panel once its public page exists. The
+  panel: the link, Telegram's own share page (`t.me/share/url`), the **QR
+  code** (an SVG picture from `/[lang]/s|p/{slug}/qr`, or `?download=1` to
+  save and print), and **two share cards** saved as PNG: 1200 × 630 for a
+  Telegram post and 1080 × 1920 for TikTok or a story. A card shows the
+  wordmark, the name, the shop's level and "Verified on MarkX" from Level 2
+  (or the product's lowest price and number of shops), the QR code, "Scan to
+  open on MarkX" and the address, in the page's language.
+- The QR code is MarkX's own small encoder (`src/lib/qr.ts`: byte mode,
+  error correction level M, versions 1 to 10, the lowest-penalty mask),
+  written here because no QR package is installed and adding one was not
+  allowed in this session. Its parts are checked against the standard's own
+  published values (the format strings of level M, the version strings of
+  versions 7 to 10, the Reed-Solomon worked example), and every code is read
+  back by a separate reader in the test (mask, zigzag, error correction by
+  evaluating each block, the bytes), versions 3 to 10. **Not checked with a
+  phone camera** (no camera here): a scan with a real phone is the first
+  thing to do on the test device.
+- The cards are drawn on the phone, on the share page only, with Noto Sans
+  Ethiopic Bold (`apps/web/assets/fonts`, the SIL Open Font License, from
+  the npm package `@fontsource/noto-sans-ethiopic` 5.3.0, files unchanged,
+  checksums in its README), so Amharic is drawn the same on every phone; the
+  font is fetched only when a card is made.
+- The QR code and the link use the site's public address
+  (`MARKX_PUBLIC_ORIGIN`, which the production web server already refuses
+  to start without), never the request's Host header. The journeys workflow
+  now sets the same value the Compose API has.
+
+### Page weight (blueprint D.26): what was tried and why the design changed
+
+Main's product page was already 208.9 KB against its 210 KB ceiling. The
+first version (cards drawn on the server by `next/og`, the share panel and a
+link preview on the product page) measured 215.7 KB. Found by bisecting
+builds: `next/og` loads its renderer as an asynchronous module, which makes
+Turbopack add 0.45 KB of start-up script to **every** page, wherever it is
+used; and the link-preview tags were repeated in every prefetched product
+and shop page. So the cards are drawn on the phone, the share panel is on
+its own page, and there is no link-preview picture (Telegram shows the
+page's title). **The ceiling was not changed.** Result, same machine, same
+demo data: product 209.2 KB (main 208.9), its script identical to main's
+(156.9 KB).
+
+### PROVISIONAL values, for the founder to confirm
+
+- **P-107-1** Search: the speed choices are within 24, 48 and 72 hours; only
+  delivery to the door (the shop's rider, the partner courier) counts for the
+  total and the speed, never collection; with a speed chosen, the total is
+  the cheapest way to have it in time; without an area the page asks for one.
+- **P-107-2** A gate photo is kept within 1,200 pixels and 300 KB as WebP;
+  one per address; a replaced one's file is kept for the orders placed with
+  it.
+- **P-107-3** The shop sees the gate photo from its confirmation until the
+  goods change hands (confirmed, paid, ready, out for delivery, delivery
+  failed), only by rider or courier, only for the owner, manager and orders
+  roles; staff never.
+- **P-107-4** A buyer may send 20 gate photos an hour.
+- **P-107-5** Photos on the phone: within 1,600 pixels, JPEG quality 0.82,
+  PNG and WebP as WebP; left alone within 1,600 pixels and 400 KB;
+  documents never.
+- **P-107-6** Lite mode turns on by itself with the phone's data saver and is
+  otherwise off; the choice is remembered a year.
+- **P-107-7** The share cards: 1200 × 630 and 1080 × 1920, with the name,
+  the level ("verified" from Level 2) or the lowest price and number of
+  shops, the QR code and the address; no link-preview picture.
+
+### Not built
+
+- The shareable **price list** of S-10 (blueprint D.4) was not asked for in
+  this task and is not built.
+- No link-preview picture when a link is pasted into Telegram (page weight,
+  above); the cards are saved and posted instead.
+- The gate photo is added from the account page (saved addresses), not in
+  the checkout's new-address form.
+- The QR code has not been scanned with a real phone (above).
+- The Amharic words of all five features wait for the native editor (I.3).
+
+### Changed
+
+API: `markx/search/` (`selectors.py`, `router.py`, `schemas.py`),
+`markx/images/gate_photos.py` (new), `markx/images/` (`router.py`,
+`schemas.py`), `markx/accounts/` (`models.py`, `router.py`, `schemas.py`),
+`markx/orders/` (`service.py`, `selectors.py`, `schemas.py`),
+`markx/backup/references.py`, `scripts/copy_files_to_object_storage.py`,
+migration `0023`, both OpenAPI copies. Web: `src/lib/` (`lite.ts`,
+`lite-server.ts`, `shrink-photo.ts`, `qr.ts`, `qr-file.ts`, `share.ts`,
+`share-data.ts` new; `api/types.ts`, the generated schema),
+`src/components/` (`ShareCards.tsx`, `SharePanel.tsx` new; `ProductCard`,
+`PhotoUpload`, `AccountForms`, `SiteFooter`, `admin/StaffActions`), the
+search, home, product, shop, account, seller order and store settings
+pages, the lite switch, QR and share routes (new), both message files,
+`assets/fonts` (new), `e2e/release1-d107.mjs` (new) and its step in
+`.github/workflows/journeys.yml`.
+
+### Tests
+
+- **New, all failing on the old code**: `tests/api/test_d107_release1_features.py`
+  (16 tests). On `e1849be` the file cannot be imported (`GatePhoto` is new);
+  with that one import guarded in a throwaway copy, **16 of 16 fail** (for
+  example `sort` "should be 'relevance', 'price' or 'freshness'", and
+  `validation_failed` instead of `zone_required`). The web app's
+  `src/lib/lite.test.ts`, `shrink-photo.test.ts`, `qr.test.ts` and
+  `share.test.ts` test new modules, which do not exist on the old code.
+- **No existing test or check was changed, loosened or removed.** The page
+  weight ceilings are as they were. The journeys workflow gained one step
+  and one job-wide value (`MARKX_PUBLIC_ORIGIN`, the address the share links
+  need); every existing step is unchanged.
+- The new journey (`e2e/release1-d107.mjs`), run here against the demo data:
+  totals to the door lowest first (ETB 11,350, 11,850, 13,050, 18,050,
+  46,150); without an area the page asks for one; lite mode on and off,
+  remembered, and on by itself with Save-Data; both cards saved at exactly
+  1200 × 630 and 1080 × 1920; an 18.0 MB 3000 × 2000 picture sent as a
+  1,027 KB WebP (random noise, the worst case for compression); the buyer
+  sees their gate photo; the shop sees it only after accepting. It cancels
+  nothing: a first version did, and that started the demo buyer's
+  cancellation cooldown (D-099) for the journeys after it, so it now runs
+  after every journey that places an order and leaves its order accepted.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -5389,7 +5609,7 @@ own shop proposed the product) is OPEN with no provisional answer. SI-1
 21 November 2026: see D-101, which sets eight PROVISIONAL values and rules,
 P-101-1 to P-101-8, and raises F-24 and F-25 (OPEN; recommendations
 given). D-103 (server readiness) sets three PROVISIONAL values, P-103-1 to
-P-103-3, and leaves certificate renewal off until F-17 is decided. D-105 (backups) sets six PROVISIONAL values, P-105-1 to P-105-6, and D-106 (five Release 1 features) five, P-106-1 to P-106-5.** Treat this list as part of the launch
+P-103-3, and leaves certificate renewal off until F-17 is decided. D-105 (backups) sets six PROVISIONAL values, P-105-1 to P-105-6, D-106 (five Release 1 features) five, P-106-1 to P-106-5, and D-107 (five more Release 1 features) seven, P-107-1 to P-107-7.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a

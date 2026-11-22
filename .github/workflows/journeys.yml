@@ -149,12 +149,6 @@ jobs:
       - name: Setup, trust actions, account, proposals and closing
         working-directory: apps/web
         run: node e2e/setup-and-account.mjs "$RUNNER_TEMP/shots"
-      # D-107: search by the total to the door and delivery speed, lite mode,
-      # a shop's share page and cards, a gate photo made smaller on the phone
-      # and seen by the delivering shop. It cancels the order it places.
-      - name: Total to the door, lite mode, share cards, gate photo
-        working-directory: apps/web
-        run: node e2e/release1-d107.mjs "$RUNNER_TEMP/shots"
 
       # D-100: a purchase with the network cut halfway (offline, a proxy's
       # 502 page, an answer lost after the server took the order), then the
@@ -220,6 +214,16 @@ jobs:
       - name: SMS on and Telegram off again
         if: always()
         run: $COMPOSE up -d --wait api
+
+      # D-107: search by the total to the door and delivery speed, lite mode,
+      # a shop's share page and cards, a gate photo made smaller on the phone
+      # and seen by the delivering shop. Last of the journeys that place
+      # orders: the order it leaves accepted disturbs none of them, and it
+      # cancels nothing (cancelling would start the demo buyer's cooldown,
+      # D-099). Before the Turnstile step, which changes the sign-in page.
+      - name: Total to the door, lite mode, share cards, gate photo
+        working-directory: apps/web
+        run: node e2e/release1-d107.mjs "$RUNNER_TEMP/shots"
 
       # D-085: the same build, served again with a Turnstile site key. The
       # journey answers every request to challenges.cloudflare.com itself, so
