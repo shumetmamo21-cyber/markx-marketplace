@@ -1,17 +1,57 @@
 # Development status
 
-**Last updated:** 21 November 2026, by the **backups finished session**
-(D-105) on branch `claude/backup-audit-findings-0icpm4`, from `main` at
-`9daaf57` with the complete history: the audit's BK-4 and BK-5 and the
-pull request #4 review notes RN-1 to RN-5. Before it, pull request #12
-(D-104) was merged as `9daaf57`; pull request #11 as `7093e6c`; pull
-request #10 (D-102) as `9b3658f`; pull request #9 (D-101) as `fe4546f`;
-the frontend resilience session (D-100, pull request #8) as `b79caab`; the
-order life-cycle hardening session (D-099, pull request #7) as `fae2514`;
-the staff conflict and phone digits session (D-098, pull request #6) as
-`c70b338`; the checks and secret-scan session (D-097, pull request #5) as
-`d01fef7`, and the backup trust hardening session (D-096, pull request #4)
-as `773bbb6`.
+**Last updated:** 22 November 2026, by the **five Release 1 features
+session** (D-106) on branch `claude/sharp-albattani-dp65ad`, from `main` at
+`6378764` with the complete history. That session first reviewed pull
+request #13 (D-105, backups) independently and merged it (below; merge
+commit `6378764`). Before it, pull request #12 (D-104) was merged as
+`9daaf57`; pull request #11 as `7093e6c`; pull request #10 (D-102) as
+`9b3658f`; pull request #9 (D-101) as `fe4546f`; the frontend resilience
+session (D-100, pull request #8) as `b79caab`; the order life-cycle
+hardening session (D-099, pull request #7) as `fae2514`; the staff conflict
+and phone digits session (D-098, pull request #6) as `c70b338`; the checks
+and secret-scan session (D-097, pull request #5) as `d01fef7`, and the
+backup trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## Five Release 1 features: the Ethiopian calendar and clock, order again, the price chart, a shop's logo, a shop's customers (22 November 2026, D-106)
+
+One pull request into `main` (see "Tests executed", 22 November 2026, for
+its number and checks). **No migration. Nothing deployed; no server,
+account, bucket, bot or paid resource.** Details, limits and five
+PROVISIONAL values (P-106-1 to P-106-5): `docs/DECISIONS.md`, D-106.
+
+| Feature | What a person sees | Proof |
+| --- | --- | --- |
+| C-05 the Ethiopian calendar and clock | In Amharic every date and time on the site is the Ethiopian date with the Gregorian date in brackets, then the Ethiopian clock: "13 ኅዳር 2019 (22 ኖቬም 2026) ጥዋት 3:30" for 9:30 in the morning; a calendar day alone (a document's expiry, a re-check, a week) likewise; the Amharic weekly Telegram message names its week the same way. English is unchanged | `apps/web/src/lib/ethiopian.test.ts` (every day 1900 to 2100 against ICU), 4 new cases in `format.test.ts`; `apps/api/tests/unit/test_ethiopian_calendar.py` (16) |
+| C-19 order again | An "Order again" button on a past order: the same items from the same shops go in the cart at today's prices; a changed price or an item no longer sold is said first | `tests/api/test_d106_release1_features.py` (4 reorder tests); the buyer journey |
+| C-21 the price-history chart | On a product page, for the chosen version and each condition: the lowest price day by day over 90 days from the recorded prices, drawn on the server, with the prices in a table | 3 price-history tests in `test_d106_release1_features.py`; `apps/web/src/lib/price-chart.test.ts`; the buyer journey |
+| S-03 a shop's own logo | Owners and managers upload (or remove) a logo on the store settings page; it shows on the public shop page; the backup and the copy tool keep it | 5 logo tests in `test_d106_release1_features.py` (the backup's file list included); the seller-dashboard journey |
+| S-11 a shop's own customers | A Customers screen for the owner, manager and orders roles: the people whose orders the shop confirmed, with only what its order pages already show (name, phone, area, their orders); nothing once an order ends undelivered | 4 customer tests in `test_d106_release1_features.py`; the seller isolation test (automatic); the buyer journey |
+
+**On the old code** (a checkout of `6378764` with only the new test
+files): the 16 API tests all fail; the calendar's test modules cannot load
+(their modules are new); 3 of the 4 new `format.test.ts` cases fail (the
+fourth guards the English, which must not change).
+
+## Pull request #13 reviewed independently and merged (22 November 2026)
+
+Reviewed read-only at `ad774aa` (not changed, commented on or pushed to).
+Checked: the outside check-in and the Telegram alerts stay off until
+configured and never print their address or token (only the host name;
+errors by type); the secrets copy is encrypted in memory and never written
+or printed in plain form, opens only off staging and production with the
+recovery key, and refuses another server's copy (signature) and keys (the
+staff secrets do not decrypt); an overwritten backup file is read from its
+older locked version and raises `backup.overwritten`; the recovery script
+deletes and stops only its own marked folder and labelled container, its
+socket folder private (700); a drill report that does not show a pass is
+recorded FAILED; the CI and rehearsal changes are additions only.
+**Full suite locally: 2126 passed, 0 failed, 0 skipped** (PostgreSQL 17.12
+and MinIO, `MARKX_TEST_MINIO_REQUIRED=1`, `MARKX_TEST_BACKUP_REQUIRED=1`).
+GitHub on `ad774aa`: CI #180 and Browser journeys #56 passed. Verdict: no
+problem that must be fixed first; merged with a normal merge pinned to
+`ad774aa` as `6378764`, its branch kept. Two observations that are not
+blockers, R13-1 and R13-2, are in D-106 section 0 and under "Known problems".
 
 ## Backups finished before any real data: BK-4, BK-5, RN-1 to RN-5 (21 November 2026, D-105)
 
@@ -1716,6 +1756,13 @@ Be careful with these. They were written and never exercised.
 
 ## Lessons
 
+- **A new kind of stored file is also a backup change (D-106).** The schema
+  had `stores.logo_key` since the first migration, and the backup counts any
+  file a row names that it cannot place as *unclassified*, which makes the
+  whole set incomplete: the first shop logo would have stopped complete
+  backups. Whenever a feature starts writing a file, add it to
+  `markx/backup/references.py` and to `scripts/copy_files_to_object_storage.py`
+  in the same change, with a test (as `test_the_backup_and_the_copy_tool_know_a_logo_is_a_file_to_keep`).
 - **A test that gives the OLD code a dangerous input runs it (D-105).**
   To prove the old recovery script deleted whatever folder it was given,
   a first draft of a test gave it `/tmp/../etc`; run against `main`'s
@@ -1768,6 +1815,19 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
+- **22 November 2026, two observations on the backups (R13-1, R13-2; D-106
+  section 0), not blockers:** a validly signed secrets copy can name a file
+  outside the folder `open-secrets --out` writes to (it then creates that
+  file; it can never replace one), and after a suspected break-in the
+  runbook says to trust no backup set made after it but does not yet say the
+  same of secrets copies, while `open-secrets --from-destination` takes the
+  newest. Both need the server's signing key, which a break-in gives anyway.
+  Suggested fixes are in D-106; not made (the pull request was reviewed
+  read-only).
+- **22 November 2026, the Amharic words of D-106** (the calendar's layout,
+  the chart, order again, the logo and the customer list) are the
+  engineer's, like every other Amharic text until the native editor's
+  review before launch (blueprint I.3; P-106-1).
 - **21 November 2026, the D-105 session's own test machine (a throwaway
   cloud container, not the founder's computer or any server):** the draft
   test above was run once against `main`'s recovery script, as root, with
