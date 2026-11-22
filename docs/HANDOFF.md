@@ -25,7 +25,9 @@ the same day by the session that reviewed and merged pull request #11 and
 made three small fixes (D-104), and Part A.00000000000000000000 the same
 day by the session that finished the backups (D-105), and Part
 A.000000000000000000000 on 22 November 2026 by the session that reviewed
-and merged pull request #13 and built five Release 1 features (D-106).
+and merged pull request #13 and built five Release 1 features (D-106),
+and Part A.0000000000000000000000 the same day by the session that built
+five more Release 1 features (D-107).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -34,6 +36,52 @@ and merged pull request #13 and built five Release 1 features (D-106).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000000000000000000000 — Five more Release 1 features (22 November 2026, D-107)
+
+Branch `claude/release-1-five-features-g0sl7o`, from `main` at `e1849be`
+(the merge of pull request #14) with the complete history; no other pull
+request was open. One pull request into `main`: see
+`docs/DEVELOPMENT_STATUS.md` (its number, runs and the merge). **One
+migration (0023). Nothing deployed; no server, account, bucket, bot,
+monitor or paid resource.** Details: `docs/DECISIONS.md`, D-107.
+
+**For the founder, in plain words:**
+
+1. **Search by the total to your door.** A buyer picks their area; each
+   product then says what it costs delivered to the door and how soon it
+   arrives, can be sorted by that total, and filtered to "within 24, 48 or
+   72 hours". Without an area, the page asks for one rather than guess.
+2. **A photo of the buyer's gate.** On a saved address, optional. It is
+   kept privately (its location data removed) and only the buyer and the
+   shop delivering an order there see it, and only from when the shop
+   accepts until the goods are handed over; never for collection at the
+   shop, never by MarkX staff. Each view by a shop is recorded.
+3. **Lite mode.** A link at the bottom of every shop page: smaller pictures
+   and no picture strips. It turns on by itself on a phone set to save data.
+4. **Photos are made smaller on the phone before they are sent**, so sellers
+   spend less data; the server still checks every photo itself.
+5. **Share a shop or a product**: its link, a "share on Telegram" button, a
+   QR code to print at the till, and two ready-made cards (one for a
+   Telegram post, one tall one for TikTok), in Amharic or English.
+
+**What needs you (PROVISIONAL values, safe defaults until you decide):**
+P-107-1 the speed choices and what counts as delivery, P-107-2 the gate
+photo's size, P-107-3 exactly who sees the gate photo and when, P-107-4 how
+many gate photos an hour, P-107-5 how much the phone shrinks photos,
+P-107-6 when lite mode turns on by itself, P-107-7 what the share cards
+show. All are in D-107. **Please scan one QR code with a real phone**: it
+was checked against the standard here, but no camera was available.
+
+**For the next engineer:** read D-107 first, especially its page-weight
+section: main's product page has only about 1 KB of room under its 210 KB
+ceiling; `next/og` adds 0.45 KB of start-up script to every page wherever
+it is used; link-preview tags are repeated in every prefetched page. A new
+kind of stored file goes in `markx/backup/references.py` and the copy tool
+(done for `gate_photos`). A journey that cancels orders as the demo buyer
+starts the cancellation cooldown (D-099) for the journeys after it.
 
 ---
 
