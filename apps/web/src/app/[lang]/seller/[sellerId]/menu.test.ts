@@ -21,10 +21,10 @@ const CAPABILITIES: Record<string, string[]> = {
 };
 
 const EXPECTED: Record<string, string[]> = {
-  owner: ["", "/orders", "/offers", "/reviews", "/performance", "/store", "/team", "/documents", "/legal", "/payout"],
-  manager: ["", "/orders", "/offers", "/reviews", "/performance", "/store", "/team"],
+  owner: ["", "/orders", "/offers", "/reviews", "/customers", "/performance", "/store", "/team", "/documents", "/legal", "/payout"],
+  manager: ["", "/orders", "/offers", "/reviews", "/customers", "/performance", "/store", "/team"],
   catalogue: ["", "/offers", "/performance"],
-  orders: ["", "/orders", "/reviews", "/performance"],
+  orders: ["", "/orders", "/reviews", "/customers", "/performance"],
   finance: ["", "/performance"],
 };
 

@@ -8,12 +8,12 @@ Both run on a plain psycopg connection, so they work on the live database
 - `seller_documents.file_key` and `problem_photos.file_key`, private;
 - `product_images.source_key`, private, when set;
 - the two renditions `<file_key>-320.webp` and `<file_key>-1200.webp`,
-  public, once `processed_at` is set (a picture removed later keeps them).
+  public, once `processed_at` is set (a picture removed later keeps them);
+- a shop's logo, `<stores.logo_key>-256.webp`, public (S-03, D-106).
 
-`stores.logo_key` and `order_items.image_key` exist in the schema but
-nothing writes them today; if either ever holds a value, it is counted as
-an *unclassified* reference, which fails verification until this module
-learns which store it lives in.
+`order_items.image_key` exists in the schema but nothing writes it today; if
+it ever holds a value, it is counted as an *unclassified* reference, which
+fails verification until this module learns which store it lives in.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from psycopg import Connection, sql
 
 from markx.core.storage import StoreName
 from markx.images.service import MAIN_SIDE, THUMB_SIDE
+from markx.sellers.logos import logo_file
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -59,16 +60,17 @@ def file_references(conn: Connection[Any]) -> list[FileReference]:
         if processed:
             refs.append(FileReference("public", f"{file_key}-{THUMB_SIDE}.webp", "picture_thumb"))
             refs.append(FileReference("public", f"{file_key}-{MAIN_SIDE}.webp", "picture_main"))
+    rows = conn.execute(
+        "select logo_key from stores where logo_key is not null order by id"
+    ).fetchall()
+    refs += [FileReference("public", logo_file(row[0]), "store_logo") for row in rows]
     return sorted(refs)
 
 
 def unclassified_references(conn: Connection[Any]) -> int:
     if not _has_schema(conn):
         return 0
-    row = conn.execute(
-        "select (select count(*) from stores where logo_key is not null)"
-        " + (select count(*) from order_items where image_key is not null)"
-    ).fetchone()
+    row = conn.execute("select count(*) from order_items where image_key is not null").fetchone()
     return int(row[0]) if row else 0
 
 

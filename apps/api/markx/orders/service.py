@@ -270,6 +270,78 @@ def accept_cart_changes(db: Session, cart: Cart) -> int:
     return changed
 
 
+def reorder(
+    db: Session, cart: Cart, buyer_id: uuid.UUID, order_id: uuid.UUID, language: str
+) -> dict[str, Any]:
+    """Order again in one tap (blueprint C-19): every item of one of the
+    buyer's own orders goes back in the cart, from the same shop's same
+    offer, through `set_cart_item` and so under every rule of the cart.
+
+    The cart holds today's price, never the price paid: the reply gives both,
+    and the cart re-checks prices and stock as always (D.10). An offer that is
+    no longer on sale, or a full cart, leaves that item out and says why.
+    PROVISIONAL (P-106-3): a line already in the cart keeps the larger of its
+    quantity and the order's, so tapping twice never doubles anything."""
+    order = db.scalar(select(Order).where(Order.id == order_id, Order.buyer_user_id == buyer_id))
+    if order is None:
+        # The same answer for another buyer's order and one that does not exist.
+        raise NotFound("order_not_found", "That order was not found.")
+    items = db.scalars(
+        select(OrderItem)
+        .join(SellerOrder, SellerOrder.id == OrderItem.seller_order_id)
+        .where(SellerOrder.order_id == order.id)
+        .order_by(SellerOrder.created_at, SellerOrder.id, OrderItem.id)
+    ).all()
+    wanted: dict[uuid.UUID, int] = {}
+    lines: dict[uuid.UUID, OrderItem] = {}
+    for item in items:
+        wanted[item.offer_id] = min(
+            MAX_QUANTITY_PER_LINE, wanted.get(item.offer_id, 0) + item.quantity
+        )
+        lines.setdefault(item.offer_id, item)
+    in_cart: dict[uuid.UUID, int] = {}
+    for row in db.execute(
+        select(CartItem.offer_id, CartItem.quantity).where(CartItem.cart_id == cart.id)
+    ):
+        in_cart[row.offer_id] = row.quantity
+    other = "en" if language == "am" else "am"
+    added: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    for offer_id, quantity in wanted.items():
+        item = lines[offer_id]
+        words = {
+            "offer_id": offer_id,
+            "title": getattr(item, f"title_{language}") or getattr(item, f"title_{other}"),
+            "variant_label": getattr(item, f"variant_label_{language}")
+            or getattr(item, f"variant_label_{other}"),
+        }
+        try:
+            set_cart_item(db, cart, offer_id, max(quantity, in_cart.get(offer_id, 0)))
+        except (NotFound, Conflict) as refused:
+            product = db.get(Product, item.product_id)
+            product = catalog_selectors.resolve_merged(db, product) if product else None
+            missing.append({
+                **words,
+                "product_slug": product.slug
+                if product is not None and product.status == ProductStatus.APPROVED
+                else None,
+                "reason": "cart_full" if refused.code == "cart_full" else "offer_unavailable",
+            })  # fmt: skip
+            continue
+        line = db.execute(
+            select(CartItem.quantity, CartItem.price_seen_santim).where(
+                CartItem.cart_id == cart.id, CartItem.offer_id == offer_id
+            )
+        ).one()
+        added.append({
+            **words,
+            "quantity": line.quantity,
+            "unit_price_santim": line.price_seen_santim,
+            "paid_unit_price_santim": item.unit_price_santim,
+        })  # fmt: skip
+    return {"order_id": order.id, "order_code": order.code, "added": added, "missing": missing}
+
+
 # -- reading the cart against live data ----------------------------------------------
 
 

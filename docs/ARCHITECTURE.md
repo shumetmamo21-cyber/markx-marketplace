@@ -109,6 +109,16 @@ and fails if one lacks words. Every staff form is in
 `menu.test.ts` fixes the exact screens of each staff role. The web app
 decides nothing (D-070, D-071).
 
+## Dates and times on the web (D-106)
+
+Every date and time on a page goes through `formatDateTime` or `formatDate`
+in `apps/web/src/lib/format.ts`. In Amharic they write the Ethiopian date
+with the Gregorian date in brackets and the Ethiopian clock (blueprint
+C-05, I.7), by the arithmetic in `src/lib/ethiopian.ts`, tested against
+ICU for every day from 1900 to 2100; English is Gregorian. The API's own
+words with a date (the weekly Telegram message) use `markx/core/ethiopian.py`.
+A relative time ("3 hours ago", `timeAgo`) has no calendar.
+
 ## The seller dashboard on the web
 
 `apps/web/src/app/[lang]/seller/[sellerId]/`. The layout checks only that
@@ -295,6 +305,11 @@ bucket, endpoint or credential; a missing object is `StoredFileMissing`.
 No feature deletes a file. To store a new kind of file, generate an
 unguessable key with no personal data in it, pass the content type, and
 serve private files only through a personal link like the two above.
+A shop's logo (S-03, D-106) is one public WebP file,
+`<stores.logo_key>-256.webp` (`markx/sellers/logos.py`), drawn again from the
+upload like a picture. **A new kind of stored file must also be added to
+`markx/backup/references.py` and the copy tool**, or every backup set counts
+it as an unclassified reference and is incomplete.
 
 `scripts/copy_files_to_object_storage.py` copies an existing local
 installation's files into the buckets under the same keys: a dry run by

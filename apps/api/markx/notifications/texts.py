@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from datetime import date
 from typing import Any
 
 from markx.core.codes import is_order_code
+from markx.core.ethiopian import amharic_date
 
 # The parameters a text may use. Nothing else is ever filled in.
 ALLOWED_PLACEHOLDERS = frozenset({"code"})
@@ -257,6 +259,17 @@ MAX_PRODUCTS_TEXT = 200
 _NOT_ONE_PLAIN_LINE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 
 
+def _week_text(day: str, lang: str) -> str:
+    """The week's first day as words (C-05, D-106): in Amharic the Ethiopian
+    date with the Gregorian one in brackets, "7 ኅዳር 2019 (2026-11-16)"; in
+    English the date as it came. A date that does not exist is refused."""
+    try:
+        parsed = date.fromisoformat(day)
+    except ValueError:
+        raise UnsafeText("the week needs a real date") from None
+    return f"{amharic_date(parsed)} ({day})" if lang == "am" else day
+
+
 def render_telegram(template: str, params: Mapping[str, Any], language: str) -> str:
     """The Telegram text for one notification (D-102): Telegram's own words
     where they exist, else the SMS words, else the generic line. Only the
@@ -276,7 +289,7 @@ def render_telegram(template: str, params: Mapping[str, Any], language: str) -> 
         elif name == "week":
             if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
                 raise UnsafeText(f"text for {template!r} needs a plain date")
-            filled = value
+            filled = _week_text(value, lang)
         else:
             if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= MAX_COUNT:
                 raise UnsafeText(f"text for {template!r} needs a whole number for {name!r}")

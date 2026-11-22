@@ -1032,6 +1032,20 @@
         "title": "Body_upload_document_api_v1_seller__seller_id__documents_post",
         "type": "object"
       },
+      "Body_upload_store_logo_api_v1_seller__seller_id__store_logo_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_store_logo_api_v1_seller__seller_id__store_logo_post",
+        "type": "object"
+      },
       "BrandIn": {
         "additionalProperties": false,
         "properties": {
@@ -2162,6 +2176,42 @@
           "idempotency_key"
         ],
         "title": "CheckoutIn",
+        "type": "object"
+      },
+      "CustomerOrderOut": {
+        "additionalProperties": false,
+        "properties": {
+          "order_code": {
+            "title": "Order Code",
+            "type": "string"
+          },
+          "placed_at": {
+            "format": "date-time",
+            "title": "Placed At",
+            "type": "string"
+          },
+          "seller_order_id": {
+            "format": "uuid",
+            "title": "Seller Order Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_santim": {
+            "title": "Total Santim",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seller_order_id",
+          "order_code",
+          "status",
+          "placed_at",
+          "total_santim"
+        ],
+        "title": "CustomerOrderOut",
         "type": "object"
       },
       "DashboardOut": {
@@ -4683,6 +4733,59 @@
         "title": "PriceChangeOut",
         "type": "object"
       },
+      "PriceHistoryOut": {
+        "additionalProperties": false,
+        "description": "The price-history chart of one version (C-21): for each condition,\nthe lowest price day by day, from the price changes recorded.",
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "from_day": {
+            "format": "date",
+            "title": "From Day",
+            "type": "string"
+          },
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/PriceSeriesOut"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "to_day": {
+            "format": "date",
+            "title": "To Day",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "product_slug",
+          "variant_id",
+          "days",
+          "from_day",
+          "to_day",
+          "series"
+        ],
+        "title": "PriceHistoryOut",
+        "type": "object"
+      },
       "PriceListItemOut": {
         "additionalProperties": false,
         "properties": {
@@ -4801,6 +4904,69 @@
           "variant_label"
         ],
         "title": "PriceListItemOut",
+        "type": "object"
+      },
+      "PriceSeriesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "title": "Condition",
+            "type": "string"
+          },
+          "current_santim": {
+            "title": "Current Santim",
+            "type": "integer"
+          },
+          "highest_santim": {
+            "title": "Highest Santim",
+            "type": "integer"
+          },
+          "lowest_santim": {
+            "title": "Lowest Santim",
+            "type": "integer"
+          },
+          "offers": {
+            "title": "Offers",
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PriceStepOut"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "condition",
+          "offers",
+          "current_santim",
+          "lowest_santim",
+          "highest_santim",
+          "steps"
+        ],
+        "title": "PriceSeriesOut",
+        "type": "object"
+      },
+      "PriceStepOut": {
+        "additionalProperties": false,
+        "description": "From this day (Addis Ababa time), the lowest price was this.",
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "price_santim": {
+            "title": "Price Santim",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "price_santim"
+        ],
+        "title": "PriceStepOut",
         "type": "object"
       },
       "ProblemIn": {
@@ -5726,6 +5892,17 @@
             "title": "Figures Days",
             "type": "integer"
           },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
           "median_minutes_to_confirm": {
             "anyOf": [
               {
@@ -5812,6 +5989,7 @@
           "working_hours",
           "areas_served",
           "telegram_channel",
+          "logo_url",
           "seller_kind",
           "shop_address",
           "shop_latitude",
@@ -6303,6 +6481,131 @@
           "reason"
         ],
         "title": "RemoveImageIn",
+        "type": "object"
+      },
+      "ReorderLineOut": {
+        "additionalProperties": false,
+        "description": "An item of the order now in the cart, at today's price.",
+        "properties": {
+          "offer_id": {
+            "format": "uuid",
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "paid_unit_price_santim": {
+            "title": "Paid Unit Price Santim",
+            "type": "integer"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_price_santim": {
+            "title": "Unit Price Santim",
+            "type": "integer"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "offer_id",
+          "title",
+          "variant_label",
+          "quantity",
+          "unit_price_santim",
+          "paid_unit_price_santim"
+        ],
+        "title": "ReorderLineOut",
+        "type": "object"
+      },
+      "ReorderMissingOut": {
+        "additionalProperties": false,
+        "description": "An item of the order that could not go back in the cart.",
+        "properties": {
+          "offer_id": {
+            "format": "uuid",
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "product_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Slug"
+          },
+          "reason": {
+            "enum": [
+              "offer_unavailable",
+              "cart_full"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "variant_label": {
+            "title": "Variant Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "offer_id",
+          "title",
+          "variant_label",
+          "product_slug",
+          "reason"
+        ],
+        "title": "ReorderMissingOut",
+        "type": "object"
+      },
+      "ReorderOut": {
+        "additionalProperties": false,
+        "description": "Order again (C-19): what went back in the cart, and what did not.",
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/ReorderLineOut"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/ReorderMissingOut"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "order_code": {
+            "title": "Order Code",
+            "type": "string"
+          },
+          "order_id": {
+            "format": "uuid",
+            "title": "Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "order_code",
+          "added",
+          "missing"
+        ],
+        "title": "ReorderOut",
         "type": "object"
       },
       "ReportIn": {
@@ -6825,6 +7128,61 @@
           "shop_address"
         ],
         "title": "SellerContactOut",
+        "type": "object"
+      },
+      "SellerCustomerOut": {
+        "additionalProperties": false,
+        "description": "One person the shop has served (S-11): only what its own order pages\nalready show it, from the orders whose buyer details it can see now.",
+        "properties": {
+          "area_name": {
+            "title": "Area Name",
+            "type": "string"
+          },
+          "completed_orders": {
+            "title": "Completed Orders",
+            "type": "integer"
+          },
+          "first_order_at": {
+            "format": "date-time",
+            "title": "First Order At",
+            "type": "string"
+          },
+          "last_order_at": {
+            "format": "date-time",
+            "title": "Last Order At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "recent_orders": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerOrderOut"
+            },
+            "title": "Recent Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "phone",
+          "name",
+          "area_name",
+          "orders",
+          "completed_orders",
+          "first_order_at",
+          "last_order_at",
+          "recent_orders"
+        ],
+        "title": "SellerCustomerOut",
         "type": "object"
       },
       "SellerListItemOut": {
@@ -8614,6 +8972,17 @@
             "title": "Description",
             "type": "string"
           },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -8649,7 +9018,8 @@
           "return_policy",
           "working_hours",
           "areas_served",
-          "telegram_channel"
+          "telegram_channel",
+          "logo_url"
         ],
         "title": "StoreOut",
         "type": "object"
@@ -14304,6 +14674,66 @@
         ]
       }
     },
+    "/api/v1/catalog/products/{slug}/price-history": {
+      "get": {
+        "description": "The price-history chart of one version (C-21): for each condition, the\nlowest price of the offers on sale today, day by day over the last\n`days` days, from the price changes recorded. Without `variant_id`, the\nproduct's first active version.",
+        "operationId": "product_price_history_api_v1_catalog_products__slug__price_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "variant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Price History",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/products/{slug}/reviews": {
       "get": {
         "description": "Published reviews, newest first; page with `before` set to the last id.\nThe summary is the product's rating totals.",
@@ -15378,6 +15808,61 @@
         "summary": "Write Review",
         "tags": [
           "reviews"
+        ]
+      }
+    },
+    "/api/v1/me/orders/{order_id}/reorder": {
+      "post": {
+        "description": "Order again in one tap (C-19): the order's items go back in the cart\nat today's prices; the buyer then checks out as usual.",
+        "operationId": "reorder_my_order_api_v1_me_orders__order_id__reorder_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder My Order",
+        "tags": [
+          "orders"
         ]
       }
     },
@@ -16731,6 +17216,94 @@
         "summary": "Close Seller",
         "tags": [
           "seller"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/customers": {
+      "get": {
+        "description": "The people this shop has served (S-11), newest first: only what its\nown order pages already show it. `q` finds a name or a phone number.",
+        "operationId": "list_seller_customers_api_v1_seller__seller_id__customers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 60,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SellerCustomerOut"
+                  },
+                  "title": "Response List Seller Customers Api V1 Seller  Seller Id  Customers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Seller Customers",
+        "tags": [
+          "seller: orders"
         ]
       }
     },
@@ -19389,6 +19962,102 @@
           }
         },
         "summary": "Update Store",
+        "tags": [
+          "seller"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/store/logo": {
+      "delete": {
+        "description": "The shop shows no logo again.",
+        "operationId": "remove_store_logo_api_v1_seller__seller_id__store_logo_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Store Logo",
+        "tags": [
+          "seller"
+        ]
+      },
+      "post": {
+        "description": "The shop's own logo (S-03): a JPEG, PNG or WebP photo, shown on its\npage. It replaces the logo before.",
+        "operationId": "upload_store_logo_api_v1_seller__seller_id__store_logo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_store_logo_api_v1_seller__seller_id__store_logo_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Store Logo",
         "tags": [
           "seller"
         ]

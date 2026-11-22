@@ -42,12 +42,19 @@ from markx.audit.service import Actor, record_by
 from markx.core import settings_store
 from markx.core.errors import Conflict, NotFound, PermissionDenied, ValidationFailed
 from markx.core.ids import uuid7
-from markx.core.images import NotAnImage, sanitize_image
+from markx.core.images import (
+    ImageTooComplex,
+    NotAnImage,
+    decode_clean,
+    render_webp,
+    sanitize_image,
+)
 from markx.core.security import constant_time_equal, encrypt_text, sign
 from markx.core.slugs import slugify
-from markx.core.storage import StoredFileMissing, get_private_storage
+from markx.core.storage import StoredFileMissing, get_private_storage, get_public_storage
 from markx.notifications import service as notifications
 from markx.orders.models import SellerOrder, SellerOrderStatus
+from markx.sellers.logos import LOGO_MAX_BYTES, LOGO_SIDE, logo_file
 from markx.sellers.models import (
     DocumentType,
     ReviewState,
@@ -1126,6 +1133,52 @@ def update_store(
     }  # fmt: skip
     if after != before:
         record_by(db, actor, "store.update", "store", store.id, before=before, after=after)
+    return store
+
+
+def set_store_logo(db: Session, actor: Actor, seller: Seller, data: bytes) -> Store:
+    """The shop's own logo (S-03). The upload is checked like every picture
+    (a JPEG, PNG or WebP under the upload limit), decoded and drawn again, so
+    nothing but its pixels survives (no camera metadata), fitted inside a
+    square of `LOGO_SIDE` pixels and kept as one public WebP file. A logo it
+    replaces keeps its file (no feature deletes a file), unreferenced."""
+    from markx.images.service import clean_upload  # the shared upload check
+
+    upload = clean_upload(db, data)
+    try:
+        rendered = render_webp(
+            decode_clean(upload.data), longest_side=LOGO_SIDE, max_bytes=LOGO_MAX_BYTES
+        )
+    except (NotAnImage, ImageTooComplex) as exc:
+        raise ValidationFailed("image_not_a_photo", "Send a JPEG, PNG or WebP photo.") from exc
+    seller = _lock(db, seller)
+    store = get_store(db, seller.id)
+    # Unguessable, and no personal data in it.
+    key = f"stores/{store.id}/logo-{secrets.token_hex(12)}"
+    get_public_storage().put(logo_file(key), rendered.data, "image/webp")
+    before = store.logo_key
+    store.logo_key = key
+    db.flush()
+    record_by(
+        db, actor, "store.logo_set", "store", store.id, before={"logo_key": before},
+        after={"logo_key": key, "width": rendered.width, "height": rendered.height,
+               "bytes": len(rendered.data)},
+    )  # fmt: skip
+    return store
+
+
+def remove_store_logo(db: Session, actor: Actor, seller: Seller) -> Store:
+    """The shop shows no logo again. Its file stays (no feature deletes one)."""
+    seller = _lock(db, seller)
+    store = get_store(db, seller.id)
+    if store.logo_key is not None:
+        before = store.logo_key
+        store.logo_key = None
+        db.flush()
+        record_by(
+            db, actor, "store.logo_removed", "store", store.id, before={"logo_key": before},
+            after={"logo_key": None},
+        )  # fmt: skip
     return store
 
 

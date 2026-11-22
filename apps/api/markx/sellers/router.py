@@ -34,8 +34,10 @@ from markx.core import ratelimit, settings_store
 from markx.core.errors import NotFound, PermissionDenied
 from markx.core.http import Db
 from markx.core.schemas import Ok
+from markx.core.storage import public_url
 from markx.performance import service as performance
 from markx.sellers import selectors, service
+from markx.sellers.logos import logo_file
 from markx.sellers.models import DocumentType, Seller, Store
 from markx.sellers.schemas import (
     ApplicationIn,
@@ -259,9 +261,22 @@ def set_payout_account(
 # -- store -----------------------------------------------------------------------
 
 
+def _logo_url(store: Store) -> str | None:
+    return public_url(logo_file(store.logo_key)) if store.logo_key else None
+
+
+def _store_out(store: Store) -> StoreOut:
+    return StoreOut(
+        slug=store.slug, name=store.name, description=store.description,
+        return_policy=store.return_policy, working_hours=store.working_hours,
+        areas_served=list(store.areas_served), telegram_channel=store.telegram_channel,
+        logo_url=_logo_url(store),
+    )  # fmt: skip
+
+
 @router.get("/{seller_id}/store", response_model=StoreOut)
 def read_store(context: AnyMember, db: Db) -> StoreOut:
-    return StoreOut.model_validate(service.get_store(db, context.seller.id))
+    return _store_out(service.get_store(db, context.seller.id))
 
 
 @router.patch("/{seller_id}/store", response_model=StoreOut)
@@ -269,7 +284,32 @@ def update_store(body: StoreUpdateIn, context: StoreEditor, request: Request, db
     store = service.update_store(
         db, context.principal.actor(request), context.seller, **body.model_dump()
     )
-    return StoreOut.model_validate(store)
+    return _store_out(store)
+
+
+# PROVISIONAL (P-106-5): a shop may send this many logos an hour.
+LOGO_UPLOADS_PER_HOUR = 20
+
+
+@router.post("/{seller_id}/store/logo", response_model=StoreOut)
+def upload_store_logo(
+    context: StoreEditor, request: Request, db: Db, file: Annotated[UploadFile, File()]
+) -> StoreOut:
+    """The shop's own logo (S-03): a JPEG, PNG or WebP photo, shown on its
+    page. It replaces the logo before."""
+    ratelimit.hit(f"store-logo:{context.seller.id}", LOGO_UPLOADS_PER_HOUR, timedelta(hours=1))
+    # One byte past the limit is enough to know the file is too large.
+    data = file.file.read(settings_store.get_int(db, "images.max_upload_bytes") + 1)
+    store = service.set_store_logo(db, context.principal.actor(request), context.seller, data)
+    return _store_out(store)
+
+
+@router.delete("/{seller_id}/store/logo", response_model=StoreOut)
+def remove_store_logo(context: StoreEditor, request: Request, db: Db) -> StoreOut:
+    """The shop shows no logo again."""
+    return _store_out(
+        service.remove_store_logo(db, context.principal.actor(request), context.seller)
+    )
 
 
 # -- members ---------------------------------------------------------------------
@@ -318,6 +358,7 @@ def _public_store_out(db: Db, seller: Seller, store: Store) -> PublicStoreOut:
         working_hours=store.working_hours,
         areas_served=list(store.areas_served),
         telegram_channel=store.telegram_channel,
+        logo_url=_logo_url(store),
         seller_kind=seller.kind,
         shop_address=seller.shop_address,
         shop_latitude=seller.shop_latitude,
@@ -391,7 +432,7 @@ def _admin_out(db: Db, seller: Seller) -> SellerAdminOut:
         shop_visited_at=seller.shop_visited_at,
         recheck_due_on=seller.recheck_due_on,
         legal=LegalOut.model_validate(seller),
-        store=StoreOut.model_validate(service.get_store(db, seller.id)),
+        store=_store_out(service.get_store(db, seller.id)),
         members=[MemberOut(**m) for m in selectors.members_of(db, seller.id)],
         documents=[DocumentOut.model_validate(d) for d in selectors.documents_of(db, seller.id)],
         payout_accounts=[

@@ -23,7 +23,9 @@ same day by the session that fixed the defect the independent review of
 pull request #11 found (D-103 section 5), and Part A.0000000000000000000
 the same day by the session that reviewed and merged pull request #11 and
 made three small fixes (D-104), and Part A.00000000000000000000 the same
-day by the session that finished the backups (D-105).
+day by the session that finished the backups (D-105), and Part
+A.000000000000000000000 on 22 November 2026 by the session that reviewed
+and merged pull request #13 and built five Release 1 features (D-106).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -32,6 +34,65 @@ day by the session that finished the backups (D-105).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.000000000000000000000 — Pull request #13 merged; five Release 1 features (22 November 2026, D-106)
+
+Branch `claude/sharp-albattani-dp65ad`, from `main` at `6378764` with the
+complete history; one pull request into `main`, **#14**
+(https://github.com/shumetmamo21-cyber/markx-marketplace/pull/14). **No migration. Nothing deployed; no server, account,
+bucket, bot, monitor or paid resource.** Details: `docs/DECISIONS.md`,
+D-106; results: `docs/DEVELOPMENT_STATUS.md`, "Tests executed", 22 November
+2026.
+
+**For the founder, in plain words:**
+
+1. **The backup work (pull request #13) was checked by a second engineer
+   and merged.** Everything you asked to be checked held: the outside
+   check-in and the Telegram alerts stay off until you set them up and
+   never show their addresses or tokens; the copy of the server's secrets
+   is never written or shown readable, opens only on the recovery machine
+   and refuses another server's; an overwritten backup file is recovered
+   from its locked original and raises an alert; the recovery script only
+   removes what it made and keeps its database private; a drill report
+   that does not prove it passed is recorded as failed; no test or check
+   was weakened. All 2,126 tests passed here with nothing skipped, and
+   every GitHub check passed. Two small things to improve later are noted
+   (R13-1, R13-2); neither matters unless the server has already been
+   broken into.
+2. **Dates in Amharic now follow the Ethiopian calendar and clock**,
+   everywhere on the site: "13 ኅዳር 2019 (22 ኖቬም 2026) ጥዋት 3:30" means
+   9:30 in the morning on 22 November 2026. The weekly Telegram message in
+   Amharic names its week the same way. English is unchanged.
+3. **"Order again"**: on a past order, one tap puts the same items from the
+   same shops back in the cart, at today's prices. If a price changed or a
+   shop no longer sells an item, the buyer is told first.
+4. **A price chart on every product page**: the lowest price of the chosen
+   version each day over the last 90 days, one small chart per condition
+   (new, used and so on), with the numbers in a table too. It is drawn from
+   the price changes MarkX already records; nothing new is stored.
+5. **A shop can upload its own logo**, shown on its page. The backup now
+   knows a logo is a file to keep (before, the first logo would have made
+   every backup incomplete).
+6. **A shop's customer list**: the people whose orders it confirmed, with
+   only what its order pages already show it (name, phone, area, their
+   orders). Someone whose order ended without delivery is not shown, as on
+   the order page.
+
+**What needs you (PROVISIONAL values, safe defaults until you decide):**
+P-106-1 how Amharic dates and times are written (the native editor should
+read them), P-106-2 the chart's 90 days, P-106-3 how "Order again" treats
+items already in the cart, P-106-4 the customer list's details, P-106-5
+the logo's size and upload limit. All are in D-106.
+
+**For the next engineer:** read D-106 first. The calendar is
+`apps/web/src/lib/ethiopian.ts` (and `apps/api/markx/core/ethiopian.py`
+for the weekly message); every date on the site goes through
+`formatDateTime` or `formatDate` in `apps/web/src/lib/format.ts`, so a new
+screen gets the calendar by using them. A new kind of stored file must be
+added to `markx/backup/references.py` and the copy tool, or backups become
+incomplete (a lesson from the logo).
 
 ---
 

@@ -20,6 +20,62 @@ class CartItemIn(ApiModel):
     quantity: Annotated[int, Field(ge=1, le=MAX_QUANTITY_PER_LINE)]
 
 
+class ReorderLineOut(ApiModel):
+    """An item of the order now in the cart, at today's price."""
+
+    offer_id: uuid.UUID
+    title: str
+    variant_label: str
+    quantity: int
+    unit_price_santim: int
+    # What the order paid for one; shown beside today's price, never charged.
+    paid_unit_price_santim: int
+
+
+class ReorderMissingOut(ApiModel):
+    """An item of the order that could not go back in the cart."""
+
+    offer_id: uuid.UUID
+    title: str
+    variant_label: str
+    # The product's page, for another shop's offer; null when it is not shown.
+    product_slug: str | None
+    reason: Literal["offer_unavailable", "cart_full"]
+
+
+class ReorderOut(ApiModel):
+    """Order again (C-19): what went back in the cart, and what did not."""
+
+    order_id: uuid.UUID
+    order_code: str
+    added: list[ReorderLineOut]
+    missing: list[ReorderMissingOut]
+
+
+class CustomerOrderOut(ApiModel):
+    seller_order_id: uuid.UUID
+    order_code: str
+    status: str
+    placed_at: datetime
+    total_santim: int
+
+
+class SellerCustomerOut(ApiModel):
+    """One person the shop has served (S-11): only what its own order pages
+    already show it, from the orders whose buyer details it can see now."""
+
+    phone: str
+    name: str
+    # The delivery area of their latest order.
+    area_name: str
+    orders: int
+    completed_orders: int
+    first_order_at: datetime
+    last_order_at: datetime
+    # Their latest orders with this shop, newest first.
+    recent_orders: list[CustomerOrderOut]
+
+
 class CartItemOut(ApiModel):
     offer_id: uuid.UUID
     product_slug: str

@@ -42,7 +42,13 @@ export default async function StorePage({ params, searchParams }: PageProps<"/[l
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-extrabold">{s.name}</h1>
+        <div className="flex items-center gap-3">
+          {s.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- the shop's own logo, drawn within 256 px and 40 KB (S-03, D-106)
+            <img src={s.logo_url} alt={fill(t.store.logoAlt, { name: s.name })} width={64} height={64} className="h-16 w-16 shrink-0 rounded-card border border-line bg-white object-contain" />
+          ) : null}
+          <h1 className="text-2xl font-extrabold">{s.name}</h1>
+        </div>
         <p className="font-semibold text-highland">{fill(t.store.level, { level: s.verification_level })}</p>
         <p className="text-slate">{s.shop_address}</p>
         {s.shop_latitude !== null && s.shop_longitude !== null && s.shop_latitude !== undefined && s.shop_longitude !== undefined ? (

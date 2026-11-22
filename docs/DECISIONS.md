@@ -5159,6 +5159,217 @@ running them against the old script harms nothing (see
 check or rehearsal check was removed or loosened. Results: `docs/
 DEVELOPMENT_STATUS.md`, "Tests executed", 21 November 2026 (D-105).
 
+## D-106 Five Release 1 features: the Ethiopian calendar and clock (C-05), order again (C-19), the price-history chart (C-21), a shop's own logo (S-03), a shop's own customers (S-11)
+
+22 November 2026. Branch `claude/sharp-albattani-dp65ad`, from `main` at
+`6378764` with the complete history (`6378764` is the merge of pull request
+#13, reviewed and merged by this session first: section 0). Pull request
+**#14** (https://github.com/shumetmamo21-cyber/markx-marketplace/pull/14). **Follows** the
+blueprint: D.1 and I.7 (C-05), D.10 and D.27 (C-19), D.7 and I.5 (C-21),
+D.4 and I.5 (S-03, S-11). **No migration**: `stores.logo_key` and
+`offer_price_history` exist since `0001`. **Nothing deployed; no account,
+server, bucket, bot or paid resource.** Business choices are safe defaults
+marked PROVISIONAL (below); every new word is in English and Amharic.
+
+### 0. Before this work: pull request #13 reviewed and merged
+
+Pull request #13 (D-105, backups: BK-4, BK-5, RN-1 to RN-5) was reviewed
+read-only at its head `ad774aa` (not changed, commented on or pushed to):
+the code, the four new test files, the CI and rehearsal changes (additions
+only: no existing test or check removed, loosened or changed), and the
+full suite locally with PostgreSQL 17.12 and MinIO, `MARKX_TEST_MINIO_REQUIRED=1`
+and `MARKX_TEST_BACKUP_REQUIRED=1`: **2126 passed, 0 failed, 0 skipped**
+(26 min 11 s). GitHub on `ad774aa`: CI #180 (8 of 8 jobs) and Browser
+journeys #56 passed. **Verdict: no problem that must be fixed first.**
+Merged with a normal merge pinned to `ad774aa`: `6378764`; its branch kept.
+Main's own runs on `6378764`: see "Tests executed" in
+`docs/DEVELOPMENT_STATUS.md`.
+
+Two observations, **not blockers** (both need a full break-in on the server,
+which the runbook already says makes everything made after it untrusted),
+left for a later backup session:
+
+- **R13-1** `open-secrets --out` writes every file name a validly signed
+  secrets copy lists, with nothing checking it is one of the expected names
+  (`escrow.ITEMS`). A copy signed with the server's signing key that names
+  `../outside.txt` writes a file outside the chosen folder on the recovery
+  machine (a probe with test-only keys did; `x` mode means it can create
+  files, never replace one). Suggested fix: refuse any name outside
+  `ITEMS` in `open_escrow` and `write_items`.
+- **R13-2** After a suspected break-in at time T the runbook says to trust no
+  backup set made after T, but says nothing of secrets copies, and
+  `open-secrets --from-destination` takes the newest copy. Suggested fix: the
+  same rule for copies in the runbook (choose one made before T with
+  `--name`).
+
+### 1. C-05: the Ethiopian calendar and clock, wherever a date or a time is shown
+
+- **The web app**: `src/lib/ethiopian.ts` converts a Gregorian day to the
+  Ethiopian calendar by arithmetic (Julian day numbers; the leap year is the
+  year before one divisible by four), so the server and the phone always
+  agree and no browser's calendar support is relied on. Its month names and
+  the four parts of the day are CLDR's Amharic words (the same data Node and
+  the browsers carry). `formatDateTime`, which every date and time on the site
+  goes through, now writes Amharic as **"13 ኅዳር 2019 (22 ኖቬም 2026) ጥዋት 3:30"**:
+  the Ethiopian date, the Gregorian date in brackets (blueprint I.7), then the
+  Ethiopian clock, where 9:30 in the morning is 3:30, after its part of the day
+  (በሌሊት 6:00 to 11:59 is midnight to 5:59; ጥዋት 12:00 to 5:59 is 6:00 to 11:59;
+  ከሰዓት 6:00 to 11:59 is noon to 5:59 pm; በምሽት 12:00 to 5:59 is 6 pm to
+  11:59 pm). English is unchanged ("22 Nov 2026, 09:30").
+- A new `formatDate` does the same for a calendar day the API sends as
+  `YYYY-MM-DD` ("7 ኅዳር 2019 (16 ኖቬም 2026)"), now used where such a day was
+  shown as it came: a document's expiry, a shop's yearly re-check (seller
+  overview and staff page), a weekly report's first day. A relative time
+  ("3 hours ago") and the countdown in minutes have no calendar and stay as
+  they were.
+- **The API**: the one place it writes a date into words itself, the weekly
+  Telegram message (S-26), names its week in Amharic as
+  "7 ኅዳር 2019 (2026-11-16)" (`markx/core/ethiopian.py`, the same arithmetic);
+  English as before. A week date that does not exist is now refused like any
+  other unsafe value (it had only to look like a date).
+- **Checked**: every day from 1 January 1900 to 31 December 2100 (73,414
+  days) against ICU's Ethiopian calendar in Node, month names included; the
+  part-of-day words against ICU's Amharic for every hour.
+
+### 2. C-19: order again in one tap
+
+- `POST /api/v1/me/orders/{order_id}/reorder` (`orders.service.reorder`):
+  every item of one of the buyer's own orders goes back in their cart, the
+  same shop's same offer, through `set_cart_item`, so every cart rule holds
+  (the offer must still be on sale from a trading shop at the publishing
+  level; 30 lines; 1 to 20 each). **The cart holds today's price**; the reply
+  gives today's price and the price paid side by side. An item whose offer is
+  no longer on sale, or that does not fit a full cart, is left out and named,
+  with its product's page when that is shown (another shop may sell it).
+  Another buyer's order and one that does not exist give the same "not
+  found"; staff sessions are refused, as everywhere in shopping.
+- The order page has an **Order again** button (`ReorderButton`): one tap and
+  the buyer is on the cart. When a price changed since, or an item could not
+  go back, the page first says so ("now ETB 19,000 (you paid ETB 18,500)") with
+  a link to the cart. The cart re-checks prices and stock as always (D.10).
+
+### 3. C-21: the price-history chart on a product page
+
+- `GET /api/v1/catalog/products/{slug}/price-history?variant_id=`
+  (`offers.selectors.price_history`): for one version (the first active one
+  without `variant_id`) and each condition, the **lowest price day by day**
+  over the last 90 days, from the prices already recorded
+  (`offer_price_history`: every offer's first price and every change).
+  Drawn from the offers a buyer can see today, the same ones the offers table
+  lists; an offer counts from the day it was made, at its price at the end of
+  each day in Addis Ababa (today: now). Each series holds only the days its
+  lowest price changed, with today's, the lowest and the highest. **Nothing
+  is stored**: like the best offer, it is read, never kept.
+- The product page draws it on the server (`PriceHistoryChart`, plain SVG,
+  no script, readable without JavaScript): one small step chart per
+  condition, so a line is never told apart by its colour alone; the highest
+  and lowest prices on the axis; today's, the lowest and the highest in words;
+  a native tooltip on each step; every value in a table under "Show the prices
+  as a table". The line colour (`#2a78d6`) passes the colour checks of the
+  data-visualisation method against the white card (contrast 3:1 or more);
+  Highland green and Clay stay for their own meanings (I.3). Price-drop alerts
+  are Release 2 (D.27).
+
+### 4. S-03: a shop uploads its own logo
+
+- `POST /api/v1/seller/{seller_id}/store/logo` (a JPEG, PNG or WebP as the
+  multipart field `file`) and `DELETE` the same path, both for the roles that
+  edit the store page (owner and manager, C.3). The upload is checked like
+  every picture (`images.clean_upload`: the upload limit, the bytes must be
+  a picture), decoded and drawn again so nothing but its pixels survives (no
+  camera metadata), fitted inside 256 pixels and written as one WebP file of
+  at most 40 KB in the public store, under an unguessable key with no
+  personal data (`markx/sellers/logos.py`). The old logo's file stays (no
+  feature deletes a file). Both are audited (`store.logo_set`,
+  `store.logo_removed`).
+- `StoreOut` and `PublicStoreOut` carry `logo_url` (null without one). The
+  store settings page shows it with an upload and a remove button; the public
+  shop page shows it beside the name.
+- **The backup and the copy tool know a logo is a file to keep.** Before,
+  `backup/references.py` counted any `stores.logo_key` as an *unclassified*
+  reference, which makes every backup set incomplete: a shop's first logo
+  would have stopped complete backups. A logo is now a public file reference
+  (`store_logo`), and `scripts/copy_files_to_object_storage.py` copies it.
+
+### 5. S-11: a shop's own customers
+
+- `GET /api/v1/seller/{seller_id}/customers?q=&limit=` for the roles that
+  see buyers' contacts (owner, manager, orders; C.3), under `require_seller`,
+  so the isolation test attacks it like every seller route.
+- **Only what the shop's own order pages already show it**: built from its
+  seller orders whose buyer details are visible now (`contact_visible`:
+  confirmed by the shop, not ended without delivery), grouped by the phone
+  number those pages show. A buyer's account is never named or linked;
+  nothing from another shop, and nothing the order page would hide (an order
+  not yet confirmed, or one that ended undelivered, adds nothing). Each
+  customer: the name and area of their latest order, their phone, how many
+  orders and how many completed, the first and last order times, and links
+  to their latest orders. Newest first; a name or at least three digits of a
+  phone number finds one.
+- The seller dashboard has a **Customers** screen (menu: the same roles), its
+  explanation in both languages.
+
+### PROVISIONAL values, for the founder to confirm
+
+- **P-106-1** In Amharic, every date is written Ethiopian first with the
+  Gregorian date in brackets, and every time on the Ethiopian clock after
+  its part of the day, always, with no switch; English is Gregorian. The
+  exact words and order are for the native editor's review (blueprint I.3).
+- **P-106-2** The price chart looks back 90 days, from the offers on sale
+  today, at each day's closing price in Addis Ababa, one chart per condition.
+- **P-106-3** Order again: a line already in the cart keeps the larger of its
+  quantity and the order's (tapping twice never doubles anything); any of the
+  buyer's orders, whatever its state, can be ordered again; the buyer goes
+  straight to the cart unless a price changed or an item could not go back.
+- **P-106-4** The customer list groups by the phone number shown, names each
+  customer's latest 5 orders, shows 200 at a time (500 at most) and is for the
+  roles that see buyers' contacts.
+- **P-106-5** A logo is drawn within 256 pixels and 40 KB as WebP; a shop may
+  send 20 an hour.
+
+### Not built
+
+- Staff cannot take a single shop's logo down (they can suspend the shop,
+  or act on a report about the store, C-30); a logo moderation queue like
+  the pictures' (AD-03) would be the next step if one is ever needed.
+- The logo is shown on the shop's page only, not on offer rows or cards.
+- The chart has no offers that are paused or removed today (their history
+  is kept and could be added); the customer list has no export.
+- The Amharic words of all five features wait for the native editor, like
+  every other Amharic text (I.3).
+
+### Changed
+
+`apps/api/markx/core/ethiopian.py` (new), `markx/notifications/texts.py`,
+`markx/orders/` (`service.py`, `selectors.py`, `router.py`, `schemas.py`),
+`markx/offers/` (`selectors.py`, `router.py`, `schemas.py`),
+`markx/sellers/` (`logos.py` new, `service.py`, `router.py`, `schemas.py`),
+`markx/backup/references.py`, `scripts/copy_files_to_object_storage.py`,
+both OpenAPI copies and the web app's types; `apps/web/src/lib/`
+(`ethiopian.ts`, `price-chart.ts` new; `format.ts`, `api/types.ts`),
+`src/components/` (`PriceHistoryChart.tsx`, `ReorderButton.tsx`,
+`seller/StoreLogo.tsx` new), the product, order, public store, store
+settings, seller overview, documents, performance and staff seller pages,
+`seller/[sellerId]/customers/page.tsx` (new), the seller menu, both message
+files, the buyer and seller-dashboard journeys.
+
+### Tests
+
+- New, all failing on the old code (a checkout of `6378764` with only the new
+  test files): `tests/api/test_d106_release1_features.py` (16 tests: 16 of 16
+  fail), `tests/unit/test_ethiopian_calendar.py` (16 tests; the module does
+  not exist there), and in the web app `src/lib/ethiopian.test.ts` and
+  `src/lib/price-chart.test.ts` (new modules), 4 new cases in
+  `src/lib/format.test.ts` (3 of them fail on the old `format.ts`; the fourth
+  guards the English that must not change).
+- Changed: `src/app/[lang]/seller/[sellerId]/menu.test.ts` lists the new
+  Customers screen for the owner, the manager and the orders role (each
+  role's exact screens are still checked; nothing was removed).
+- The journeys: the buyer journey checks the chart on the product page, the
+  shop's customer list after it accepts, and "Order again" to the cart; the
+  seller-dashboard journey uploads a logo and sees it on the public page, and
+  checks the Customers screen at 360 pixels in both languages.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -5178,7 +5389,7 @@ own shop proposed the product) is OPEN with no provisional answer. SI-1
 21 November 2026: see D-101, which sets eight PROVISIONAL values and rules,
 P-101-1 to P-101-8, and raises F-24 and F-25 (OPEN; recommendations
 given). D-103 (server readiness) sets three PROVISIONAL values, P-103-1 to
-P-103-3, and leaves certificate renewal off until F-17 is decided.** Treat this list as part of the launch
+P-103-3, and leaves certificate renewal off until F-17 is decided. D-105 (backups) sets six PROVISIONAL values, P-105-1 to P-105-6, and D-106 (five Release 1 features) five, P-106-1 to P-106-5.** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a

@@ -226,6 +226,16 @@ let browser;
   const page = await owner.locator('main').innerText();
   expect(page.includes('Mon to Sat, 8:30 to 19:00') && page.includes('Merkato, Piassa'), 'the public page does not show the new settings');
   console.log('7 store settings saved and shown on the public shop page');
+  // The shop's own logo (S-03, D-106), on the public page.
+  await owner.goto(`${BASE}${base}/store`);
+  await owner.getByLabel('Logo (JPEG, PNG or WebP)').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: PNG });
+  await owner.getByRole('button', { name: 'Upload logo' }).click();
+  await owner.getByText("Your logo is on your shop's page.").waitFor();
+  await owner.goto(`${BASE}/en/s/${SLUG}`);
+  const logo = owner.locator('main img[alt$=" logo"]').first();
+  await logo.waitFor();
+  expect(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo does not load on the public page');
+  console.log('  the shop uploaded its logo; it shows on the public page');
 
   // 8. The team: a manager added and removed; another role refused in words.
   await owner.goto(`${BASE}${base}/team`);
@@ -282,7 +292,7 @@ let browser;
   // 11. Both languages, 360 pixels.
   const cookies = await ownerContext.cookies();
   for (const lang of ['en', 'am']) {
-    for (const path of ['', '/documents', '/payout', '/legal', '/store', '/team', '/offers', '/offers/new', '/performance', '/reviews']) {
+    for (const path of ['', '/documents', '/payout', '/legal', '/store', '/team', '/offers', '/offers/new', '/performance', '/reviews', '/customers']) {
       await noOverflow(browser, cookies, `/${lang}/seller/${sellerId}${path}`);
     }
   }

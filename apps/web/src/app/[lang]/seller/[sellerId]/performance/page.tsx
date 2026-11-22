@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { serverApi } from "@/lib/api/server";
-import { formatPrice, formatRating, formatShare } from "@/lib/format";
+import { formatDate, formatPrice, formatRating, formatShare } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
 
@@ -80,7 +80,7 @@ export default async function SellerPerformancePage({ params, searchParams }: Pa
         <ul className="space-y-1">
           {(weekly.data ?? []).map((report) => (
             <li key={report.id} className="rounded-card border border-line bg-white p-3 text-sm">
-              {fill(s.weeklyLine, { date: report.week_start, received: report.figures.orders_received, completed: report.figures.completed, problems: report.figures.problems_reported })}
+              {fill(s.weeklyLine, { date: formatDate(report.week_start, lang), received: report.figures.orders_received, completed: report.figures.completed, problems: report.figures.problems_reported })}
             </li>
           ))}
         </ul>

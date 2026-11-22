@@ -32,6 +32,7 @@ from markx.offers.schemas import (
     OfferIn,
     OfferStatusOut,
     OfferUpdateIn,
+    PriceHistoryOut,
     PriceListItemOut,
     ProductOffersOut,
     SellerOfferDetailOut,
@@ -222,6 +223,18 @@ def product_offers(
     return ProductOffersOut.model_validate(
         selectors.product_offers(db, slug, zone_code=zone, variant_id=variant_id)
     )
+
+
+@public_router.get("/products/{slug}/price-history", response_model=PriceHistoryOut)
+def product_price_history(
+    slug: str, db: Db, response: Response, variant_id: uuid.UUID | None = None
+) -> PriceHistoryOut:
+    """The price-history chart of one version (C-21): for each condition, the
+    lowest price of the offers on sale today, day by day over the last
+    `days` days, from the price changes recorded. Without `variant_id`, the
+    product's first active version."""
+    response.headers["Cache-Control"] = PUBLIC_CACHE
+    return PriceHistoryOut.model_validate(selectors.price_history(db, slug, variant_id=variant_id))
 
 
 @public_router.get("/stores/{slug}/offers", response_model=list[PriceListItemOut])

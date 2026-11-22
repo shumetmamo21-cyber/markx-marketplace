@@ -1533,6 +1533,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/products/{slug}/price-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product Price History
+         * @description The price-history chart of one version (C-21): for each condition, the
+         *     lowest price of the offers on sale today, day by day over the last
+         *     `days` days, from the price changes recorded. Without `variant_id`, the
+         *     product's first active version.
+         */
+        get: operations["product_price_history_api_v1_catalog_products__slug__price_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/products/{slug}/reviews": {
         parameters: {
             query?: never;
@@ -1949,6 +1972,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/orders/{order_id}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder My Order
+         * @description Order again in one tap (C-19): the order's items go back in the cart
+         *     at today's prices; the buyer then checks out as usual.
+         */
+        post: operations["reorder_my_order_api_v1_me_orders__order_id__reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/orders/{order_id}/seller-orders/{seller_order_id}/alternatives": {
         parameters: {
             query?: never;
@@ -2354,6 +2398,27 @@ export interface paths {
         put?: never;
         /** Close Seller */
         post: operations["close_seller_api_v1_seller__seller_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seller/{seller_id}/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Seller Customers
+         * @description The people this shop has served (S-11), newest first: only what its
+         *     own order pages already show it. `q` finds a name or a phone number.
+         */
+        get: operations["list_seller_customers_api_v1_seller__seller_id__customers_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2979,6 +3044,31 @@ export interface paths {
         patch: operations["update_store_api_v1_seller__seller_id__store_patch"];
         trace?: never;
     };
+    "/api/v1/seller/{seller_id}/store/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Store Logo
+         * @description The shop's own logo (S-03): a JPEG, PNG or WebP photo, shown on its
+         *     page. It replaces the logo before.
+         */
+        post: operations["upload_store_logo_api_v1_seller__seller_id__store_logo_post"];
+        /**
+         * Remove Store Logo
+         * @description The shop shows no logo again.
+         */
+        delete: operations["remove_store_logo_api_v1_seller__seller_id__store_logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/seller/{seller_id}/submit": {
         parameters: {
             query?: never;
@@ -3436,6 +3526,11 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_store_logo_api_v1_seller__seller_id__store_logo_post */
+        Body_upload_store_logo_api_v1_seller__seller_id__store_logo_post: {
+            /** File */
+            file: string;
+        };
         /** BrandIn */
         BrandIn: {
             /** Name */
@@ -3805,6 +3900,25 @@ export interface components {
              * @enum {string}
              */
             payment_method: "cash" | "telebirr" | "bank_transfer" | "ethqr";
+        };
+        /** CustomerOrderOut */
+        CustomerOrderOut: {
+            /** Order Code */
+            order_code: string;
+            /**
+             * Placed At
+             * Format: date-time
+             */
+            placed_at: string;
+            /**
+             * Seller Order Id
+             * Format: uuid
+             */
+            seller_order_id: string;
+            /** Status */
+            status: string;
+            /** Total Santim */
+            total_santim: number;
         };
         /** DashboardOut */
         DashboardOut: {
@@ -4743,6 +4857,31 @@ export interface components {
             /** Old Price Santim */
             old_price_santim: number | null;
         };
+        /**
+         * PriceHistoryOut
+         * @description The price-history chart of one version (C-21): for each condition,
+         *     the lowest price day by day, from the price changes recorded.
+         */
+        PriceHistoryOut: {
+            /** Days */
+            days: number;
+            /**
+             * From Day
+             * Format: date
+             */
+            from_day: string;
+            /** Product Slug */
+            product_slug: string;
+            /** Series */
+            series: components["schemas"]["PriceSeriesOut"][];
+            /**
+             * To Day
+             * Format: date
+             */
+            to_day: string;
+            /** Variant Id */
+            variant_id: string | null;
+        };
         /** PriceListItemOut */
         PriceListItemOut: {
             /** Available */
@@ -4796,6 +4935,34 @@ export interface components {
             warranty_months: number;
             /** Warranty Note */
             warranty_note: string | null;
+        };
+        /** PriceSeriesOut */
+        PriceSeriesOut: {
+            /** Condition */
+            condition: string;
+            /** Current Santim */
+            current_santim: number;
+            /** Highest Santim */
+            highest_santim: number;
+            /** Lowest Santim */
+            lowest_santim: number;
+            /** Offers */
+            offers: number;
+            /** Steps */
+            steps: components["schemas"]["PriceStepOut"][];
+        };
+        /**
+         * PriceStepOut
+         * @description From this day (Addis Ababa time), the lowest price was this.
+         */
+        PriceStepOut: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Price Santim */
+            price_santim: number;
         };
         /** ProblemIn */
         ProblemIn: {
@@ -5145,6 +5312,8 @@ export interface components {
             description: string;
             /** Figures Days */
             figures_days: number;
+            /** Logo Url */
+            logo_url: string | null;
             /** Median Minutes To Confirm */
             median_minutes_to_confirm: number | null;
             /**
@@ -5355,6 +5524,66 @@ export interface components {
             reason: string;
         };
         /**
+         * ReorderLineOut
+         * @description An item of the order now in the cart, at today's price.
+         */
+        ReorderLineOut: {
+            /**
+             * Offer Id
+             * Format: uuid
+             */
+            offer_id: string;
+            /** Paid Unit Price Santim */
+            paid_unit_price_santim: number;
+            /** Quantity */
+            quantity: number;
+            /** Title */
+            title: string;
+            /** Unit Price Santim */
+            unit_price_santim: number;
+            /** Variant Label */
+            variant_label: string;
+        };
+        /**
+         * ReorderMissingOut
+         * @description An item of the order that could not go back in the cart.
+         */
+        ReorderMissingOut: {
+            /**
+             * Offer Id
+             * Format: uuid
+             */
+            offer_id: string;
+            /** Product Slug */
+            product_slug: string | null;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "offer_unavailable" | "cart_full";
+            /** Title */
+            title: string;
+            /** Variant Label */
+            variant_label: string;
+        };
+        /**
+         * ReorderOut
+         * @description Order again (C-19): what went back in the cart, and what did not.
+         */
+        ReorderOut: {
+            /** Added */
+            added: components["schemas"]["ReorderLineOut"][];
+            /** Missing */
+            missing: components["schemas"]["ReorderMissingOut"][];
+            /** Order Code */
+            order_code: string;
+            /**
+             * Order Id
+             * Format: uuid
+             */
+            order_id: string;
+        };
+        /**
          * ReportIn
          * @description What is reported, and why. A store is named by its id or its link
          *     name (`store_slug`, as on its page); everything else by its id.
@@ -5562,6 +5791,35 @@ export interface components {
             phone: string;
             /** Shop Address */
             shop_address: string;
+        };
+        /**
+         * SellerCustomerOut
+         * @description One person the shop has served (S-11): only what its own order pages
+         *     already show it, from the orders whose buyer details it can see now.
+         */
+        SellerCustomerOut: {
+            /** Area Name */
+            area_name: string;
+            /** Completed Orders */
+            completed_orders: number;
+            /**
+             * First Order At
+             * Format: date-time
+             */
+            first_order_at: string;
+            /**
+             * Last Order At
+             * Format: date-time
+             */
+            last_order_at: string;
+            /** Name */
+            name: string;
+            /** Orders */
+            orders: number;
+            /** Phone */
+            phone: string;
+            /** Recent Orders */
+            recent_orders: components["schemas"]["CustomerOrderOut"][];
         };
         /** SellerListItemOut */
         SellerListItemOut: {
@@ -6185,6 +6443,8 @@ export interface components {
             areas_served: string[];
             /** Description */
             description: string;
+            /** Logo Url */
+            logo_url: string | null;
             /** Name */
             name: string;
             /** Return Policy */
@@ -9518,6 +9778,39 @@ export interface operations {
             };
         };
     };
+    product_price_history_api_v1_catalog_products__slug__price_history_get: {
+        parameters: {
+            query?: {
+                variant_id?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     product_reviews_api_v1_catalog_products__slug__reviews_get: {
         parameters: {
             query?: {
@@ -10207,6 +10500,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_my_order_api_v1_me_orders__order_id__reorder_post: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReorderOut"];
                 };
             };
             /** @description Validation Error */
@@ -10968,6 +11294,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SellerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_seller_customers_api_v1_seller__seller_id__customers_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerCustomerOut"][];
                 };
             };
             /** @description Validation Error */
@@ -12418,6 +12779,72 @@ export interface operations {
                 "application/json": components["schemas"]["StoreUpdateIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_store_logo_api_v1_seller__seller_id__store_logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_store_logo_api_v1_seller__seller_id__store_logo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_store_logo_api_v1_seller__seller_id__store_logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

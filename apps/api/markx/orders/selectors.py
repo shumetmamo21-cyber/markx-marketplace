@@ -25,7 +25,14 @@ from markx.core.money import Money
 from markx.delivery.models import MAX_HANDOVER_ATTEMPTS, DeliveryZone, Shipment, TrackingEvent
 from markx.delivery.selectors import active_rates_for_zone
 from markx.orders import service
-from markx.orders.models import Cart, Order, OrderItem, OrderStatusEvent, SellerOrder
+from markx.orders.models import (
+    Cart,
+    Order,
+    OrderItem,
+    OrderStatusEvent,
+    SellerOrder,
+    SellerOrderStatus,
+)
 from markx.orders.status import AWAITING_HANDOVER, contact_visible, derive_order_status
 from markx.payments.fees import seller_order_fee
 from markx.payments.models import PaymentIntent
@@ -574,6 +581,87 @@ def seller_order(
         _intents(db, ids)[found.id], language, may_see_contact=may_see_contact,
         problem=_problems(db, ids).get(found.id),
     )  # fmt: skip
+
+
+# -- the seller's customers (blueprint S-11, D.4; D-106) -------------------------------------
+
+# PROVISIONAL (P-106-4): how many of each customer's orders the list names.
+CUSTOMER_RECENT_ORDERS = 5
+
+
+def seller_customers(
+    db: Session, seller_id: uuid.UUID, language: str, *, query: str | None, limit: int
+) -> list[dict[str, Any]]:
+    """The people this shop has served (S-11), built only from what its own
+    order pages already show it: the seller orders whose buyer details are
+    visible now (confirmed by the shop, and not ended without delivery, as
+    `contact_visible` says), grouped by the phone number those pages show.
+    A buyer's account is never named or linked; an order the shop cannot see
+    the contact of, or one that ended undelivered, adds nothing. The route
+    asks for the capability to see buyers' contacts (blueprint C.3).
+    Newest customer first, by their latest order."""
+    rows = db.execute(
+        select(
+            SellerOrder.id,
+            SellerOrder.status,
+            SellerOrder.confirmed_at,
+            SellerOrder.created_at,
+            SellerOrder.total_santim,
+            Order.code,
+            Order.address_snapshot,
+        )
+        .join(Order, Order.id == SellerOrder.order_id)
+        .where(SellerOrder.seller_id == seller_id, SellerOrder.confirmed_at.is_not(None))
+        .order_by(SellerOrder.created_at.desc(), SellerOrder.id.desc())
+    ).all()
+    other = "en" if language == "am" else "am"
+    found: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not contact_visible(row.status, row.confirmed_at is not None):
+            continue
+        address: dict[str, Any] = row.address_snapshot or {}
+        phone = address.get("phone")
+        if not isinstance(phone, str) or not phone:
+            continue
+        customer = found.get(phone)
+        if customer is None:  # their latest order: its name and area are shown
+            customer = found[phone] = {
+                "phone": phone,
+                "name": address.get("recipient_name") or "",
+                "area_name": address.get(f"area_name_{language}")
+                or address.get(f"area_name_{other}")
+                or "",
+                "orders": 0,
+                "completed_orders": 0,
+                "first_order_at": row.created_at,
+                "last_order_at": row.created_at,
+                "recent_orders": [],
+            }
+        customer["orders"] += 1
+        if row.status == SellerOrderStatus.COMPLETED:
+            customer["completed_orders"] += 1
+        customer["first_order_at"] = row.created_at
+        if len(customer["recent_orders"]) < CUSTOMER_RECENT_ORDERS:
+            customer["recent_orders"].append({
+                "seller_order_id": row.id, "order_code": row.code, "status": row.status,
+                "placed_at": row.created_at, "total_santim": row.total_santim,
+            })  # fmt: skip
+    customers = list(found.values())
+    wanted = (query or "").strip().casefold()
+    if wanted:
+        digits = "".join(ch for ch in wanted if ch.isdigit())
+        customers = [
+            c
+            for c in customers
+            if wanted in c["name"].casefold()
+            or (len(digits) >= 3 and (digits in c["phone"] or _local(digits) in c["phone"]))
+        ]
+    return customers[:limit]
+
+
+def _local(digits: str) -> str:
+    """A number typed the local way, 09..., as the shown form has it: +2519..."""
+    return "251" + digits[1:] if digits.startswith("0") else digits
 
 
 # -- orders: staff ---------------------------------------------------------------------

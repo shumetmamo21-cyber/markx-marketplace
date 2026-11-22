@@ -141,6 +141,8 @@ class StoreOut(ApiModel):
     working_hours: str
     areas_served: list[str]
     telegram_channel: str | None
+    # The shop's own logo (S-03), or null.
+    logo_url: str | None
 
 
 class MemberIn(ApiModel):
@@ -171,6 +173,8 @@ class PublicStoreOut(ApiModel):
     working_hours: str
     areas_served: list[str]
     telegram_channel: str | None
+    # The shop's own logo (S-03), or null.
+    logo_url: str | None
     seller_kind: str
     shop_address: str
     shop_latitude: float | None

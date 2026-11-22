@@ -7,7 +7,7 @@ stored (blueprint D.7, G.4).
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -20,6 +20,7 @@ from markx.core import settings_store
 from markx.core.errors import NotFound
 from markx.delivery.models import DeliveryMode, DeliveryRate, DeliveryZone
 from markx.offers.models import (
+    Condition,
     Inventory,
     InventoryMovement,
     Offer,
@@ -448,3 +449,124 @@ def held_offers(
         }
         for offer, variant, product, store in rows
     ]
+
+
+# -- the price-history chart (blueprint C-21, D.7; D-106) ----------------------------------
+
+# PROVISIONAL (P-106-2): the chart looks back this many days.
+PRICE_HISTORY_DAYS = 90
+_ADDIS = timezone(timedelta(hours=3), "EAT")  # Ethiopia keeps UTC+3 all year
+_CONDITION_ORDER = [c.value for c in Condition]
+
+
+def price_history(
+    db: Session, slug: str, *, variant_id: uuid.UUID | None, now: datetime | None = None
+) -> dict[str, Any]:
+    """The lowest price of one version, day by day, for each condition
+    (blueprint C-21), from the price changes already recorded (every offer's
+    first price and each change since, `offer_price_history`).
+
+    It is drawn from the offers a buyer can see today, the same ones the
+    offers table lists: an offer counts from the day it was made, at the
+    price it had at the end of each day (Addis Ababa time; today, now).
+    Nothing is stored: like the best offer, the chart is read, never kept.
+    Each series holds a step only where its lowest price changed."""
+    not_found = NotFound("product_not_found", "That product was not found.")
+    product = db.scalar(select(Product).where(Product.slug == slug))
+    if product is None:
+        raise not_found
+    product = resolve_merged(db, product)
+    if product.status != ProductStatus.APPROVED:
+        raise not_found
+    variants = list(
+        db.scalars(
+            select(ProductVariant)
+            .where(ProductVariant.product_id == product.id, ProductVariant.is_active)
+            .order_by(ProductVariant.position, ProductVariant.id)
+        )
+    )
+    chosen = next((v for v in variants if v.id == variant_id), None) if variant_id else None
+    if variant_id is not None and chosen is None:
+        raise NotFound("variant_not_found", "That version of the product was not found.")
+    chosen = chosen or (variants[0] if variants else None)
+    now = now or datetime.now(UTC)
+    today = now.astimezone(_ADDIS).date()
+    first_day = today - timedelta(days=PRICE_HISTORY_DAYS - 1)
+    out: dict[str, Any] = {
+        "product_slug": product.slug,
+        "variant_id": chosen.id if chosen else None,
+        "days": PRICE_HISTORY_DAYS,
+        "from_day": first_day,
+        "to_day": today,
+        "series": [],
+    }
+    if chosen is None:
+        return out
+    min_level = settings_store.get_int(db, "sellers.min_level_to_publish")
+    offers: dict[uuid.UUID, Offer] = {
+        offer.id: offer
+        for offer, *_ in db.execute(
+            _live_offers().where(
+                Offer.variant_id == chosen.id, Seller.verification_level >= min_level
+            )
+        ).all()
+    }
+    changes: dict[uuid.UUID, list[tuple[datetime, int]]] = {key: [] for key in offers}
+    if offers:
+        for offer_id, changed_at, price in db.execute(
+            select(
+                OfferPriceHistory.offer_id,
+                OfferPriceHistory.changed_at,
+                OfferPriceHistory.new_price_santim,
+            )
+            .where(OfferPriceHistory.offer_id.in_(offers), OfferPriceHistory.changed_at <= now)
+            .order_by(OfferPriceHistory.changed_at, OfferPriceHistory.id)
+        ):
+            changes[offer_id].append((changed_at, price))
+    for key, history in changes.items():
+        if not history:  # every offer records its first price; this guards an older row
+            history.append((offers[key].created_at, offers[key].price_santim))
+    for condition in _CONDITION_ORDER:
+        mine = [changes[key] for key, offer in offers.items() if offer.condition == condition]
+        if not mine:
+            continue
+        steps = _lowest_by_day(mine, first_day, today, now)
+        if not steps:
+            continue
+        prices = [price for _, price in steps]
+        out["series"].append({
+            "condition": condition,
+            "offers": len(mine),
+            "current_santim": prices[-1],
+            "lowest_santim": min(prices),
+            "highest_santim": max(prices),
+            "steps": [{"day": day, "price_santim": price} for day, price in steps],
+        })  # fmt: skip
+    return out
+
+
+def _lowest_by_day(
+    offers: list[list[tuple[datetime, int]]], first_day: date, today: date, now: datetime
+) -> list[tuple[date, int]]:
+    """The lowest end-of-day price of these offers, as the days where it changed."""
+    steps: list[tuple[date, int]] = []
+    seen = [0] * len(offers)  # per offer: how many of its changes are before the day's end
+    day = first_day
+    while day <= today:
+        # The end of the day; for today, this moment (a change made now counts).
+        end = (
+            now + timedelta(microseconds=1)
+            if day == today
+            else datetime.combine(day + timedelta(days=1), time(), _ADDIS)
+        )
+        lowest: int | None = None
+        for index, history in enumerate(offers):
+            while seen[index] < len(history) and history[seen[index]][0] < end:
+                seen[index] += 1
+            if seen[index]:
+                price = history[seen[index] - 1][1]
+                lowest = price if lowest is None else min(lowest, price)
+        if lowest is not None and (not steps or steps[-1][1] != lowest):
+            steps.append((day, lowest))
+        day += timedelta(days=1)
+    return steps

@@ -55,7 +55,8 @@ from markx.core.storage import (
     sniff_image_type,
 )
 from markx.images.service import main_key, thumb_key
-from markx.sellers.models import SellerDocument
+from markx.sellers.logos import logo_file
+from markx.sellers.models import SellerDocument, Store
 from markx.trust.models import ProblemPhoto
 
 
@@ -63,7 +64,8 @@ from markx.trust.models import ProblemPhoto
 class FileRef:
     """One file a database row refers to."""
 
-    kind: str  # seller_document, picture_source, picture_thumb, picture_main, problem_photo
+    # seller_document, picture_source, picture_thumb, picture_main, problem_photo, store_logo
+    kind: str
     row_id: uuid.UUID
     store: StoreName
     key: str
@@ -89,6 +91,11 @@ def file_references(db: Session) -> list[FileRef]:
             refs.append(FileRef("picture_main", image.id, "public", main_key(image), "image/webp"))
     for photo in db.scalars(select(ProblemPhoto).order_by(ProblemPhoto.id)):
         refs.append(FileRef("problem_photo", photo.id, "private", photo.file_key, "image/webp"))
+    # A shop's logo (S-03, D-106).
+    for store in db.scalars(select(Store).where(Store.logo_key.is_not(None)).order_by(Store.id)):
+        assert store.logo_key is not None
+        refs.append(FileRef("store_logo", store.id, "public", logo_file(store.logo_key),
+                            "image/webp"))  # fmt: skip
     return refs
 
 

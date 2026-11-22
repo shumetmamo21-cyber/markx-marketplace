@@ -43,6 +43,10 @@ async function code(page, phone) {
   console.log('  cancelled leftover open parts:', cancelled);
   // 2. Add the best offer for the Tecno to the cart.
   await buyer.goto(`${BASE}/en/p/tecno-spark-20?zone=bole`);
+  // The price-history chart (C-21, D-106): drawn on the server, with its table.
+  await buyer.getByRole('heading', { name: 'Price history' }).waitFor();
+  const chart = buyer.locator('section[aria-labelledby=price-history] svg[role=img]').first();
+  if (!/Now ETB [\d,]+ · lowest ETB [\d,]+ · highest ETB [\d,]+/.test(await chart.getAttribute('aria-label'))) throw new Error('the price chart has no summary');
   await buyer.getByRole('button', { name: 'Add to cart' }).first().click();
   await buyer.getByText('Added to your cart').waitFor();
   await buyer.goto(`${BASE}/en/cart`);
@@ -76,6 +80,15 @@ async function code(page, phone) {
   await shop.getByRole('link', { name: /Order MX-/ }).first().click();
   await shop.getByRole('button', { name: 'Accept the order' }).click();
   await shop.getByText('Confirmed by the shop').first().waitFor();
+  // Accepted: the buyer is on the shop's customer list (S-11, D-106), with
+  // what the order page shows, and the order links back.
+  const orderPage = shop.url();
+  await shop.goto(orderPage.replace(/\/orders\/.*/, '/customers'));
+  await shop.getByRole('heading', { name: 'Your customers' }).waitFor();
+  const customer = shop.locator('main li', { hasText: 'Demo Buyer' }).first();
+  await customer.waitFor();
+  console.log('  shop: the buyer is on its customer list:', (await customer.locator('p').first().innerText()).trim());
+  await shop.goto(orderPage);
   await shop.getByRole('button', { name: 'Mark as packed' }).click();
   const next = shop.getByRole('button', { name: /Send with a rider|Enter the buyer's code/ });
   await next.first().waitFor();
@@ -110,6 +123,29 @@ async function code(page, phone) {
   await buyer.getByText('Completed').first().waitFor();
   console.log('6 final status:', await buyer.locator('section span.rounded-full').first().innerText());
   await buyer.screenshot({ path: (process.argv[2] || '.') + '/order-done.png', fullPage: true });
+  // 7. Order again in one tap (C-19, D-106): the same item, at today's price, in the cart.
+  const orderUrl = buyer.url();
+  await buyer.getByRole('button', { name: 'Order again' }).click();
+  // Straight to the cart, or first a note of what changed with a link to it.
+  const goToCart = buyer.getByRole('link', { name: 'Go to the cart' });
+  for (let i = 0; i < 150 && new URL(buyer.url()).pathname !== '/en/cart'; i++) {
+    const noted = await goToCart.count().catch(() => 0);
+    if (noted) {
+      console.log('  order again says first:', (await buyer.getByRole('status').first().innerText()).replace(/\s+/g, ' '));
+      await goToCart.click();
+      break;
+    }
+    await buyer.waitForTimeout(200);
+  }
+  await buyer.waitForURL((url) => url.pathname === '/en/cart');
+  await buyer.getByRole('link', { name: 'Continue to checkout' }).waitFor();
+  console.log('7 ordered again from', new URL(orderUrl).pathname.replace(/[0-9a-f-]{36}/, '{order}'), '- the cart holds:', await buyer.locator('section h2').first().innerText());
+  // Emptied again, so the journeys after this one start with an empty cart.
+  const emptied = await buyer.evaluate(async () => {
+    const csrf = decodeURIComponent(document.cookie.split('; ').find((c) => c.startsWith('markx_csrf=')).split('=')[1]);
+    return (await fetch('/api/v1/cart', { method: 'DELETE', headers: { 'X-MarkX-Client': 'web', 'X-CSRF-Token': csrf } })).status;
+  });
+  if (emptied !== 200) throw new Error(`emptying the cart answered ${emptied}`);
   console.log('console errors:', errors.length ? errors : 'none');
   await browser.close();
   if (errors.length) process.exit(1);

@@ -112,7 +112,16 @@
     "added": "Added to your cart",
     "addFailed": "That offer could not be added. Refresh and try again.",
     "outOfStock": "Out of stock",
-    "inspect": "Pay after you inspect. Give your handover code only when the goods are right."
+    "inspect": "Pay after you inspect. Give your handover code only when the goods are right.",
+    "priceHistory": "Price history",
+    "priceHistoryLead": "The lowest price of this version each day for the last {days} days, from the shops selling it today.",
+    "priceHistoryRange": "{from} to {to}.",
+    "priceHistorySummary": "Now {current} · lowest {lowest} · highest {highest}",
+    "priceHistorySteady": "The lowest price has not changed in this time.",
+    "priceHistoryFrom": "From {date}: {price}",
+    "priceHistoryTable": "Show the prices as a table",
+    "priceHistoryDay": "Day",
+    "priceHistoryPrice": "Lowest price"
   },
   "footer": {
     "about": "MarkX compares prices from verified shops in Addis Ababa. MarkX never holds your money.",
@@ -279,7 +288,17 @@
     "alternativesTitle": "Another shop has it",
     "alternativesLead": "This shop could not fill your order. The best offer from another shop for the same version:",
     "alternativeFor": "For {quantity} × {title}",
-    "alternativeAdd": "Add to cart"
+    "alternativeAdd": "Add to cart",
+    "reorder": "Order again",
+    "reordering": "Adding to your cart…",
+    "reorderLead": "The same items from the same shops go in your cart at today's prices. You check them before you order.",
+    "reorderDone": "{count} items are in your cart at today's prices.",
+    "reorderPriceChanged": "{title}: now {now} (you paid {paid})",
+    "reorderUnavailable": "{title} is no longer sold by this shop.",
+    "reorderCartFull": "{title} did not fit: your cart is full.",
+    "reorderOtherShops": "See other shops",
+    "reorderGoToCart": "Go to the cart",
+    "reorderFailed": "Could not add the items to your cart."
   },
   "status": {
     "placed": "Waiting for the shop",
@@ -334,7 +353,8 @@
     "confirmTime": "Usually accepts within {minutes} min",
     "deliveryShare": "{share} of deliveries succeed",
     "noTrack": "No orders to count yet.",
-    "confirmTimeFast": "Usually accepts within a minute"
+    "confirmTimeFast": "Usually accepts within a minute",
+    "logoAlt": "{name} logo"
   },
   "apiErrors": {
     "too_many_open_orders": "You already have the most open orders allowed. Wait until one is delivered or cancel one.",
@@ -737,7 +757,25 @@
     "proposeLink": "Not in the catalogue? Suggest it",
     "telegramTitle": "Order alerts in Telegram",
     "telegramState": "Your Telegram: {status}.",
-    "telegramManage": "Set it up in your account"
+    "telegramManage": "Set it up in your account",
+    "navCustomers": "Customers",
+    "customersTitle": "Your customers",
+    "customersLead": "The people whose orders you confirmed, with only what their order pages show you. When an order ends without delivery its buyer is hidden again, as on the order page.",
+    "customersNone": "No customers yet. They appear here once you confirm their order.",
+    "customersNoMatch": "Nobody matches that.",
+    "customersSearch": "Find a name or phone number",
+    "customersFind": "Find",
+    "customerOrders": "{count} orders · {completed} completed",
+    "customerLast": "Last order {date}",
+    "customerCall": "Call {phone}",
+    "logoTitle": "Logo",
+    "logoLead": "Shown on your shop's page. A square picture works best.",
+    "logoChoose": "Logo (JPEG, PNG or WebP)",
+    "logoUpload": "Upload logo",
+    "logoSaved": "Your logo is on your shop's page.",
+    "logoRemove": "Remove the logo",
+    "logoRemoved": "The logo was removed.",
+    "logoNone": "No logo yet."
   },
   "admin": {
     "title": "MarkX staff",
