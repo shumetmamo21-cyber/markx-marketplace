@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addisDay, formatPrice, formatRating, formatShare, timeAgo } from "./format";
+import { addisDay, formatDate, formatDateTime, formatPrice, formatRating, formatShare, timeAgo } from "./format";
 import { fill } from "./i18n";
 
 describe("formatPrice", () => {
@@ -71,5 +71,30 @@ describe("formatRating", () => {
     expect(formatRating(4.24)).toBe("4.2");
     expect(formatRating(5)).toBe("5.0");
     expect(formatRating(1)).toBe("1.0");
+  });
+});
+
+describe("formatDateTime (blueprint C-05, I.7)", () => {
+  it("shows Amharic dates in the Ethiopian calendar, the Gregorian date in brackets, on the Ethiopian clock", () => {
+    // 06:30 UTC is 9:30 in the morning in Addis Ababa: 3:30 on the Ethiopian clock.
+    expect(formatDateTime("2026-11-22T06:30:00Z", "am")).toBe("13 ኅዳር 2019 (22 ኖቬም 2026) ጥዋት 3:30");
+    // 21:30 UTC is already the next day in Addis Ababa, half past midnight.
+    expect(formatDateTime("2026-11-22T21:30:00Z", "am")).toBe("14 ኅዳር 2019 (23 ኖቬም 2026) በሌሊት 6:30");
+    expect(formatDateTime("2023-09-12T15:00:00Z", "am")).toBe("1 መስከረም 2016 (12 ሴፕቴ 2023) በምሽት 12:00");
+  });
+  it("leaves English dates Gregorian, on the 24-hour clock", () => {
+    expect(formatDateTime("2026-11-22T06:30:00Z", "en")).toBe("22 Nov 2026, 09:30");
+  });
+});
+
+describe("formatDate", () => {
+  it("shows a calendar day in both calendars in Amharic, and Gregorian in English", () => {
+    expect(formatDate("2026-11-16", "am")).toBe("7 ኅዳር 2019 (16 ኖቬም 2026)");
+    expect(formatDate("2027-09-11", "am")).toBe("6 ጳጉሜን 2019 (11 ሴፕቴ 2027)");
+    expect(formatDate("2026-11-16", "en")).toBe("16 Nov 2026");
+  });
+  it("shows anything that is not a real day as it came", () => {
+    expect(formatDate("2026-02-30", "am")).toBe("2026-02-30");
+    expect(formatDate("soon", "en")).toBe("soon");
   });
 });

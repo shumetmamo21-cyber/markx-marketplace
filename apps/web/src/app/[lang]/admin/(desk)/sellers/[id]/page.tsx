@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { DocumentReview, SellerDecision, SellerStanding } from "@/components/admin/StaffActions";
 import { serverApi } from "@/lib/api/server";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { fill, isLocale, type Messages } from "@/lib/i18n";
 import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
@@ -50,7 +50,7 @@ export default async function SellerReviewPage({ params }: PageProps<"/[lang]/ad
           {fill(a.levelNow, { level: seller.verification_level })}
           {seller.verified_at ? ` · ${fill(a.verifiedAt, { time: formatDateTime(seller.verified_at, lang) })}` : ""}
           {seller.shop_visited_at ? ` · ${fill(a.visitedAt, { time: formatDateTime(seller.shop_visited_at, lang) })}` : ""}
-          {seller.recheck_due_on ? ` · ${fill(a.recheckDue, { date: seller.recheck_due_on })}` : ""}
+          {seller.recheck_due_on ? ` · ${fill(a.recheckDue, { date: formatDate(seller.recheck_due_on, lang) })}` : ""}
         </p>
         <div>
           <h3 className="text-sm font-semibold">{a.checksTitle}</h3>

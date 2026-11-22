@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { DocumentUploadForm, OpenDocumentButton } from "@/components/seller/SellerForms";
 import { serverApi } from "@/lib/api/server";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { fill, isLocale } from "@/lib/i18n";
 import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
@@ -34,7 +34,7 @@ export default async function SellerDocumentsPage({ params }: PageProps<"/[lang]
             <p className="flex flex-wrap items-center justify-between gap-2">
               <span>
                 <span className="block font-semibold">{codeLabel(t, "docType", document.doc_type)}</span>
-                <span className="block text-sm text-slate">{formatDateTime(document.created_at, lang)}{document.expires_on ? ` · ${fill(s.docExpiresOn, { date: document.expires_on })}` : ""}</span>
+                <span className="block text-sm text-slate">{formatDateTime(document.created_at, lang)}{document.expires_on ? ` · ${fill(s.docExpiresOn, { date: formatDate(document.expires_on, lang) })}` : ""}</span>
               </span>
               <span className="rounded-full border border-line px-3 py-1 text-sm font-semibold">{codeLabel(t, "documentStatus", document.review_status)}</span>
             </p>

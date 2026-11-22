@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { CloseShopForm, SubmitApplicationForm } from "@/components/seller/SellerForms";
 import { serverApi } from "@/lib/api/server";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { fill, isLocale, type Messages } from "@/lib/i18n";
 import { codeLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
@@ -51,7 +51,7 @@ export default async function SellerOverview({ params }: PageProps<"/[lang]/sell
           {fill(s.homeLevel, { level: shop.verification_level })} · {fill(s.homeRole, { role: codeLabel(t, "sellerRole", shop.role) })}
         </p>
         {shop.submitted_at ? <p className="text-sm text-slate">{fill(s.submittedOn, { date: formatDateTime(shop.submitted_at, lang) })}</p> : null}
-        {shop.recheck_due_on ? <p className="text-sm text-slate">{fill(s.recheckDue, { date: shop.recheck_due_on })}</p> : null}
+        {shop.recheck_due_on ? <p className="text-sm text-slate">{fill(s.recheckDue, { date: formatDate(shop.recheck_due_on, lang) })}</p> : null}
       </header>
 
       {shop.review_note ? <p className="rounded-card border border-clay bg-white p-3">{fill(s.reviewNote, { note: shop.review_note })}</p> : null}

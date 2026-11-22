@@ -1,5 +1,6 @@
 // Formatting that every screen shares (blueprint I.3, I.7). Money arrives
 // from the API in whole santim and is never computed here.
+import { addisParts, ethiopianClockText, ethiopianDateText, toEthiopian } from "./ethiopian";
 import type { Locale } from "./i18n";
 
 const SANTIM_PER_BIRR = 100;
@@ -30,13 +31,37 @@ export function timeAgo(iso: string, locale: Locale, now: Date = new Date()): st
   return format.format(0, "minute");
 }
 
-/** A date and time in Addis Ababa, where every MarkX shop is. */
+const ADDIS = "Africa/Addis_Ababa";
+
+/** A date and time in Addis Ababa, where every MarkX shop is. In Amharic
+ * (blueprint C-05, I.7): the Ethiopian date, the Gregorian date in brackets,
+ * then the time on the Ethiopian clock, "13 ኅዳር 2019 (22 ኖቬም 2026) ጥዋት 3:30"
+ * for 9:30 in the morning. English is unchanged: "22 Nov 2026, 09:30". */
 export function formatDateTime(iso: string, locale: Locale): string {
-  return new Intl.DateTimeFormat(locale === "am" ? "am-ET" : "en-GB", {
-    timeZone: "Africa/Addis_Ababa",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
+  if (locale !== "am") {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: ADDIS, dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+  }
+  const here = addisParts(iso);
+  const gregorian = new Intl.DateTimeFormat("am-ET", { timeZone: ADDIS, dateStyle: "medium" }).format(new Date(iso));
+  return `${ethiopianDateText(toEthiopian(here.year, here.month, here.day))} (${gregorian}) ${ethiopianClockText(here.hour, here.minute)}`;
+}
+
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** A calendar day the API sends as YYYY-MM-DD (a document's expiry, a week's
+ * first day). In Amharic the Ethiopian date with the Gregorian one in
+ * brackets, "7 ኅዳር 2019 (16 ኖቬም 2026)"; in English "16 Nov 2026". Anything
+ * that is not such a day is shown as it came. */
+export function formatDate(day: string, locale: Locale): string {
+  const match = ISO_DAY.exec(day);
+  if (!match) return day;
+  const [year, month, date] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const noon = new Date(Date.UTC(year, month - 1, date, 12));
+  if (noon.getUTCMonth() !== month - 1 || noon.getUTCDate() !== date) return day;
+  // Noon UTC is the same calendar day everywhere from UTC-11 to UTC+11, Addis Ababa included.
+  const gregorian = new Intl.DateTimeFormat(locale === "am" ? "am-ET" : "en-GB", { timeZone: "UTC", dateStyle: "medium" }).format(noon);
+  if (locale !== "am") return gregorian;
+  return `${ethiopianDateText(toEthiopian(year, month, date))} (${gregorian})`;
 }
 
 /** Whether a moment has passed. For server pages rendered per request, where
