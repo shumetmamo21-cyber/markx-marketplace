@@ -12,10 +12,14 @@
 # The users and what each may do (docs/runbooks/backup-and-restore.md):
 #
 #   markx-backup-writer-dev-only     the SERVER's backup key: add, read and list
-#                                    the backup bucket; extend (never shorten)
-#                                    an object lock; abort its own unfinished
-#                                    uploads. It can NOT delete anything (BK-1).
-#   markx-backup-reader-dev-only     the RECOVERY MACHINE's key: read and list only.
+#                                    the backup bucket, and list its versions (to
+#                                    see a file written again, RN-1); extend (never
+#                                    shorten) an object lock; abort its own
+#                                    unfinished uploads. It can NOT delete
+#                                    anything (BK-1).
+#   markx-backup-reader-dev-only     the RECOVERY MACHINE's key: read and list only,
+#                                    older versions included (an older locked copy
+#                                    of a file written again, RN-1).
 #   markx-backup-retention-dev-only  the RETENTION job's key, off the server:
 #                                    read, list and delete (every version).
 #   markx-source-reader-dev-only     reads the two file buckets; never writes.
@@ -51,7 +55,7 @@ user() {  # access key, secret key, policy
 }
 
 policy markx-backup-writer "
-  {\"Effect\": \"Allow\", \"Action\": [\"s3:ListBucket\", \"s3:GetBucketLocation\",
+  {\"Effect\": \"Allow\", \"Action\": [\"s3:ListBucket\", \"s3:ListBucketVersions\", \"s3:GetBucketLocation\",
     \"s3:GetBucketObjectLockConfiguration\", \"s3:GetBucketVersioning\",
     \"s3:ListBucketMultipartUploads\"], \"Resource\": [$BACKUP_BUCKETS]},
   {\"Effect\": \"Allow\", \"Action\": [\"s3:PutObject\", \"s3:GetObject\",
@@ -59,10 +63,11 @@ policy markx-backup-writer "
     \"s3:ListMultipartUploadParts\"], \"Resource\": [$BACKUP_OBJECTS]}"
 
 policy markx-backup-reader "
-  {\"Effect\": \"Allow\", \"Action\": [\"s3:ListBucket\", \"s3:GetBucketLocation\",
-    \"s3:GetBucketObjectLockConfiguration\"], \"Resource\": [$BACKUP_BUCKETS]},
-  {\"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\", \"s3:GetObjectRetention\"],
-    \"Resource\": [$BACKUP_OBJECTS]}"
+  {\"Effect\": \"Allow\", \"Action\": [\"s3:ListBucket\", \"s3:ListBucketVersions\",
+    \"s3:GetBucketLocation\", \"s3:GetBucketObjectLockConfiguration\"],
+    \"Resource\": [$BACKUP_BUCKETS]},
+  {\"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\", \"s3:GetObjectVersion\",
+    \"s3:GetObjectRetention\"], \"Resource\": [$BACKUP_OBJECTS]}"
 
 policy markx-backup-retention "
   {\"Effect\": \"Allow\", \"Action\": [\"s3:ListBucket\", \"s3:ListBucketVersions\",

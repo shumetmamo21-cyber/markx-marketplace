@@ -22,7 +22,8 @@ deployment ready for a server (D-103), and Part A.000000000000000000 the
 same day by the session that fixed the defect the independent review of
 pull request #11 found (D-103 section 5), and Part A.0000000000000000000
 the same day by the session that reviewed and merged pull request #11 and
-made three small fixes (D-104).
+made three small fixes (D-104), and Part A.00000000000000000000 the same
+day by the session that finished the backups (D-105).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -31,6 +32,68 @@ made three small fixes (D-104).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.00000000000000000000 — The backups finished before any real data (21 November 2026, D-105)
+
+Branch `claude/backup-audit-findings-0icpm4`, from `main` at `9daaf57`
+with the complete history. One pull request into `main`, **#13**
+(https://github.com/shumetmamo21-cyber/markx-marketplace/pull/13), **not
+merged**: this is backup security work, so an independent review comes
+first. Every GitHub check passed on `4742a9a` (CI #179, 8 of 8 jobs;
+Browser journeys #55). **No database change, no API change.
+Nothing deployed; no account, monitor, Telegram group, bucket, server or
+paid resource; nothing was sent to Telegram or any monitor.**
+
+**For the founder, in plain words:**
+
+1. **If the server is lost, someone now hears of it (BK-4).** After each
+   good backup the server "checks in" with an outside service; when the
+   check-ins stop, that service alerts you, whatever happened to the
+   server. Problems on the server itself (a part of the site that stays
+   unhealthy for 15 minutes) go to the staff Telegram group through the
+   bot, and one command sends a test alert to prove it reaches your phone.
+   **Both are switched off until you choose the outside service and create
+   the group (F-18).**
+2. **A safe copy of the server's own secrets (BK-5).** One file holds the
+   keys the site needs to read its own data, the database passwords and the
+   certificate key, locked with the backup recovery key. Without that key
+   it is useless, so it is safe to keep on your phone (in your password
+   manager, next to the recovery key). **Who keeps it, and where, is your
+   decision (F-19).** The monthly test restore now proves it works: a staff
+   member signs in to the restored copy with the code on their phone.
+3. **The five notes from the pull request #4 review are fixed:** a backup
+   file written over is recovered from its locked original and raises an
+   alert (RN-1); the recovery script can no longer delete or stop something
+   that is not its own, and its database is private to its user (RN-2,
+   RN-3); a too-long folder name gives a clear FAILED instead of a crash
+   (RN-4); and a test-restore report can no longer claim "passed" without
+   showing it (RN-5).
+
+**For the next engineer:**
+
+- Read `docs/DECISIONS.md` D-105 (limits, six PROVISIONAL values) and the
+  runbook's new sections: "Alerts that still work when the server is lost",
+  "The secrets copy", "A backup file was overwritten".
+- The RN tests use only names that exist on `main`, so they fail on the
+  old code for what they check. **Keep every recovery-script test's paths
+  inside its own temporary folder**: run against the old script, a path
+  outside it is deleted (`docs/DEVELOPMENT_STATUS.md`, "Lessons").
+- Commands: `python -m markx.backup escrow-secrets | open-secrets |
+  heartbeat`, `drill --from-destination --secrets-from-destination
+  --staff-phone`, `python -m markx.ops.notify test | send`, `deploy.sh
+  alert-test | watch | watch install-timer | escrow-secrets`.
+- Still open from the backup findings: BK-8 to BK-16 and BK-18; signing
+  off the server; scheduled deep verification (BK-11); drill reports are
+  not signed (D-105 section 6).
+- **Founder decisions this touches:** F-16 (provider; then the runbook's
+  real-provider tests, items 8 and 9 new), F-18 (monitor and alert group),
+  F-19 (who keeps the recovery key and the secrets copy, and which staff
+  member signs in at the drill), F-20.
+
+Test results: `docs/DEVELOPMENT_STATUS.md`, "Tests executed", 21 November
+2026 (D-105).
 
 ---
 

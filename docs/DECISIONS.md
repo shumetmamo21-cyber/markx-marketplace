@@ -4928,6 +4928,237 @@ MarkX goes live.**
 - Full results: `docs/DEVELOPMENT_STATUS.md`, "Tests executed", 21 November
   2026 (D-104).
 
+## D-105 Backups finished before any real data: alerts that work without the server (BK-4), a safe copy of the server's secrets (BK-5), and the pull request #4 review notes RN-1 to RN-5
+
+21 November 2026. Branch `claude/backup-audit-findings-0icpm4`, from `main`
+at `9daaf57` with the complete history. **Built and tested with PostgreSQL
+17.12, MinIO, local containers and stand-ins only. Nothing deployed; no
+account, monitor, Telegram group, bucket, server or paid resource; nothing
+was sent to Telegram or to any monitoring service.** The audit's findings:
+`docs/reports/2026-11-19-independent-audit.md` sections 3H, 3F, 5 and 6.
+The review notes: the independent review of pull request #4 (its comment of
+19 November 2026); RN-1 is its note 1, RN-2 and RN-3 its note 2, RN-4 its
+note 3, RN-5 its note 4. **No item labelled "BT" exists in the repository's
+documents** (the task named "the BT items"); what that meant is UNKNOWN,
+and D-096 with its PROVISIONAL items P-096-1 to P-096-6 was read instead.
+
+Each finding was first checked against the code at `9daaf57`: all seven
+were still true (BK-4: alerts only on the server, no channel; BK-5: no
+copy of the secrets; RN-1: verify, restore and the drill read the current
+version only; RN-2: `rm -rf "$SOCKET_DIR"` and `docker rm -f "$NAME"`
+unchecked; RN-3: `chmod 777` on the socket folder; RN-4: a long socket path
+raised `psycopg.OperationalError` out of the drill; RN-5: `passed = report
+["passed"] is True`).
+
+### 1. BK-4: alerts that still work if the server is lost
+
+- **The outside heartbeat** (`markx/backup/heartbeat.py`): after each
+  VERIFIED, complete set the backup service calls
+  `MARKX_BACKUP_HEARTBEAT_URL` (a plain GET, no data). An outside monitor
+  expects it daily and alerts the founder when it stops: the dead man's
+  switch the audit asked for. Treated as a secret (`SecretStr`: never
+  logged, printed or recorded; only its host name is shown); https on
+  staging and production; a user name or password in it is refused. Two
+  tries; a failure is recorded in the run (`heartbeat: failed:http_500`) and
+  never fails the set; an incomplete or failed set sends nothing.
+  `python -m markx.backup heartbeat [--send]` says whether it is on and can
+  call it once. **Off until F-18**: unset, the service says so at start-up.
+- **Alerts without the database** (`markx/ops/notify.py`): `test` sends a
+  test alert to the staff Telegram group through the bot and exits 0 only
+  when the group accepted it; with alerts off it says "NOT DELIVERED TO ANY
+  PERSON" and exits 1. `send` sends one operational alert. Both use the
+  same sender as the worker's watch (`ops.alerts.get_alert_sender`), not the
+  outbox, so they work while the database or the worker is down.
+- **The container watch** (`deploy.sh watch`, `infra/production/systemd/
+  markx-watch.{service,timer}`, every 5 minutes; `deploy.sh watch
+  install-timer`): postgres, api, worker, web, proxy and backup must be
+  running and not `unhealthy`. One that is unhealthy, stopped, restarting,
+  paused or missing for `MARKX_CONTAINER_ALERT_MINUTES` (compose.env, 5 to
+  720) alerts the group ONCE (from a throwaway container of the worker's
+  image, so it works with the worker down), and once more when it is fine;
+  an undelivered alert is tried again at the next run; a `compose run`
+  container is not the service. The unit fails while a container is bad,
+  so `systemctl --failed` shows it. It cannot see the whole server or
+  Docker gone: that is the heartbeat's job.
+- **`deploy.sh alert-test [--send-heartbeat]`**: the test alert and the
+  heartbeat's state; fails unless the group accepted the alert.
+- **Not done:** the audit's "second channel" (e-mail or SMS) is the outside
+  monitor's own alerting, chosen with F-18; MarkX sends no e-mail. No
+  real monitor or Telegram group was contacted: whether a message reaches
+  a phone is UNKNOWN until F-18.
+
+### 2. BK-5: a safe copy of the server's secrets
+
+- **The secrets copy** (`markx/backup/escrow.py`; `python -m markx.backup
+  escrow-secrets`, `open-secrets`; `deploy.sh escrow-secrets`): one file
+  holding `api.env` (with `MARKX_SECRET_KEY` and `MARKX_ENCRYPTION_KEY`),
+  `postgres.env` (the four database passwords), `migrate.env`,
+  `backup.env`, `web.env`, `compose.env`, the backup signing and public
+  keys, and the certificate's `privkey.pem` and `fullchain.pem`.
+- **Never in plain form:** `deploy.sh` reads the files as root and pipes
+  them as a tar stream (never a file) into the backup image, which keeps
+  them in memory, encrypts them with MXB2 to the recovery key's PUBLIC half
+  (the server can make a copy and never open one), and signs the envelope
+  with the backup signing key (Ed25519). Only names and sizes are printed or
+  readable; the file is mode 600, owner 999. It refuses without `api.env`
+  and its two keys, without `postgres.env` and its four passwords, with an
+  example value left in, with a link or anything but a regular file, and
+  with a recovery key in any file.
+- **Where it is kept:** written to `/var/backups/markx/escrow/` and put in
+  the backup bucket under `escrow/` (read back; held by the object lock;
+  retention never touches `escrow/`). The founder keeps a copy with the
+  recovery key (F-19); the runbook says how from a phone only: the file is
+  sent to the founder, who stores it in the same two places as the recovery
+  key and never has to open it.
+- **Opening it** needs the recovery key, so `open-secrets` refuses staging
+  and production (BK-2), like a restore: `--check` lists and verifies,
+  `--out DIR` writes a new private folder (700, files 600) for a new
+  server. A copy written again in the bucket is read from its original
+  version (RN-1).
+- **The drill step the audit asked for** (`drill --from-destination
+  --secrets FILE | --secrets-from-destination --staff-phone PHONE`, password
+  in `MARKX_DRILL_STAFF_PASSWORD`): after the restore passed, (a) the copy
+  opens with the recovery key and the server's signature, and holds both
+  keys; (b) every staff authenticator secret in the restored copy decrypts
+  with the copied `MARKX_ENCRYPTION_KEY`; (c) **a staff member signs in to
+  the restored copy**: the real API (`uvicorn markx.main:app`) is started on
+  127.0.0.1 against the restored database as `markx_app`, with only the two
+  copied keys from the server (secrets in its environment only), and the
+  sign-in goes through `POST /api/v1/auth/staff/sign-in` with the password
+  and the code the authenticator shows, asked for at that moment (a code
+  lasts 30 seconds; a restore longer); (d) injected: another server's
+  `MARKX_ENCRYPTION_KEY` must open none of the staff secrets. The drill
+  passes only if all four do.
+- **An honest limit:** the drill signs in by phone, password and code
+  (`/auth/staff/sign-in`). On a real server that route is refused while SMS
+  is off (P-101-8) and staff sign in with Telegram, then password and code
+  (`/auth/staff/step-up`); both check the password and the code with the
+  same function (`_check_staff_credentials`), which is what the copied key
+  decides. The drill's API runs with `MARKX_ENV=local` and the fake SMS
+  sender so the route is open; it contacts nothing.
+- **What it cannot prove:** that the copied `MARKX_SECRET_KEY` is the old
+  server's. Nothing stored depends on it alone (the handover codes are
+  derived, never stored). A stale copy shows only as different handover
+  codes and dead signed links. Hence: a new copy after any rotation
+  (`docs/runbooks/secret-rotation.md`).
+
+### 3. RN-1: an overwritten backup file
+
+- **Reading older locked copies** (`markx/backup/copies.py`): verify,
+  restore and the drill read the dump, the index and the blob list by the
+  SHA-256 the signed manifest records, and each blob by the file's SHA-256
+  in the index: the current version first, then each older version, newest
+  first. A set's manifest is the OLDEST version that verifies (a set writes
+  it once, so a later different one is someone else's), so an overwritten
+  manifest neither breaks nor hides a set (`newest_complete_set`,
+  `record-drill`). The drill's injection copy is taken from the versions
+  the set verified from. Each object read from an older version, and each
+  piece of the set with two different versions or hidden by a delete
+  marker, is reported: `WARN ... written again after the set was made`,
+  `facts.overwritten`, the drill report's `overwritten`.
+- **The alert:** the backup service (each set) lists the versions under
+  `sets/` and compares each blob it checked with its ledger (another size
+  or ETag = someone else wrote it), and records `overwritten` and
+  `overwrite_check` in the run; `record-drill` records the drill's list.
+  The watch's new `backup_overwrites` check raises `backup.overwritten`
+  (critical) while any backup run or drill in the last 30 days found one,
+  and `backup.overwrite_check_unavailable` (warning) when the server's key
+  cannot list versions. The same bytes stored twice (an upload the client
+  retried) are not an overwrite.
+- **Keys:** the server's key needs `s3:ListBucketVersions`; the recovery
+  machine's read-only key `s3:ListBucketVersions` and `s3:GetObjectVersion`
+  (`infra/backup/minio-least-privilege.sh`, runbook step 3). Neither can
+  delete. Without them, the report says the older copies could not be
+  listed and only current versions are used.
+- **Not verified:** whether S3 and R2 report versions and ETags as MinIO
+  does (runbook, "To test on the real provider", item 8).
+
+### 4. RN-2 and RN-3: the recovery script
+
+`infra/backup/recovery-host.sh` now:
+
+- deletes a socket folder only when it carries the script's mark
+  (`.markx-recovery-socket`), is a real folder (not a link) and belongs to
+  the user; `start` refuses a folder that holds anything else; a relative
+  path, a path with `.` or `..`, and `/` are refused;
+- removes a container only when it carries the label `markx.recovery=1`,
+  which `start` sets; another container of the same name is left alone;
+- keeps the socket folder **private**: the folder is mode 700, and the
+  socket lives in its `run` subfolder, the only part the container sees
+  (the image's start-up opens the permissions of the folder it is given:
+  measured, `3777`; it cannot reach the folder around it). PostgreSQL runs
+  as the invoking user (`--user`, with its data in a folder it makes); as
+  root, as the image's own user. Checked by hand: as an ordinary user the
+  owner connects and another user cannot.
+
+### 5. RN-4: a socket path too long
+
+A Unix socket path holds at most 107 bytes on Linux. `drill` checks
+`PGHOST/.s.PGSQL.<port>` first and reports FAILED with the reason;
+`recovery-host.sh start` refuses such a folder; any `psycopg.Error` in the
+drill or the restore (a PostgreSQL that does not answer) is now a FAILED
+report too, and the drill's cleanup never raises.
+
+### 6. RN-5: record-drill checks the report
+
+`drill.report_problems` (used by `record-drill`) does not believe the
+report's `passed`. A report counts as a passed drill only when: its restore
+is of the set it names; every restore check is present (14, by name) and
+passed; the six faults every drill injects, plus the blob fault when the set
+holds files, were all tried and refused, and no unknown one is named; the
+secrets step, when it ran, passed with its injected fault; and the restored
+set's time, database name, file count and row count are the signed
+manifest's. Otherwise it is recorded as a FAILED drill (`drill_report_not
+_a_pass` when the report claimed PASSED; exit 1), so the watch alerts.
+**Limit:** a report is not signed by the recovery machine (the server holds
+nothing to check such a signature against); someone who can run
+`record-drill` on the server and knows the set's facts could still write a
+consistent false report. Signing drill reports is a later option.
+
+### PROVISIONAL values, for the founder to confirm
+
+- **P-105-1** One heartbeat call per verified set; the runbook recommends
+  the monitor expect one a day with about 3 hours' grace (an alert within
+  about 27 hours of the last good set). Confirm with F-18.
+- **P-105-2** A container alerts after 15 minutes unhealthy, stopped or
+  missing (`MARKX_CONTAINER_ALERT_MINUTES`), the watch every 5 minutes.
+- **P-105-3** `backup.overwritten` stays open 30 days after the last run
+  that saw an overwrite, so a quiet night does not resolve it unseen.
+- **P-105-4** What the secrets copy holds (the list in section 2).
+- **P-105-5** A copy of the secrets is also kept in the backup bucket,
+  locked, besides the founder's; old copies are never deleted by retention
+  (a restore of an old set needs the secrets of its time). Confirm with F-19.
+- **P-105-6** A drill report counts only with every injected fault tried
+  and refused; the secrets step is checked when it ran but not yet required
+  (no copy exists before F-19). Once F-19 is done it should be required.
+
+### Changed
+
+`apps/api/markx/backup/` (`copies.py`, `escrow.py`, `heartbeat.py`,
+`staff_sign_in.py` new; `__main__.py`, `config.py`, `destination.py`,
+`drill.py`, `restore.py`, `runner.py`), `apps/api/markx/ops/` (`notify.py`
+new; `checks.py`), `infra/backup/recovery-host.sh`,
+`infra/backup/minio-least-privilege.sh`, `infra/production/deploy.sh`,
+`infra/production/systemd/markx-watch.{service,timer}` (new),
+`infra/production/env/{api,backup,compose}.env.example`,
+`infra/production/rehearsal/rehearse.sh`, `.github/workflows/ci.yml`,
+`docs/runbooks/backup-and-restore.md`, `docs/runbooks/secret-rotation.md`.
+No migration; no API change (the OpenAPI copies are unchanged).
+
+### Tests
+
+New: `tests/unit/test_backup_d105.py` (29), `tests/deployment/
+test_d105_scripts.py` (17), `tests/storage/test_backup_rn.py` (5),
+`tests/storage/test_backup_d105.py` (4). The RN tests use only names that
+exist on `main`: against `main`'s code all 22 of them fail by assertion or
+by the old traceback (run in a worktree of `9daaf57` with only the new test
+files); the BK-4 and BK-5 files cannot import there (new features). Every
+path the recovery-script tests give stays inside the test's own folder, so
+running them against the old script harms nothing (see
+`docs/DEVELOPMENT_STATUS.md` for why that mattered). No existing test,
+check or rehearsal check was removed or loosened. Results: `docs/
+DEVELOPMENT_STATUS.md`, "Tests executed", 21 November 2026 (D-105).
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -5269,6 +5500,13 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
 - **Options:** a free uptime monitor polling the three endpoints and the
   certificate's expiry, alerting the founder's Telegram group; an error
   tracker on a free tier with personal data removed before sending.
+- **Since D-105 (built, off):** the backup service calls an outside
+  heartbeat address after each verified set (`MARKX_BACKUP_HEARTBEAT_URL`);
+  the container watch and `deploy.sh alert-test` send to the staff Telegram
+  group (`MARKX_ALERT_TELEGRAM_CHAT_ID`). **To decide:** which monitor
+  receives the heartbeat (and alerts by a second channel, such as e-mail),
+  and the alert group; then `deploy.sh alert-test --send-heartbeat` and a
+  test alert confirmed on the phone. PROVISIONAL P-105-1, P-105-2.
 - **Founder's approval required: yes** (accounts; error tracking sends data
   out).
 
@@ -5283,6 +5521,13 @@ code and its line in `tests/unit/test_provisional_decisions.py` go.
   rotation. **Losing every copy makes every backup unreadable, for ever.**
   Keeping it beside the server's passwords would not protect against losing
   both.
+- **Since D-105:** the **secrets copy** (`deploy.sh escrow-secrets`: the
+  application keys, the database passwords, the certificate key, encrypted
+  to the recovery key) is kept in the same two places as the recovery key,
+  and a copy is also kept, locked, in the backup bucket (PROVISIONAL
+  P-105-5). The runbook says how to keep it from a phone only. Also to
+  decide: which staff member signs in at each monthly drill (it needs their
+  password and the code on their phone at that moment).
 - **Founder's approval required: yes.**
 
 ### F-20 How long backups are kept (D-094)
