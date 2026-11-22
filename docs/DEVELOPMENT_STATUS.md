@@ -15,8 +15,8 @@ backup trust hardening session (D-096, pull request #4) as `773bbb6`.
 
 ## Five Release 1 features: the Ethiopian calendar and clock, order again, the price chart, a shop's logo, a shop's customers (22 November 2026, D-106)
 
-One pull request into `main` (see "Tests executed", 22 November 2026, for
-its number and checks). **No migration. Nothing deployed; no server,
+One pull request into `main`: **#14** (https://github.com/shumetmamo21-cyber/markx-marketplace/pull/14); its checks are in "Tests
+executed", 22 November 2026. **No migration. Nothing deployed; no server,
 account, bucket, bot or paid resource.** Details, limits and five
 PROVISIONAL values (P-106-1 to P-106-5): `docs/DECISIONS.md`, D-106.
 

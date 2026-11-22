@@ -5163,7 +5163,8 @@ DEVELOPMENT_STATUS.md`, "Tests executed", 21 November 2026 (D-105).
 
 22 November 2026. Branch `claude/sharp-albattani-dp65ad`, from `main` at
 `6378764` with the complete history (`6378764` is the merge of pull request
-#13, reviewed and merged by this session first: section 0). **Follows** the
+#13, reviewed and merged by this session first: section 0). Pull request
+**#14** (https://github.com/shumetmamo21-cyber/markx-marketplace/pull/14). **Follows** the
 blueprint: D.1 and I.7 (C-05), D.10 and D.27 (C-19), D.7 and I.5 (C-21),
 D.4 and I.5 (S-03, S-11). **No migration**: `stores.logo_key` and
 `offer_price_history` exist since `0001`. **Nothing deployed; no account,
