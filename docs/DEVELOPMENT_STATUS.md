@@ -15,7 +15,7 @@ as `773bbb6`.
 
 ## Backups finished before any real data: BK-4, BK-5, RN-1 to RN-5 (21 November 2026, D-105)
 
-One pull request into `main` (number in `docs/HANDOFF.md`), **not merged**:
+One pull request into `main`, **#13**, **not merged**:
 backup security work, an independent review follows. **No migration, no
 API change. Nothing deployed; no account, monitor, Telegram group, bucket,
 server or paid resource; nothing sent to Telegram or any monitor.** Details
@@ -23,10 +23,10 @@ and six PROVISIONAL values (P-105-1 to P-105-6): `docs/DECISIONS.md`, D-105.
 
 | Item | What changed | Proof |
 | --- | --- | --- |
-| BK-4 alerts that work without the server | An outside heartbeat call after each verified set (`MARKX_BACKUP_HEARTBEAT_URL`, off until F-18); `python -m markx.ops.notify` (a test alert, an operational alert, straight to the staff Telegram group without the database); `deploy.sh alert-test`; `deploy.sh watch` and its 5-minute timer: a container unhealthy, stopped or missing for 15 minutes alerts once and once more when fine | `tests/unit/test_backup_d105.py` (heartbeat, settings, test alert), `tests/storage/test_backup_d105.py::test_a_verified_set_calls_the_outside_heartbeat_and_a_failed_one_does_not`, 8 watch and alert-test tests in `tests/deployment/test_d105_scripts.py`; the rehearsal (a really paused container) |
-| BK-5 a safe copy of the server's secrets | `escrow-secrets` / `deploy.sh escrow-secrets`: one signed file, encrypted in memory to the recovery key, never written or printed in plain form, also put locked in the bucket; `open-secrets` on a recovery machine only; the off-server drill with `--secrets-from-destination --staff-phone`: the staff secrets decrypt with the copied key and a staff member signs in to the restored copy through the real API with their code; another server's key refused | 9 escrow tests in `tests/unit/test_backup_d105.py`; `test_the_off_server_drill_restores_with_the_secrets_copy_and_staff_sign_in_with_their_code`, `test_the_secrets_of_another_server_fail_the_drill`, `test_a_secrets_copy_in_the_backup_bucket_is_locked_and_opens_from_there`; CI's off-server drill; the rehearsal |
+| BK-4 alerts that work without the server | An outside heartbeat call after each verified set (`MARKX_BACKUP_HEARTBEAT_URL`, off until F-18); `python -m markx.ops.notify` (a test alert, an operational alert, straight to the staff Telegram group without the database); `deploy.sh alert-test`; `deploy.sh watch` and its 5-minute timer: a container unhealthy, stopped or missing for 15 minutes alerts once and once more when fine | `tests/unit/test_backup_d105.py` (heartbeat, settings, test alert), `tests/storage/test_backup_d105.py::test_a_verified_set_calls_the_outside_heartbeat_and_a_failed_one_does_not`, 9 watch and alert-test tests in `tests/deployment/test_d105_scripts.py`; the rehearsal (a really paused container) |
+| BK-5 a safe copy of the server's secrets | `escrow-secrets` / `deploy.sh escrow-secrets`: one signed file, encrypted in memory to the recovery key, never written or printed in plain form, also put locked in the bucket; `open-secrets` on a recovery machine only; the off-server drill with `--secrets-from-destination --staff-phone`: the staff secrets decrypt with the copied key and a staff member signs in to the restored copy through the real API with their code; another server's key refused | 11 escrow tests in `tests/unit/test_backup_d105.py` and 1 in `tests/deployment/test_d105_scripts.py`; `test_the_off_server_drill_restores_with_the_secrets_copy_and_staff_sign_in_with_their_code`, `test_the_secrets_of_another_server_fail_the_drill`, `test_a_secrets_copy_in_the_backup_bucket_is_locked_and_opens_from_there`; CI's off-server drill; the rehearsal |
 | RN-1 an overwritten backup file | Verify, restore and the drill read an older locked version when the current one does not match (the oldest valid manifest); the backup service and the drill report overwrites; the watch raises `backup.overwritten` | `tests/storage/test_backup_rn.py`: `test_an_overwritten_set_is_verified_restored_and_drilled_from_its_locked_copies`, `test_the_backup_service_notices_an_overwritten_file_and_the_watch_alerts` |
-| RN-2, RN-3 the recovery script | Deletes only its own marked folder, stops only its own labelled container, socket in a private (700) folder the container cannot open up; PostgreSQL runs as the user | 8 tests in `tests/deployment/test_d105_scripts.py`; by hand as root and as an ordinary user (another user cannot connect); CI; the rehearsal |
+| RN-2, RN-3 the recovery script | Deletes only its own marked folder, stops only its own labelled container, socket in a private (700) folder the container cannot open up; PostgreSQL runs as the user | 6 tests in `tests/deployment/test_d105_scripts.py`; by hand as root and as an ordinary user (another user cannot connect); CI; the rehearsal |
 | RN-4 a socket path over 107 bytes | The drill reports FAILED with the reason; the script refuses the folder; a PostgreSQL that does not answer is FAILED too | `test_the_off_server_drill_reports_failed_when_it_cannot_reach_postgresql` (2 cases), `test_a_socket_path_too_long_for_linux_is_refused_before_anything_starts` |
 | RN-5 record-drill believed `passed` | The report's contents are checked against the set's signed manifest; a report that says PASSED without showing it is recorded FAILED | 13 cases in `tests/unit/test_backup_d105.py`; `test_record_drill_records_a_report_that_does_not_show_a_pass_as_failed`; CI's new step "Enter the off-server drill's report on the server" |
 
@@ -2003,7 +2003,25 @@ CI's two drill steps and the new record-drill step, run here with the workflow's
   record-drill                                           ->  recorded: PASSED
 recovery-host.sh by hand                                 ->  as root and as an ordinary user (uid 1001): folder 700,
                                                              the owner connects, another user cannot; stop removes it
-infra/production/rehearsal/rehearse.sh                   ->  REHEARSAL_RESULT
+infra/production/rehearsal/rehearse.sh (final run)       ->  rehearsal: 138 passed, 0 failed (124 before; 14 new D-105 checks)
+  earlier runs here, for the record                      ->  1st: stopped before any check (Docker Hub 429 Too Many Requests
+                                                             on the base images; pulled them, then ran again). 2nd: 108
+                                                             passed, 4 failed, then a syntax error: (a) the secrets copy
+                                                             rightly refused the rehearsal's api.env, which had no
+                                                             MARKX_ENCRYPTION_KEY, and one check passed with no file;
+                                                             (b) the paused backup container failed its own 5-minute
+                                                             health check and stayed unhealthy after unpausing; (c) I
+                                                             edited rehearse.sh while it ran (bash reads it as it goes).
+                                                             Fixed in 4742a9a: a real key in its api.env, the check
+                                                             needs the file, the worker is paused and waited for.
+GitHub, on 4742a9a (pull request #13):
+  CI #179                                                ->  all 8 jobs passed: API (2126 passed in 15 min 26 s; rehearsal
+                                                             drill DRILL PASSED; off-server drill DRILL PASSED on an
+                                                             ordinary-user runner, staff signed in, another server's key
+                                                             refused; record-drill "recorded: PASSED"), web app,
+                                                             containers, production rehearsal (138 passed, 0 failed),
+                                                             security, CI result
+  Browser journeys #55                                   ->  passed
 ```
 
 **Three small fixes** (D-104), on 21 November 2026, branch

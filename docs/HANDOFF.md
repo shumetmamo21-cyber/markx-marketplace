@@ -38,9 +38,11 @@ the checks actually printed.
 # Part A.00000000000000000000 — The backups finished before any real data (21 November 2026, D-105)
 
 Branch `claude/backup-audit-findings-0icpm4`, from `main` at `9daaf57`
-with the complete history. One pull request into `main` (its number is in
-the report and on GitHub), **not merged**: this is backup security work, so
-an independent review comes first. **No database change, no API change.
+with the complete history. One pull request into `main`, **#13**
+(https://github.com/shumetmamo21-cyber/markx-marketplace/pull/13), **not
+merged**: this is backup security work, so an independent review comes
+first. Every GitHub check passed on `4742a9a` (CI #179, 8 of 8 jobs;
+Browser journeys #55). **No database change, no API change.
 Nothing deployed; no account, monitor, Telegram group, bucket, server or
 paid resource; nothing was sent to Telegram or any monitor.**
 
