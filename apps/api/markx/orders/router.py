@@ -51,7 +51,9 @@ from markx.orders.schemas import (
     QuoteIn,
     QuoteOut,
     ReasonIn,
+    ReorderOut,
     ResolveProblemIn,
+    SellerCustomerOut,
     SellerOrderOut,
 )
 from markx.trust.models import CaseDecision
@@ -69,6 +71,9 @@ LangQuery = Annotated[str, Query(pattern="^(am|en)$")]
 ZoneQuery = Annotated[str | None, Query(pattern=r"^[a-z][a-z0-9_]{1,39}$")]
 
 OrderHandler = Annotated[SellerContext, Depends(require_seller(SellerCapability.HANDLE_ORDERS))]
+ContactViewer = Annotated[
+    SellerContext, Depends(require_seller(SellerCapability.SEE_BUYER_CONTACT))
+]
 
 
 def _refuse_staff(principal: Principal | None) -> None:
@@ -260,6 +265,22 @@ def read_my_order(order_id: uuid.UUID, buyer: Buyer, db: Db, lang: LangQuery = "
     return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order_id, lang))
 
 
+@router.post("/me/orders/{order_id}/reorder", response_model=ReorderOut, tags=["orders"])
+def reorder_my_order(
+    order_id: uuid.UUID,
+    buyer: Buyer,
+    request: Request,
+    response: Response,
+    db: Db,
+    lang: LangQuery = "am",
+) -> ReorderOut:
+    """Order again in one tap (C-19): the order's items go back in the cart
+    at today's prices; the buyer then checks out as usual."""
+    cart = _cart(request, response, buyer, db, create=True)
+    assert cart is not None
+    return ReorderOut.model_validate(service.reorder(db, cart, buyer.user.id, order_id, lang))
+
+
 @router.post(
     "/me/orders/{order_id}/seller-orders/{seller_order_id}/cancel",
     response_model=OrderOut,
@@ -400,6 +421,20 @@ def list_seller_orders(
         may_see_contact=_may_see_contact(context),
     )  # fmt: skip
     return [SellerOrderOut.model_validate(row) for row in rows]
+
+
+@seller_router.get("/customers", response_model=list[SellerCustomerOut])
+def list_seller_customers(
+    context: ContactViewer,
+    db: Db,
+    q: Annotated[str | None, Query(max_length=60)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    lang: LangQuery = "am",
+) -> list[SellerCustomerOut]:
+    """The people this shop has served (S-11), newest first: only what its
+    own order pages already show it. `q` finds a name or a phone number."""
+    rows = selectors.seller_customers(db, context.seller.id, lang, query=q, limit=limit)
+    return [SellerCustomerOut.model_validate(row) for row in rows]
 
 
 @seller_router.get("/orders/{seller_order_id}", response_model=SellerOrderOut)

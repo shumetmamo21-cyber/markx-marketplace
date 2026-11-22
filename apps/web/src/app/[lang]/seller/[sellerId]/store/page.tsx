@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { StoreForm } from "@/components/seller/SellerForms";
+import { StoreLogo } from "@/components/seller/StoreLogo";
 import { serverApi } from "@/lib/api/server";
 import { isLocale } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
@@ -21,6 +22,7 @@ export default async function SellerStorePage({ params }: PageProps<"/[lang]/sel
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <h1 className="text-2xl font-extrabold">{t.seller.storeTitle}</h1>
+      <StoreLogo sellerId={sellerId} storeName={data.name} logoUrl={data.logo_url} t={{ seller: t.seller, store: t.store, apiErrors: t.apiErrors }} />
       <StoreForm sellerId={sellerId} store={data} t={{ seller: t.seller, apiErrors: t.apiErrors }} />
     </div>
   );

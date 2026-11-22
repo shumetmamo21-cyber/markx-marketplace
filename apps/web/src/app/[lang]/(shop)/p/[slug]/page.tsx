@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { AddToCart } from "@/components/AddToCart";
+import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { ReportForm } from "@/components/ReportForm";
 import { RatingSummary, ReviewItem } from "@/components/Reviews";
 import { serverApi } from "@/lib/api/server";
@@ -109,7 +110,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
   const zone = one(raw.zone);
   const before = one(raw.reviews);
   const api = await serverApi();
-  const [offers, zones, reviews, pictures] = await Promise.all([
+  const [offers, zones, reviews, pictures, history] = await Promise.all([
     api.GET("/api/v1/catalog/products/{slug}/offers", {
       params: { path: { slug: product.slug }, query: { variant_id: variant?.id, zone: zone || undefined } },
     }),
@@ -118,6 +119,10 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
       params: { path: { slug: product.slug }, query: { lang, limit: REVIEWS_PER_PAGE, before: /^[0-9a-f-]{36}$/.test(before) ? before : undefined } },
     }),
     api.GET("/api/v1/catalog/products/{slug}/images", { params: { path: { slug: product.slug } } }),
+    // The price-history chart of this version (C-21): a failure leaves it out.
+    api.GET("/api/v1/catalog/products/{slug}/price-history", {
+      params: { path: { slug: product.slug }, query: { variant_id: variant?.id } },
+    }),
   ]);
   const catalogue = (pictures.data?.catalogue ?? []).filter((p) => p.main_url && p.thumb_url);
   const realPhotos = (pictures.data?.real_photos ?? []).filter((p) => p.main_url && p.thumb_url);
@@ -212,6 +217,8 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
           {t.product.inspect}
         </p>
       </section>
+
+      {history.data ? <PriceHistoryChart history={history.data} lang={lang} t={t} /> : null}
 
       {realPhotos.length ? (
         <section aria-labelledby="real-photos" className="space-y-2">

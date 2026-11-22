@@ -7,6 +7,7 @@ import { OrderActions } from "@/components/OrderActions";
 import { PhotoUpload } from "@/components/PhotoUpload";
 import { ProblemMessageForm } from "@/components/ProblemMessageForm";
 import { ProblemPhotos } from "@/components/ProblemPhotos";
+import { ReorderButton } from "@/components/ReorderButton";
 import { ReviewForm, ReviewNotices } from "@/components/ReviewForm";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
@@ -62,6 +63,7 @@ export default async function OrderPage({ params }: PageProps<"/[lang]/orders/[i
         <h1 className="text-2xl font-extrabold">{fill(o.code, { code: order.code })}</h1>
         <p className="text-slate">{fill(o.placedOn, { date: formatDateTime(order.created_at, lang) })} · {statusLabel(t, order.status)}</p>
         <p className="price text-lg">{fill(o.total, { total: formatPrice(order.grand_total_santim, lang) })}</p>
+        <ReorderButton orderId={order.id} lang={lang} t={o} />
       </header>
 
       {order.seller_orders.map((part) => (

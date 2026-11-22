@@ -21,6 +21,7 @@ export function sellerMenu(
     ["handle_orders", "/orders", s.navOrders, true],
     ["manage_offers", "/offers", s.navOffers, true],
     ["reply_to_reviews", "/reviews", s.navReviews, true],
+    ["see_buyer_contact", "/customers", s.navCustomers, false],
     ["see_performance", "/performance", s.navPerformance, false],
     ["edit_store", "/store", s.navStoreSettings, false],
     ["manage_staff", "/team", s.navTeam, false],

@@ -9,3 +9,7 @@ export type RankedOffer = Schemas["RankedOfferOut"];
 export type ProductOffers = Schemas["ProductOffersOut"];
 export type CategoryNode = Schemas["CategoryNode"];
 export type Zone = Schemas["ZoneOut"];
+export type PriceHistory = Schemas["PriceHistoryOut"];
+export type PriceStep = Schemas["PriceStepOut"];
+export type Reorder = Schemas["ReorderOut"];
+export type SellerCustomer = Schemas["SellerCustomerOut"];

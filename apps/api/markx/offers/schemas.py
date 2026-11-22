@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, StringConstraints
@@ -146,6 +146,35 @@ class ProductOffersOut(ApiModel):
     offer_count: int
     lowest_price_santim: int | None
     offers: list[RankedOfferOut]
+
+
+class PriceStepOut(ApiModel):
+    """From this day (Addis Ababa time), the lowest price was this."""
+
+    day: date
+    price_santim: int
+
+
+class PriceSeriesOut(ApiModel):
+    condition: str
+    # How many of today's offers in this condition the line is drawn from.
+    offers: int
+    current_santim: int
+    lowest_santim: int
+    highest_santim: int
+    steps: list[PriceStepOut]
+
+
+class PriceHistoryOut(ApiModel):
+    """The price-history chart of one version (C-21): for each condition,
+    the lowest price day by day, from the price changes recorded."""
+
+    product_slug: str
+    variant_id: uuid.UUID | None
+    days: int
+    from_day: date
+    to_day: date
+    series: list[PriceSeriesOut]
 
 
 class PriceListItemOut(PublicOfferOut):

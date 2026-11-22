@@ -112,7 +112,16 @@
     "added": "ወደ ጋሪዎ ተጨምሯል",
     "addFailed": "ይህን ቅናሽ መጨመር አልተቻለም። ገጹን አድሰው እንደገና ይሞክሩ።",
     "outOfStock": "በክምችት የለም",
-    "inspect": "ዕቃውን ፈትሸው ይክፈሉ። የማስረከቢያ ኮድዎን የሚሰጡት ዕቃው ትክክል ሲሆን ብቻ ነው።"
+    "inspect": "ዕቃውን ፈትሸው ይክፈሉ። የማስረከቢያ ኮድዎን የሚሰጡት ዕቃው ትክክል ሲሆን ብቻ ነው።",
+    "priceHistory": "የዋጋ ታሪክ",
+    "priceHistoryLead": "የዚህ ዓይነት ዝቅተኛ ዋጋ ባለፉት {days} ቀናት በየቀኑ፣ ዛሬ ከሚሸጡት ሱቆች።",
+    "priceHistoryRange": "ከ{from} እስከ {to}።",
+    "priceHistorySummary": "አሁን {current} · ዝቅተኛ {lowest} · ከፍተኛ {highest}",
+    "priceHistorySteady": "በዚህ ጊዜ ውስጥ ዝቅተኛው ዋጋ አልተለወጠም።",
+    "priceHistoryFrom": "ከ{date} ጀምሮ፦ {price}",
+    "priceHistoryTable": "ዋጋዎቹን በሰንጠረዥ አሳይ",
+    "priceHistoryDay": "ቀን",
+    "priceHistoryPrice": "ዝቅተኛ ዋጋ"
   },
   "footer": {
     "about": "ማርክኤክስ በአዲስ አበባ ካሉ የተረጋገጡ ሱቆች ዋጋዎችን ያወዳድራል። ማርክኤክስ ገንዘብዎን አይይዝም።",
@@ -279,7 +288,17 @@
     "alternativesTitle": "ሌላ ሱቅ አለው",
     "alternativesLead": "ይህ ሱቅ ትዕዛዝዎን መሙላት አልቻለም። ለተመሳሳይ ዓይነት ከሌላ ሱቅ የተገኘው ምርጥ ቅናሽ፦",
     "alternativeFor": "ለ{quantity} × {title}",
-    "alternativeAdd": "ወደ ጋሪ ጨምር"
+    "alternativeAdd": "ወደ ጋሪ ጨምር",
+    "reorder": "እንደገና ይዘዙ",
+    "reordering": "ወደ ጋሪዎ በመጨመር ላይ…",
+    "reorderLead": "ተመሳሳይ ዕቃዎች ከተመሳሳይ ሱቆች በዛሬው ዋጋ ወደ ጋሪዎ ይገባሉ። ከማዘዝዎ በፊት ያረጋግጧቸዋል።",
+    "reorderDone": "{count} ዕቃዎች በዛሬው ዋጋ ጋሪዎ ውስጥ ናቸው።",
+    "reorderPriceChanged": "{title}፦ አሁን {now} (የከፈሉት {paid})",
+    "reorderUnavailable": "{title} ከዚህ ሱቅ ከእንግዲህ አይሸጥም።",
+    "reorderCartFull": "{title} አልገባም፦ ጋሪዎ ሞልቷል።",
+    "reorderOtherShops": "ሌሎች ሱቆችን ይመልከቱ",
+    "reorderGoToCart": "ወደ ጋሪ ይሂዱ",
+    "reorderFailed": "ዕቃዎቹን ወደ ጋሪዎ መጨመር አልተቻለም።"
   },
   "status": {
     "placed": "ሱቁን በመጠበቅ ላይ",
@@ -334,7 +353,8 @@
     "confirmTime": "ብዙ ጊዜ በ{minutes} ደቂቃ ውስጥ ይቀበላል",
     "deliveryShare": "ከማድረሶች {share} ይሳካሉ",
     "noTrack": "ገና የሚቆጠር ትዕዛዝ የለም።",
-    "confirmTimeFast": "ብዙ ጊዜ በአንድ ደቂቃ ውስጥ ይቀበላል"
+    "confirmTimeFast": "ብዙ ጊዜ በአንድ ደቂቃ ውስጥ ይቀበላል",
+    "logoAlt": "የ{name} አርማ"
   },
   "apiErrors": {
     "too_many_open_orders": "የተፈቀደውን ያህል ክፍት ትዕዛዞች አሉዎት። አንዱ እስኪደርስ ይጠብቁ ወይም አንዱን ይሰርዙ።",
@@ -737,7 +757,25 @@
     "proposeLink": "ካታሎጉ ውስጥ የለም? ይጠቁሙ",
     "telegramTitle": "የትዕዛዝ ማሳወቂያዎች በቴሌግራም",
     "telegramState": "ቴሌግራምዎ፦ {status}።",
-    "telegramManage": "በመለያዎ ውስጥ ያዘጋጁት"
+    "telegramManage": "በመለያዎ ውስጥ ያዘጋጁት",
+    "navCustomers": "ደንበኞች",
+    "customersTitle": "ደንበኞችዎ",
+    "customersLead": "ትዕዛዛቸውን ያረጋገጡላቸው ሰዎች፣ የትዕዛዝ ገጾቻቸው የሚያሳዩዎትን ብቻ ይዘው። ትዕዛዝ ሳይደርስ ሲያልቅ ገዢው እንደ ትዕዛዝ ገጹ ዳግም ይደበቃል።",
+    "customersNone": "እስካሁን ደንበኛ የለም። ትዕዛዛቸውን ሲያረጋግጡ እዚህ ይታያሉ።",
+    "customersNoMatch": "የሚመሳሰል የለም።",
+    "customersSearch": "ስም ወይም ስልክ ቁጥር ይፈልጉ",
+    "customersFind": "ፈልግ",
+    "customerOrders": "{count} ትዕዛዞች · {completed} ተጠናቀዋል",
+    "customerLast": "የመጨረሻ ትዕዛዝ {date}",
+    "customerCall": "ወደ {phone} ይደውሉ",
+    "logoTitle": "አርማ",
+    "logoLead": "በሱቅዎ ገጽ ላይ ይታያል። ካሬ ምስል የተሻለ ነው።",
+    "logoChoose": "አርማ (JPEG፣ PNG ወይም WebP)",
+    "logoUpload": "አርማ ስቀል",
+    "logoSaved": "አርማዎ በሱቅዎ ገጽ ላይ ነው።",
+    "logoRemove": "አርማውን አስወግድ",
+    "logoRemoved": "አርማው ተወግዷል።",
+    "logoNone": "እስካሁን አርማ የለም።"
   },
   "admin": {
     "title": "የማርክኤክስ ሰራተኞች",
