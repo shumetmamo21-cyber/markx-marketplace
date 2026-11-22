@@ -30,6 +30,10 @@ P-107-7): `docs/DECISIONS.md`, D-107.
 | S-06 photos shrunk on the phone | Every photo upload is made smaller before it is sent (an 18 MB picture went as 1 MB); the server checks it as before | `src/lib/shrink-photo.test.ts`; the D-107 journey measures what is sent |
 | S-10 share cards and a QR code | A "Share" link on every shop and product page (and the shop's settings): the link, share on Telegram, a QR code to print, and two cards (1200 × 630, 1080 × 1920) in Amharic or English | `src/lib/qr.test.ts` (the standard's published values; every code read back), `src/lib/share.test.ts`; the D-107 journey checks the PNG sizes |
 
+**A CI failure found and fixed here:** the off-server drill's stand-in
+authenticator could replay the demo staff member's code (a timing race in
+the D-105 drill harness; D-107 section 6).
+
 **On the old code** (`e1849be` with only the new API test file): 16 of 16
 fail (the file's one new import guarded). The web test files test new
 modules. **The QR code was not scanned with a real phone** (no camera
@@ -2081,6 +2085,10 @@ journeys on this machine, in CI's order on a fresh demo database (production bui
                                                           ->  all passed; console errors: none
   release1-d107 (new)                                     ->  passed (results in D-107, "Tests")
 GitHub on 590bee9 (before the documents commit): CI #185 (8 of 8) and Browser journeys #61 -> passed
+GitHub on 9869524 (documents only): one step failed, the off-server drill's staff sign-in (HTTP 401):
+  a replayed authenticator step in the D-105 drill harness, fixed in this pull request (D-107 section 6)
+tests/storage/test_d107_drill_fresh_code.py (new, 2)      ->  passed; the reproduction fails on the old line (DRILL FAILED)
+tests/storage/test_backup_d105.py (existing, 4)           ->  passed with the fix
 ```
 
 **Five Release 1 features** (D-106), on 22 November 2026, branch

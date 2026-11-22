@@ -5515,6 +5515,34 @@ page's title). **The ceiling was not changed.** Result, same machine, same
 demo data: product 209.2 KB (main 208.9), its script identical to main's
 (156.9 KB).
 
+### 6. A CI failure on this pull request, and its cause: the off-server drill's stand-in code was a replay
+
+CI on `9869524` (the documents-only commit) failed in one step, the
+off-server recovery drill: every restore check passed, then "a staff member
+signs in to the restored copy" was refused (HTTP 401,
+`staff_credentials_invalid`). The same code had passed on `590bee9`. **The
+cause is in the D-105 drill harness, not in this pull request's features.**
+The demo data signs its staff member in with an authenticator code, so the
+database remembers that 30-second step (`staff_members.totp_last_step`, the
+guard that refuses a replayed code); the backup made seconds later carries
+it into the restored copy; the drill's stand-in authenticator
+(`MARKX_DRILL_STAFF_TOTP_SECRET`, CI and the rehearsal only) then computed
+the code of the current step, and when that was still the same step the API
+rightly refused it as a replay. Whether it failed depended on where the
+30-second boundary fell (here the seed signed in at about 14:10:05 and the
+drill at about 14:10:18). The existing test never signs in before the
+backup, so it could not see this.
+
+**Fix:** `markx.backup.__main__.fresh_code` makes the stand-in wait for the
+next 30-second step before reading its code, as a person reading their
+phone after the restore would (at most about 31 seconds). The sign-in and
+every check on it are exactly as before; the replay guard is untouched; a
+person typing a code is not affected. **Proof:** the new
+`tests/storage/test_d107_drill_fresh_code.py` reproduces CI's order (a
+sign-in, a backup and the drill inside one step): it **fails on the old
+line** ("DRILL FAILED", the same refusal) and passes with the fix, with a
+unit test of the waiting itself.
+
 ### PROVISIONAL values, for the founder to confirm
 
 - **P-107-1** Search: the speed choices are within 24, 48 and 72 hours; only
@@ -5556,7 +5584,8 @@ API: `markx/search/` (`selectors.py`, `router.py`, `schemas.py`),
 `schemas.py`), `markx/accounts/` (`models.py`, `router.py`, `schemas.py`),
 `markx/orders/` (`service.py`, `selectors.py`, `schemas.py`),
 `markx/backup/references.py`, `scripts/copy_files_to_object_storage.py`,
-migration `0023`, both OpenAPI copies. Web: `src/lib/` (`lite.ts`,
+migration `0023`, both OpenAPI copies, `markx/backup/__main__.py` (the
+drill's stand-in code, section 6). Web: `src/lib/` (`lite.ts`,
 `lite-server.ts`, `shrink-photo.ts`, `qr.ts`, `qr-file.ts`, `share.ts`,
 `share-data.ts` new; `api/types.ts`, the generated schema),
 `src/components/` (`ShareCards.tsx`, `SharePanel.tsx` new; `ProductCard`,
