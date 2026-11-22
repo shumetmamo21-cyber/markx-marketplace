@@ -63,3 +63,11 @@ class ProblemPhotoOut(BaseModel):
     created_at: datetime
     url: str
     url_expires_at: datetime
+
+
+class GatePhotoLinkOut(BaseModel):
+    """A buyer's gate photo (C-08; D-107): a link that works for five
+    minutes, only for the person it was issued to, while they may see it."""
+
+    url: str
+    url_expires_at: datetime

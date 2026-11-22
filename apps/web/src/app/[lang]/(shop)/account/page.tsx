@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { AddAddress, DataRequestForm, MarkNotificationsRead, ProfileForm, RemoveAddress, SignOutEverywhere } from "@/components/AccountForms";
+import { AddAddress, DataRequestForm, GatePhoto, MarkNotificationsRead, ProfileForm, RemoveAddress, SignOutEverywhere } from "@/components/AccountForms";
 import { SignOutButton } from "@/components/SignOutButton";
 import { TelegramConnection } from "@/components/TelegramConnection";
 import { serverApi } from "@/lib/api/server";
@@ -96,6 +96,7 @@ export default async function AccountPage({ params }: PageProps<"/[lang]/account
               <p className="text-sm">{lang === "am" ? address.area_name_am : address.area_name_en} · {address.landmark}</p>
               {address.driver_notes ? <p className="text-sm text-slate">{address.driver_notes}</p> : null}
               <RemoveAddress addressId={address.id} t={text} />
+              <GatePhoto addressId={address.id} url={address.gate_photo_url ?? null} landmark={address.landmark} t={text} />
             </li>
           ))}
         </ul>

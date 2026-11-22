@@ -6,8 +6,9 @@ import { type ReactNode, useState } from "react";
 import { NewAddress } from "@/components/Checkout";
 import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
-import { apiErrorText, type Locale, type Messages } from "@/lib/i18n";
+import { apiErrorText, fill, type Locale, type Messages } from "@/lib/i18n";
 
+import { PhotoUpload } from "./PhotoUpload";
 import { ProblemNotice } from "./Resilience";
 
 // The buyer's account (blueprint I.5, C-08, H.5): each form sends the
@@ -80,6 +81,27 @@ export function AddAddress({ lang, zones, t }: { lang: Locale; zones: Zone[]; t:
 export function RemoveAddress({ addressId, t }: { addressId: string; t: T }) {
   return (
     <AccountForm t={t} quiet label={t.account.addressRemove} onSubmit={() => browserApi.DELETE("/api/v1/me/addresses/{address_id}", { params: { path: { address_id: addressId } } })} />
+  );
+}
+
+// The gate photo on one saved address (C-08; D-107). The API keeps it
+// privately without its location data; only the buyer and the shop
+// delivering an order there see it. The photo is made smaller first (S-06).
+export function GatePhoto({ addressId, url, landmark, t }: { addressId: string; url: string | null; landmark: string; t: T }) {
+  const a = t.account;
+  return (
+    <div className="space-y-2 border-t border-line pt-2">
+      <p className="text-sm font-semibold">{a.gateTitle}</p>
+      <p className="text-sm text-slate">{a.gateLead}</p>
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a private five-minute link from the API (D-107)
+        <img src={url} alt={fill(a.gateAlt, { landmark })} className="max-h-48 w-auto max-w-full rounded-card border border-line object-contain" />
+      ) : null}
+      <PhotoUpload path={`/api/v1/me/addresses/${encodeURIComponent(addressId)}/gate-photo`} label={a.gateChoose} send={a.gateUpload} sent={a.gateSaved} t={t} />
+      {url ? (
+        <AccountForm t={t} quiet label={a.gateRemove} done={a.gateRemoved} onSubmit={() => browserApi.DELETE("/api/v1/me/addresses/{address_id}/gate-photo", { params: { path: { address_id: addressId } } })} />
+      ) : null}
+    </div>
   );
 }
 

@@ -8,6 +8,7 @@ import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice, formatShare } from "@/lib/format";
 import { fill, isLocale, type Messages } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
+import { publicOrigin } from "@/lib/share";
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/s/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -38,6 +39,7 @@ export default async function StorePage({ params, searchParams }: PageProps<"/[l
   const s = store.data;
   const reportText = { report: t.report, apiErrors: t.apiErrors, reasons: t.labels.reportReason };
   const shown = reviews.data?.reviews ?? [];
+  const origin = publicOrigin(process.env);
   const checks = Object.entries(s.checks).filter(([, done]) => done).map(([key]) => key);
   return (
     <div className="space-y-6">
@@ -124,6 +126,8 @@ export default async function StorePage({ params, searchParams }: PageProps<"/[l
           ))}
         </ul>
       </section>
+
+      {origin ? <p><a href={`/${lang}/s/${s.slug}/share`} className="inline-flex min-h-12 items-center font-semibold underline">{t.share.title}</a></p> : null}
 
       <section aria-labelledby="reviews" className="space-y-3">
         <h2 id="reviews" className="text-lg font-bold">{t.reviews.storeTitle}</h2>

@@ -391,6 +391,8 @@ def telegram_webhook(request: Request, body: bytes = Depends(_raw_body), *, db: 
 
 
 def _address_out(db: Db, address: Address) -> AddressOut:
+    from markx.images import gate_photos  # the pictures module needs the accounts models
+
     area = db.get(DeliveryArea, address.delivery_area_id)
     assert area is not None
     return AddressOut(
@@ -406,6 +408,11 @@ def _address_out(db: Db, address: Address) -> AddressOut:
         latitude=address.latitude,
         longitude=address.longitude,
         driver_notes=address.driver_notes,
+        gate_photo_url=(
+            gate_photos.link(address.gate_photo_id, address.user_id)["url"]
+            if address.gate_photo_id
+            else None
+        ),
     )
 
 

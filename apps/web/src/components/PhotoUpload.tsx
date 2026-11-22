@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 
 import { errorCode, sendForm } from "@/lib/api/browser";
 import { apiErrorText, type Messages } from "@/lib/i18n";
+import { withShrunkPhoto } from "@/lib/shrink-photo";
 
 import { ProblemNotice } from "./Resilience";
 
@@ -17,9 +18,11 @@ type Props = {
   t: Pick<Messages, "apiErrors">;
 };
 
-// One photo upload (a shop's real photo, or evidence on a problem). The API
-// cleans the file, removes its location and camera data, and enforces every
-// limit (D-062); this only sends what the person picked and says the answer.
+// One photo upload (a shop's real photo or logo, evidence on a problem, a
+// buyer's gate photo). The photo is made smaller on the phone first, to save
+// data (S-06, D-107); the API still cleans the file, removes its location and
+// camera data, and enforces every limit (D-062). This only sends what the
+// person picked and says the answer.
 export function PhotoUpload({ path, label, send, sent, t }: Props) {
   const router = useRouter();
   const id = useId();
@@ -33,7 +36,7 @@ export function PhotoUpload({ path, label, send, sent, t }: Props) {
         const form = event.currentTarget;
         setBusy(true);
         setMessage(null);
-        const { ok, body } = await sendForm(path, new FormData(form));
+        const { ok, body } = await sendForm(path, await withShrunkPhoto(new FormData(form)));
         setBusy(false);
         if (!ok) {
           setMessage({ ok: false, text: apiErrorText(t, errorCode(body)), code: errorCode(body) });

@@ -1728,6 +1728,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gate-photos/{photo_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Gate Photo
+         * @description The photo behind a signed link: the same person it was issued to must
+         *     be signed in, and still be allowed. Never for a staff session.
+         */
+        get: operations["read_gate_photo_api_v1_gate_photos__photo_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/healthz": {
         parameters: {
             query?: never;
@@ -1861,6 +1882,33 @@ export interface paths {
         post?: never;
         /** Delete Address */
         delete: operations["delete_address_api_v1_me_addresses__address_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/addresses/{address_id}/gate-photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set My Gate Photo
+         * @description A photo of the gate on one of the buyer's own addresses (a JPEG, PNG or
+         *     WebP as `file`), replacing any earlier one. Kept privately, without its
+         *     metadata; only the buyer and the shop delivering an order there see it.
+         */
+        post: operations["set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post"];
+        /**
+         * Remove My Gate Photo
+         * @description The address no longer has a gate photo. An order already placed with
+         *     it keeps showing it to the shop delivering that order.
+         */
+        delete: operations["remove_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2306,6 +2354,13 @@ export interface paths {
          * Search Products
          * @description Products, never listings (D.8). Prices in santim; the "from" price is
          *     the lowest in stock. Every first page is logged with its result count.
+         *
+         *     With `zone` (a delivery zone's code), `delivered` gives, for each result
+         *     delivered there, the cheapest total to the door and the fastest promised
+         *     delivery (C-03);
+         *     `max_delivery_hours` keeps only products delivered there within that
+         *     time, and `sort=total` orders by the total to the door. Both need
+         *     `zone` (`zone_required` otherwise).
          */
         get: operations["search_products_api_v1_search_get"];
         put?: never;
@@ -2743,6 +2798,29 @@ export interface paths {
          * @description With the rider (S-12). Also the retry after a failed handover.
          */
         post: operations["dispatch_seller_order_api_v1_seller__seller_id__orders__seller_order_id__dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seller/{seller_id}/orders/{seller_order_id}/gate-photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Seller Order Gate Photo
+         * @description A five-minute link to the buyer's gate photo, for the roles that see
+         *     buyers' contacts, while this shop delivers the order to the door
+         *     (`has_gate_photo` on the order says when). `gate_photo_not_available`
+         *     otherwise.
+         */
+        get: operations["seller_order_gate_photo_api_v1_seller__seller_id__orders__seller_order_id__gate_photo_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3191,6 +3269,8 @@ export interface components {
             delivery_area_id: string;
             /** Driver Notes */
             driver_notes: string | null;
+            /** Gate Photo Url */
+            gate_photo_url?: string | null;
             /**
              * Id
              * Format: uuid
@@ -3515,6 +3595,11 @@ export interface components {
         };
         /** Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post */
         Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post */
+        Body_set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post: {
             /** File */
             file: string;
         };
@@ -3967,6 +4052,23 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * DeliveredToZoneOut
+         * @description One result delivered to the buyer's zone (C-03; D-107): the cheapest
+         *     price plus delivery to the door there, in santim, and the fastest
+         *     promised delivery, in hours.
+         */
+        DeliveredToZoneOut: {
+            /** Fastest Hours */
+            fastest_hours: number;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Total Santim */
+            total_santim: number;
+        };
         /** DeliveryAreaOut */
         DeliveryAreaOut: {
             /** Area Name Am */
@@ -4113,6 +4215,20 @@ export interface components {
             searches: number;
             /** Zero Result Searches */
             zero_result_searches: number;
+        };
+        /**
+         * GatePhotoLinkOut
+         * @description A buyer's gate photo (C-08; D-107): a link that works for five
+         *     minutes, only for the person it was issued to, while they may see it.
+         */
+        GatePhotoLinkOut: {
+            /** Url */
+            url: string;
+            /**
+             * Url Expires At
+             * Format: date-time
+             */
+            url_expires_at: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -5729,6 +5845,8 @@ export interface components {
         };
         /** SearchOut */
         SearchOut: {
+            /** Delivered */
+            delivered?: components["schemas"]["DeliveredToZoneOut"][];
             /** Did You Mean */
             did_you_mean: components["schemas"]["ProductCardOut"][];
             /** Query */
@@ -5737,6 +5855,8 @@ export interface components {
             results: components["schemas"]["ProductCardOut"][];
             /** Total */
             total: number;
+            /** Zone Code */
+            zone_code?: string | null;
         };
         /** SellerAdminOut */
         SellerAdminOut: {
@@ -6050,6 +6170,11 @@ export interface components {
             fee_santim: number | null;
             /** Handover Attempts Left */
             handover_attempts_left: number;
+            /**
+             * Has Gate Photo
+             * @default false
+             */
+            has_gate_photo: boolean;
             /**
              * Id
              * Format: uuid
@@ -10099,6 +10224,41 @@ export interface operations {
             };
         };
     };
+    read_gate_photo_api_v1_gate_photos__photo_id__content_get: {
+        parameters: {
+            query: {
+                expires: number;
+                signature: string;
+                seller_order?: string | null;
+            };
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     healthz_api_v1_healthz_get: {
         parameters: {
             query?: never;
@@ -10303,6 +10463,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressOut"];
                 };
             };
             /** @description Validation Error */
@@ -11129,7 +11355,9 @@ export interface operations {
                 min_level?: number | null;
                 min_rating?: number | null;
                 in_stock?: boolean;
-                sort?: "relevance" | "price" | "freshness";
+                zone?: string | null;
+                max_delivery_hours?: number | null;
+                sort?: "relevance" | "price" | "freshness" | "total";
                 limit?: number;
                 offset?: number;
                 lang?: string;
@@ -12160,6 +12388,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SellerOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seller_order_gate_photo_api_v1_seller__seller_id__orders__seller_order_id__gate_photo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                seller_order_id: string;
+                seller_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatePhotoLinkOut"];
                 };
             };
             /** @description Validation Error */

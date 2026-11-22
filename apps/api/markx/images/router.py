@@ -7,6 +7,9 @@
 `/me/orders/.../problem/photos`, `/seller/.../problem/photos`,
 `/admin/orders/seller-orders/{id}/problem/photos`          evidence for a problem
 `/problem-photos/{id}/content`                             one evidence photo, by signed link
+`/me/addresses/{id}/gate-photo`                            the buyer's gate photo (C-08)
+`/seller/{seller_id}/orders/{id}/gate-photo`               its link, while the shop delivers
+`/gate-photos/{id}/content`                                one gate photo, by signed link
 `/media/{key}`                                             public files, laptop and tests only
 """
 
@@ -26,12 +29,20 @@ from markx.accounts.deps import (
     require_staff,
 )
 from markx.accounts.permissions import SellerCapability, StaffCapability
+from markx.accounts.router import _address_out
+from markx.accounts.schemas import AddressOut
 from markx.core import ratelimit, settings_store
 from markx.core.errors import NotFound
 from markx.core.http import Db
 from markx.core.storage import StoredFileMissing, get_public_storage
-from markx.images import selectors, service
-from markx.images.schemas import ImageOut, ProblemPhotoOut, ProductImagesOut, RemoveImageIn
+from markx.images import gate_photos, selectors, service
+from markx.images.schemas import (
+    GatePhotoLinkOut,
+    ImageOut,
+    ProblemPhotoOut,
+    ProductImagesOut,
+    RemoveImageIn,
+)
 from markx.orders.router import Buyer
 
 public_router = APIRouter(tags=["catalog"])
@@ -258,6 +269,82 @@ def read_problem_photo(
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     )
+
+
+# -- gate photos (C-08; D-107) -----------------------------------------------------------
+
+# PROVISIONAL (P-107-4, D-107): a buyer may send this many gate photos an hour.
+GATE_PHOTOS_PER_HOUR = 20
+_PRIVATE_IMAGE_HEADERS = {
+    "Cache-Control": "private, no-store",
+    "Content-Disposition": "inline",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+}
+
+
+@buyer_router.post("/me/addresses/{address_id}/gate-photo", response_model=AddressOut)
+def set_my_gate_photo(
+    address_id: uuid.UUID,
+    buyer: Buyer,
+    request: Request,
+    db: Db,
+    file: Annotated[UploadFile, File()],
+) -> AddressOut:
+    """A photo of the gate on one of the buyer's own addresses (a JPEG, PNG or
+    WebP as `file`), replacing any earlier one. Kept privately, without its
+    metadata; only the buyer and the shop delivering an order there see it."""
+    ratelimit.hit(f"gate-photo:buyer:{buyer.user.id}", GATE_PHOTOS_PER_HOUR, timedelta(hours=1))
+    address = gate_photos.set_gate_photo(
+        db, buyer.actor(request), buyer.user.id, address_id, _read(db, file)
+    )
+    return _address_out(db, address)
+
+
+@buyer_router.delete("/me/addresses/{address_id}/gate-photo", response_model=AddressOut)
+def remove_my_gate_photo(
+    address_id: uuid.UUID, buyer: Buyer, request: Request, db: Db
+) -> AddressOut:
+    """The address no longer has a gate photo. An order already placed with
+    it keeps showing it to the shop delivering that order."""
+    address = gate_photos.remove_gate_photo(db, buyer.actor(request), buyer.user.id, address_id)
+    return _address_out(db, address)
+
+
+ContactHandler = Annotated[
+    SellerContext, Depends(require_seller(SellerCapability.SEE_BUYER_CONTACT))
+]
+
+
+@seller_router.get("/orders/{seller_order_id}/gate-photo", response_model=GatePhotoLinkOut)
+def seller_order_gate_photo(
+    seller_order_id: uuid.UUID, context: ContactHandler, db: Db
+) -> GatePhotoLinkOut:
+    """A five-minute link to the buyer's gate photo, for the roles that see
+    buyers' contacts, while this shop delivers the order to the door
+    (`has_gate_photo` on the order says when). `gate_photo_not_available`
+    otherwise."""
+    return GatePhotoLinkOut.model_validate(
+        gate_photos.shop_link(db, context.seller.id, context.member, seller_order_id)
+    )
+
+
+@buyer_router.get("/gate-photos/{photo_id}/content")
+def read_gate_photo(
+    photo_id: uuid.UUID,
+    principal: CurrentPrincipal,
+    request: Request,
+    db: Db,
+    expires: Annotated[int, Query(ge=0)],
+    signature: Annotated[str, Query(min_length=20, max_length=64)],
+    seller_order: uuid.UUID | None = None,
+) -> Response:
+    """The photo behind a signed link: the same person it was issued to must
+    be signed in, and still be allowed. Never for a staff session."""
+    data = gate_photos.open_gate_photo(
+        db, principal.actor(request), photo_id, seller_order_id=seller_order, expires=expires,
+        signature=signature, staff_session=principal.is_staff_session,
+    )  # fmt: skip
+    return Response(content=data, media_type="image/webp", headers=_PRIVATE_IMAGE_HEADERS)
 
 
 # -- public files on a laptop -------------------------------------------------------------

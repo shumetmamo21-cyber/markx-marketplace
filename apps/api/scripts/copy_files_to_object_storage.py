@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from markx import registry  # noqa: F401  (every model, for the queries below)
+from markx.accounts.models import GatePhoto
 from markx.catalog.models import ProductImage
 from markx.core.config import get_config
 from markx.core.db import session_scope
@@ -64,7 +65,8 @@ from markx.trust.models import ProblemPhoto
 class FileRef:
     """One file a database row refers to."""
 
-    # seller_document, picture_source, picture_thumb, picture_main, problem_photo, store_logo
+    # seller_document, picture_source, picture_thumb, picture_main, problem_photo, store_logo,
+    # gate_photo
     kind: str
     row_id: uuid.UUID
     store: StoreName
@@ -96,6 +98,9 @@ def file_references(db: Session) -> list[FileRef]:
         assert store.logo_key is not None
         refs.append(FileRef("store_logo", store.id, "public", logo_file(store.logo_key),
                             "image/webp"))  # fmt: skip
+    # A buyer's gate photo (C-08, D-107): private, like the evidence photos.
+    for gate in db.scalars(select(GatePhoto).order_by(GatePhoto.id)):
+        refs.append(FileRef("gate_photo", gate.id, "private", gate.file_key, "image/webp"))
     return refs
 
 

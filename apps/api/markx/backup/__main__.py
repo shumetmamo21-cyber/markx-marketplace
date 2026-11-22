@@ -577,6 +577,21 @@ def cmd_heartbeat(args: argparse.Namespace) -> int:
     return 0 if result == "sent" else EXIT_FAILED
 
 
+def fresh_code(totp: Any, *, clock: Any = time.time, sleep: Any = time.sleep) -> str:
+    """The stand-in authenticator's code, from a 30-second step that started
+    after this was called (D-107). The restored copy remembers the last step
+    its staff member signed in with (`totp_last_step`, so a code cannot be
+    replayed), and a backup made seconds after a sign-in carries that step:
+    the current step's code would then be refused as a replay. A person reads
+    their phone after the restore, well past that step; the stand-in waits
+    for the next step to do the same. The sign-in it feeds is checked exactly
+    as before."""
+    interval = int(totp.interval)
+    started = clock()
+    sleep(interval - (started % interval) + 1)
+    return str(totp.at(clock()))
+
+
 def _drill_secrets(args: argparse.Namespace, config: BackupConfig) -> Any:
     """The secrets copy and the staff member who signs in (BK-5), or None."""
     from markx.backup.drill import DrillSecrets
@@ -611,7 +626,7 @@ def _drill_secrets(args: argparse.Namespace, config: BackupConfig) -> Any:
         if secret:  # the rehearsal's stand-in for the authenticator app
             import pyotp
 
-            return str(pyotp.TOTP(secret).now())
+            return fresh_code(pyotp.TOTP(secret))
         if not sys.stdin.isatty():
             raise EOFError
         return getpass.getpass(

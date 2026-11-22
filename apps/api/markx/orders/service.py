@@ -679,6 +679,8 @@ def _address_snapshot(quote: Quote) -> dict[str, Any]:
         "latitude": address.latitude,
         "longitude": address.longitude,
         "driver_notes": address.driver_notes,
+        # The gate photo's id, never its file (C-08; D-107).
+        "gate_photo_id": str(address.gate_photo_id) if address.gate_photo_id else None,
     }
 
 

@@ -9,7 +9,8 @@ Both run on a plain psycopg connection, so they work on the live database
 - `product_images.source_key`, private, when set;
 - the two renditions `<file_key>-320.webp` and `<file_key>-1200.webp`,
   public, once `processed_at` is set (a picture removed later keeps them);
-- a shop's logo, `<stores.logo_key>-256.webp`, public (S-03, D-106).
+- a shop's logo, `<stores.logo_key>-256.webp`, public (S-03, D-106);
+- `gate_photos.file_key`, private (C-08, D-107), once that table exists.
 
 `order_items.image_key` exists in the schema but nothing writes it today; if
 it ever holds a value, it is counted as an *unclassified* reference, which
@@ -64,6 +65,11 @@ def file_references(conn: Connection[Any]) -> list[FileReference]:
         "select logo_key from stores where logo_key is not null order by id"
     ).fetchall()
     refs += [FileReference("public", logo_file(row[0]), "store_logo") for row in rows]
+    # A restore of an older set may predate migration 0023.
+    gate_table = conn.execute("select to_regclass('public.gate_photos') is not null").fetchone()
+    if gate_table and gate_table[0]:
+        rows = conn.execute("select file_key from gate_photos order by id").fetchall()
+        refs += [FileReference("private", row[0], "gate_photo") for row in rows]
     return sorted(refs)
 
 

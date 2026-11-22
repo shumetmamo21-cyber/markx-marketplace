@@ -1,17 +1,43 @@
 # Development status
 
-**Last updated:** 22 November 2026, by the **five Release 1 features
-session** (D-106) on branch `claude/sharp-albattani-dp65ad`, from `main` at
-`6378764` with the complete history. That session first reviewed pull
-request #13 (D-105, backups) independently and merged it (below; merge
-commit `6378764`). Before it, pull request #12 (D-104) was merged as
-`9daaf57`; pull request #11 as `7093e6c`; pull request #10 (D-102) as
+**Last updated:** 22 November 2026, by the **five more Release 1 features
+session** (D-107) on branch `claude/release-1-five-features-g0sl7o`, from
+`main` at `e1849be` with the complete history. **`e1849be` is main's last
+merge commit before this work: the merge of pull request #14 (D-106).** Its
+pull request is #15; its merge into `main` is recorded below. Before it,
+pull request #13 (D-105) was merged as `6378764`; pull request #12 (D-104)
+as `9daaf57`; pull request #11 as `7093e6c`; pull request #10 (D-102) as
 `9b3658f`; pull request #9 (D-101) as `fe4546f`; the frontend resilience
 session (D-100, pull request #8) as `b79caab`; the order life-cycle
 hardening session (D-099, pull request #7) as `fae2514`; the staff conflict
 and phone digits session (D-098, pull request #6) as `c70b338`; the checks
 and secret-scan session (D-097, pull request #5) as `d01fef7`, and the
 backup trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## Five more Release 1 features: the total to the door, a gate photo, lite mode, photos shrunk on the phone, share cards and a QR code (22 November 2026, D-107)
+
+One pull request into `main`: **#15** (https://github.com/shumetmamo21-cyber/markx-marketplace/pull/15);
+its checks and the merge are in "Tests executed", 22 November 2026 (D-107).
+**One migration (0023). Nothing deployed; no server, account, bucket, bot
+or paid resource.** Details, limits and seven PROVISIONAL values (P-107-1 to
+P-107-7): `docs/DECISIONS.md`, D-107.
+
+| Feature | What a person sees | Proof |
+| --- | --- | --- |
+| C-03 the total to the door, delivery speed | In search, "Deliver to" an area, "Delivery speed" within 24, 48 or 72 hours, and the sort "Lowest total to my door"; each card says "ETB 11,350 to your door" and "Arrives within 24 hours"; without an area, the page asks for one | 6 C-03 tests in `tests/api/test_d107_release1_features.py` (the card's total is the product page's own); the D-107 journey |
+| C-08 the buyer's gate photo | Under each saved address, an optional gate photo (location data removed); the shop sees it on the order from accepting until the handover, never for collection; staff never | 10 C-08 tests in the same file (privacy, roles, staff, collection, the order's own photo, the database rules, the backup); the seller isolation test (automatic); the D-107 journey |
+| C-12 lite mode | A footer link, remembered; on by itself on a phone set to save data; no card photos, one small product picture, picture strips as links | `src/lib/lite.test.ts`; the D-107 journey |
+| S-06 photos shrunk on the phone | Every photo upload is made smaller before it is sent (an 18 MB picture went as 1 MB); the server checks it as before | `src/lib/shrink-photo.test.ts`; the D-107 journey measures what is sent |
+| S-10 share cards and a QR code | A "Share" link on every shop and product page (and the shop's settings): the link, share on Telegram, a QR code to print, and two cards (1200 × 630, 1080 × 1920) in Amharic or English | `src/lib/qr.test.ts` (the standard's published values; every code read back), `src/lib/share.test.ts`; the D-107 journey checks the PNG sizes |
+
+**A CI failure found and fixed here:** the off-server drill's stand-in
+authenticator could replay the demo staff member's code (a timing race in
+the D-105 drill harness; D-107 section 6).
+
+**On the old code** (`e1849be` with only the new API test file): 16 of 16
+fail (the file's one new import guarded). The web test files test new
+modules. **The QR code was not scanned with a real phone** (no camera
+here): do it first on the test device.
 
 ## Five Release 1 features: the Ethiopian calendar and clock, order again, the price chart, a shop's logo, a shop's customers (22 November 2026, D-106)
 
@@ -2036,6 +2062,35 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Five more Release 1 features** (D-107), on 22 November 2026, branch
+`claude/release-1-five-features-g0sl7o` from `main` at `e1849be` (complete
+history). PostgreSQL 17 and MinIO in containers, with
+`MARKX_TEST_MINIO_REQUIRED=1`, `MARKX_TEST_BACKUP_REQUIRED=1`, the
+least-privilege MinIO users and PostgreSQL 17.12's tools, as in CI.
+
+```text
+uv run pytest -q -p no:cacheprovider (this branch)        ->  2178 passed, 0 failed, 0 skipped, in 25 min 41 s
+  = 2161 + 16 new tests + 1 new case of the seller isolation test (GET /seller/{id}/orders/{id}/gate-photo)
+  tests/api/test_d107_release1_features.py                ->  16 passed
+the new tests on e1849be (worktree, the new file only)    ->  cannot import (GatePhoto is new); with that import
+                                                              guarded: 16 of 16 fail
+ruff check / ruff format --check / mypy markx             ->  passed / 274 files already formatted / no issues in 161 files
+alembic upgrade head / alembic check                      ->  at 0023 / no new upgrade operations
+both OpenAPI copies                                       ->  exported again from the API
+apps/web: npm run lint / typecheck / test / build         ->  passed / passed / 198 passed in 21 files (159 before) / built
+journeys on this machine, in CI's order on a fresh demo database (production build, Chromium):
+  page weight                                             ->  every page within its budget; this branch against main:
+                                                              product 208.9 -> 209.2 KB, script unchanged (156.9 KB)
+  seller-dashboard, buyer, staff, admin-queues, shop-screens, setup-and-account, network-recovery
+                                                          ->  all passed; console errors: none
+  release1-d107 (new)                                     ->  passed (results in D-107, "Tests")
+GitHub on 590bee9 (before the documents commit): CI #185 (8 of 8) and Browser journeys #61 -> passed
+GitHub on 9869524 (documents only): one step failed, the off-server drill's staff sign-in (HTTP 401):
+  a replayed authenticator step in the D-105 drill harness, fixed in this pull request (D-107 section 6)
+tests/storage/test_d107_drill_fresh_code.py (new, 2)      ->  passed; the reproduction fails on the old line (DRILL FAILED)
+tests/storage/test_backup_d105.py (existing, 4)           ->  passed with the fix
+```
+
 **Five Release 1 features** (D-106), on 22 November 2026, branch
 `claude/sharp-albattani-dp65ad` from `main` at `6378764` (complete
 history). PostgreSQL 17.12 and MinIO in containers, with
@@ -3349,8 +3404,9 @@ Counted by `uv run pytest --collect-only -q` on the final head.
 | `0015` | `20261118_1014_sms_delivery_records.py` | `sms_messages`: one delivery record per SMS, with its CHECKs (purpose and reference agree, a failure has its error code, a 32-byte keyed hash of the number, no text or code column) and three indexes (D-089). A new table only; nothing existing changed |
 | `0018` | `20261118_1916_backup_runs.py` | `backup_runs`: every backup, drill and verification: when it ran, its final status, the destination's identity (never a credential), whether it is off the server, whether the set was verified, sizes, object counts and a short error code; the worker's watch alerts from it. The application role may only read it (D-094). Added to this table on 19 November 2026 |
 | `0020` | `20261121_0900_telegram_sign_in.py` | `telegram_sign_ins`: each website sign-in with Telegram (keyed hashes of the link's token and of the browser's secret, the Telegram account that opened it, the account it reached, expiry, status and refusal reason; CHECKs tie each status to its fields) and `telegram_init_data_uses`: keyed hashes of Mini App start-up data already used to sign in (M4). Two new tables only (D-101) |
+| `0023` | `20261122_1227_gate_photos.py` | `gate_photos` (append-only for every role, the application role has no UPDATE or DELETE; size, dimension and private-key CHECKs) and `addresses.gate_photo_id` with a foreign key on (photo, owner): an address holds only its own buyer's photo (D-107). A new table and a new empty column |
 
-The schema has 77 tables (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`, `telegram_link_tokens`, `telegram_updates`, `backup_runs`, and in `0020` `telegram_sign_ins` and `telegram_init_data_uses`; corrected on 19 November 2026 from 74, which left out `backup_runs`). P9 and P10 needed no new table and no migration at
+The schema has 78 tables (79 with `alembic_version`; `gate_photos` added in `0023`, D-107; before it 77 (65 before `0008`; then `problem_photos`, `ops_alerts`, `rating_summaries`, `seller_weekly_reports`, `sms_messages`, `notification_deliveries`, `seller_order_reminders`, `telegram_link_tokens`, `telegram_updates`, `backup_runs`, and in `0020` `telegram_sign_ins` and `telegram_init_data_uses`; corrected on 19 November 2026 from 74, which left out `backup_runs`)). P9 and P10 needed no new table and no migration at
 all in sessions four and five: the first session's
 schema already held carts, orders, seller orders, items, events, reservations,
 shipments and payment intents.

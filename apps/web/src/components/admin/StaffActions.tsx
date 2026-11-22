@@ -5,6 +5,7 @@ import { type ReactNode, useState } from "react";
 
 import { browserApi, errorCode, getSafely, sendForm } from "@/lib/api/browser";
 import { apiErrorText, fill, type Messages } from "@/lib/i18n";
+import { withShrunkPhoto } from "@/lib/shrink-photo";
 
 import { ProblemNotice } from "../Resilience";
 
@@ -508,7 +509,7 @@ export function UploadPictureForm({ productId, t }: { productId: string; t: T })
       t={t}
       label={a.upload}
       onSubmit={async (form) => {
-        const sent = await sendForm(`/api/v1/admin/catalog/products/${encodeURIComponent(productId)}/images`, form);
+        const sent = await sendForm(`/api/v1/admin/catalog/products/${encodeURIComponent(productId)}/images`, await withShrunkPhoto(form));
         return sent.ok ? {} : { error: sent.body ?? { error: { code: "unknown" } } };
       }}
     >
