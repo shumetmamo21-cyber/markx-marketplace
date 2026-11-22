@@ -24,6 +24,7 @@ from markx.core.errors import NotFound
 from markx.core.money import Money
 from markx.delivery.models import MAX_HANDOVER_ATTEMPTS, DeliveryZone, Shipment, TrackingEvent
 from markx.delivery.selectors import active_rates_for_zone
+from markx.images import gate_photos
 from markx.orders import service
 from markx.orders.models import (
     Cart,
@@ -497,6 +498,9 @@ def _seller_order_out(
         "paid_method": seller_order.paid_method,
         "paid_at": seller_order.paid_at,
         "handover_attempts_left": MAX_HANDOVER_ATTEMPTS - shipment.handover_attempts,
+        # The buyer's gate photo, only while this shop delivers it to the door
+        # (C-08; D-107); the link comes from `.../orders/{id}/gate-photo`.
+        "has_gate_photo": shows_contact and gate_photos.visible_to_shop(seller_order, order, shipment),
         "problem": problem,
         # The seller's own rider: always shown to the seller.
         "shipment": _shipment_out(shipment, tracking, show_rider=True),

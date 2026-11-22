@@ -399,6 +399,9 @@ class SellerOrderOut(ApiModel):
     paid_method: str | None
     paid_at: datetime | None
     handover_attempts_left: int
+    # A gate photo to show (C-08; D-107): only while this shop delivers the
+    # order to the door, and only to the roles that see buyers' contacts.
+    has_gate_photo: bool = False
     problem: ProblemOut | None
     shipment: ShipmentOut
     delivery_area: DeliveryAreaOut

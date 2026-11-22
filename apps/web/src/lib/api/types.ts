@@ -4,6 +4,8 @@ type Schemas = components["schemas"];
 
 export type ProductCard = Schemas["ProductCardOut"];
 export type SearchResult = Schemas["SearchOut"];
+export type DeliveredToZone = Schemas["DeliveredToZoneOut"];
+export type GatePhotoLink = Schemas["GatePhotoLinkOut"];
 export type Product = Schemas["ProductOut"];
 export type RankedOffer = Schemas["RankedOfferOut"];
 export type ProductOffers = Schemas["ProductOffersOut"];

@@ -10,7 +10,9 @@ import { serverApi } from "@/lib/api/server";
 import type { RankedOffer } from "@/lib/api/types";
 import { formatPrice, timeAgo } from "@/lib/format";
 import { fill, isLocale, type Locale, type Messages } from "@/lib/i18n";
+import { isLite } from "@/lib/lite-server";
 import { getMessages } from "@/lib/messages";
+import { publicOrigin } from "@/lib/share";
 
 const REVIEWS_PER_PAGE = 10;
 
@@ -100,7 +102,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
   const { lang, slug } = await params;
   if (!isLocale(lang)) notFound();
   const raw = await searchParams;
-  const t = await getMessages(lang);
+  const [t, lite] = await Promise.all([getMessages(lang), isLite()]);
   const product = await load(lang, slug);
   if (product.slug !== slug) redirect(`/${lang}/p/${product.slug}`); // a merged product's old link
 
@@ -130,6 +132,7 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
   const zoneChosen = Boolean(offers.data?.zone_code);
   const shopNames = new Map(ranked.map((offer) => [offer.store_slug, offer.store_name]));
   const shown = reviews.data?.reviews ?? [];
+  const origin = publicOrigin(process.env);
   const keep = `${variant ? `variant=${variant.id}&` : ""}${zone ? `zone=${zone}&` : ""}`;
 
   return (
@@ -144,7 +147,22 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
         <ReportForm target={{ type: "product", id: product.id }} t={reportText(t)} />
       </section>
 
-      {catalogue.length ? (
+      {catalogue.length && lite ? (
+        // Lite mode (C-12): one small picture, the rest as plain links.
+        <section aria-label={t.pictures.title} className="space-y-2">
+          <a href={catalogue[0]?.main_url ?? undefined} className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-card border border-line bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a thumbnail within 320 px and 30 KB (D-062) */}
+            <img src={catalogue[0]?.thumb_url ?? undefined} alt={fill(t.pictures.catalogueAlt, { name: product.name, number: 1 })} className="h-full w-full object-contain" />
+          </a>
+          {catalogue.length > 1 ? (
+            <ul className="flex flex-wrap gap-x-4 text-sm">
+              {catalogue.slice(1).map((picture, index) => (
+                <li key={picture.id}><a href={picture.main_url ?? undefined} className="inline-flex min-h-12 items-center underline">{fill(t.lite.picture, { number: index + 2 })}</a></li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : catalogue.length ? (
         <section aria-label={t.pictures.title} className="space-y-2">
           <a href={catalogue[0]?.main_url ?? undefined} className="flex max-h-96 items-center justify-center overflow-hidden rounded-card border border-line bg-white p-2">
             {/* eslint-disable-next-line @next/next/no-img-element -- rendered by the worker within 1,200 px and 150 KB (D-062) */}
@@ -220,7 +238,18 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
 
       {history.data ? <PriceHistoryChart history={history.data} lang={lang} t={t} /> : null}
 
-      {realPhotos.length ? (
+      {realPhotos.length && lite ? (
+        // Lite mode (C-12): no strip of photos, each one a plain link.
+        <section aria-labelledby="real-photos" className="space-y-2">
+          <h2 id="real-photos" className="text-lg font-bold">{t.pictures.realPhotos}</h2>
+          <p className="text-sm text-slate">{t.pictures.realPhotosLead}</p>
+          <ul className="flex flex-wrap gap-x-4 text-sm">
+            {realPhotos.map((photo) => (
+              <li key={photo.id}><a href={photo.main_url ?? undefined} className="inline-flex min-h-12 items-center underline">{fill(t.lite.photo, { store: shopNames.get(photo.store_slug) ?? photo.store_slug })}</a></li>
+            ))}
+          </ul>
+        </section>
+      ) : realPhotos.length ? (
         <section aria-labelledby="real-photos" className="space-y-2">
           <h2 id="real-photos" className="text-lg font-bold">{t.pictures.realPhotos}</h2>
           <p className="text-sm text-slate">{t.pictures.realPhotosLead}</p>
@@ -240,6 +269,8 @@ export default async function ProductPage({ params, searchParams }: PageProps<"/
           </ul>
         </section>
       ) : null}
+
+      {origin ? <p><a href={`/${lang}/p/${product.slug}/share`} className="inline-flex min-h-12 items-center font-semibold underline">{t.share.title}</a></p> : null}
 
       <section aria-labelledby="reviews" className="space-y-3">
         <h2 id="reviews" className="text-lg font-bold">{t.reviews.title}</h2>

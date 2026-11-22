@@ -171,6 +171,9 @@ class AddressOut(ApiModel):
     latitude: float | None
     longitude: float | None
     driver_notes: str | None
+    # The gate photo (C-08; D-107): a five-minute link for the buyer only;
+    # null without a photo.
+    gate_photo_url: str | None = None
 
 
 class DataRequestIn(ApiModel):

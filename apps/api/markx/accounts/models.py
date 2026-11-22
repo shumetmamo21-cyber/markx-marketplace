@@ -11,11 +11,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
     SmallInteger,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -193,6 +195,12 @@ class Address(UUIDPrimaryKey, Timestamps, Base):
             name="map_pin_in_range",
         ),
         Index("ix_addresses_user_id", "user_id"),
+        # The gate photo must be the address owner's own (C-08; D-107).
+        ForeignKeyConstraint(
+            ["gate_photo_id", "user_id"],
+            ["gate_photos.id", "gate_photos.user_id"],
+            name="fk_addresses_gate_photo_owner",
+        ),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -208,7 +216,36 @@ class Address(UUIDPrimaryKey, Timestamps, Base):
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
     driver_notes: Mapped[str | None] = mapped_column(Text)
+    # An optional photo of the gate (C-08; D-107). Private; each order keeps
+    # the id in its address snapshot, so a later change never alters it.
+    gate_photo_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GatePhoto(UUIDPrimaryKey, CreatedAt, Base):
+    """A photo of the buyer's gate on an address (blueprint D.10, C-08,
+    G.2; D-107). Private, like problem photos: re-encoded to WebP without
+    metadata (no location data) at upload, kept in private storage, never
+    edited or deleted, and opened only through a five-minute link signed for
+    the person who asked: the buyer who took it, or a member of the shop
+    delivering an order to that address while the delivery is under way."""
+
+    __tablename__ = "gate_photos"
+    __table_args__ = (
+        CheckConstraint("width > 0 and height > 0", name="dimensions_positive"),
+        CheckConstraint("size_bytes > 0", name="size_positive"),
+        CheckConstraint("file_key ~ '^gate-photos/'", name="file_key_private_prefix"),
+        UniqueConstraint("id", "user_id", name="uq_gate_photos_id_user_id"),
+        Index("ix_gate_photos_user_id", "user_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    file_key: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class DataRequest(UUIDPrimaryKey, CreatedAt, Base):

@@ -27,6 +27,11 @@ export default async function SellerOrderPage({ params }: PageProps<"/[lang]/sel
   const photos = order.problem
     ? ((await api.GET("/api/v1/seller/{seller_id}/orders/{seller_order_id}/problem/photos", { params: { path: { seller_id: sellerId, seller_order_id: orderId } } })).data ?? [])
     : [];
+  // The buyer's gate photo (C-08; D-107): only when the API says this shop
+  // is delivering the order to the door now; a five-minute private link.
+  const gate = order.has_gate_photo
+    ? (await api.GET("/api/v1/seller/{seller_id}/orders/{seller_order_id}/gate-photo", { params: { path: { seller_id: sellerId, seller_order_id: orderId } } })).data
+    : undefined;
   const method = t.checkout[`method_${order.delivery_method}` as "method_seller_rider"] ?? order.delivery_method;
 
   return (
@@ -80,6 +85,14 @@ export default async function SellerOrderPage({ params }: PageProps<"/[lang]/sel
             {order.buyer.landmark ? <p>{fill(s.landmark, { landmark: order.buyer.landmark })}</p> : null}
             {order.buyer.driver_notes ? <p>{fill(s.notes, { notes: order.buyer.driver_notes })}</p> : null}
           </>
+        ) : null}
+        {gate ? (
+          <div className="space-y-1 pt-2">
+            <h3 className="font-semibold">{s.gatePhoto}</h3>
+            <p className="text-slate">{s.gatePhotoLead}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element -- a private five-minute link from the API (D-107) */}
+            <img src={gate.url} alt={s.gatePhotoAlt} className="max-h-72 w-auto max-w-full rounded-card border border-line object-contain" />
+          </div>
         ) : null}
       </section>
 

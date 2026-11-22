@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ProductCard } from "@/components/ProductCard";
 import { serverApi } from "@/lib/api/server";
 import { isLocale } from "@/lib/i18n";
+import { isLite } from "@/lib/lite-server";
 import { getMessages } from "@/lib/messages";
 
 // Blueprint I.5: search first, category shortcuts, popular products, three
@@ -11,7 +12,7 @@ import { getMessages } from "@/lib/messages";
 export default async function HomePage({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
   if (!isLocale(lang)) notFound();
-  const t = await getMessages(lang);
+  const [t, lite] = await Promise.all([getMessages(lang), isLite()]);
   const api = await serverApi();
   const [categories, popular] = await Promise.all([
     api.GET("/api/v1/catalog/categories", { params: { query: { lang } } }),
@@ -49,7 +50,7 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(popular.data?.results ?? []).map((card) => (
             <li key={card.product_id}>
-              <ProductCard card={card} lang={lang} t={t} />
+              <ProductCard card={card} lang={lang} t={t} lite={lite} />
             </li>
           ))}
         </ul>

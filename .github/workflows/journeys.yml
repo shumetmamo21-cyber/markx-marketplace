@@ -53,6 +53,9 @@ jobs:
       MARKX_STORAGE_SECRET_ACCESS_KEY: markx-minio-dev-only-password
       MARKX_STORAGE_PRIVATE_BUCKET: markx-private
       MARKX_STORAGE_PUBLIC_BUCKET: markx-public
+      # The site's public address, which the web app needs for share links and
+      # QR codes (S-10, D-107): the same value the Compose API has.
+      MARKX_PUBLIC_ORIGIN: http://localhost:3000
       COMPOSE: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml
     steps:
       - uses: actions/checkout@v4
@@ -146,6 +149,12 @@ jobs:
       - name: Setup, trust actions, account, proposals and closing
         working-directory: apps/web
         run: node e2e/setup-and-account.mjs "$RUNNER_TEMP/shots"
+      # D-107: search by the total to the door and delivery speed, lite mode,
+      # a shop's share page and cards, a gate photo made smaller on the phone
+      # and seen by the delivering shop. It cancels the order it places.
+      - name: Total to the door, lite mode, share cards, gate photo
+        working-directory: apps/web
+        run: node e2e/release1-d107.mjs "$RUNNER_TEMP/shots"
 
       # D-100: a purchase with the network cut halfway (offline, a proxy's
       # 502 page, an answer lost after the server took the order), then the

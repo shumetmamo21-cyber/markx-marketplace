@@ -58,7 +58,14 @@
     "ratingAtLeast": "{stars} stars and up",
     "sellerLevel": "Seller level",
     "anyLevel": "Any level",
-    "levelAtLeast": "Level {level} and up"
+    "levelAtLeast": "Level {level} and up",
+    "zone": "Deliver to",
+    "anyZone": "Choose your area",
+    "speed": "Delivery speed",
+    "anySpeed": "Any speed",
+    "speedWithin": "Within {hours} hours",
+    "sortTotal": "Lowest total to my door",
+    "needZone": "Choose your area to sort by the total to your door or to filter by delivery speed."
   },
   "card": {
     "from": "from {price}",
@@ -67,7 +74,10 @@
     "sellerOne": "1 seller",
     "level": "Level {level} seller",
     "fresh": "Prices recently confirmed",
-    "stale": "Prices not confirmed lately"
+    "stale": "Prices not confirmed lately",
+    "toDoor": "{price} to your door",
+    "arrivesWithin": "Arrives within {hours} hours",
+    "noDelivery": "Not delivered to your area"
   },
   "condition": {
     "new": "New",
@@ -525,7 +535,9 @@
     "telegram_data_used": "This Telegram sign-in was already used. Open MarkX again.",
     "telegram_data_expired": "This Telegram sign-in is too old. Open MarkX again.",
     "sms_share_spent": "Too many codes were sent from here today. Please try again tomorrow, or sign in with Telegram.",
-    "staff_locked": "Too many failed attempts. Try again in a few minutes."
+    "staff_locked": "Too many failed attempts. Try again in a few minutes.",
+    "gate_photo_not_available": "There is no gate photo to show.",
+    "zone_required": "Choose your delivery area first."
   },
   "seller": {
     "title": "Seller dashboard",
@@ -775,7 +787,11 @@
     "logoSaved": "Your logo is on your shop's page.",
     "logoRemove": "Remove the logo",
     "logoRemoved": "The logo was removed.",
-    "logoNone": "No logo yet."
+    "logoNone": "No logo yet.",
+    "gatePhoto": "The buyer's gate",
+    "gatePhotoLead": "Shown only while you deliver this order. Do not save or share it.",
+    "gatePhotoAlt": "Photo of the buyer's gate",
+    "shareTitle": "Share your shop"
   },
   "admin": {
     "title": "MarkX staff",
@@ -1403,7 +1419,15 @@
       "nowConnected": "Telegram is connected.",
       "nowDisconnected": "Telegram is disconnected.",
       "checkFailed": "Could not check the connection. Check your internet; this page keeps trying."
-    }
+    },
+    "gateTitle": "Gate photo",
+    "gateLead": "Optional. Only you, and the shop delivering an order to this address while it is on its way, can see it. Its location data is removed.",
+    "gateChoose": "Photo of your gate",
+    "gateUpload": "Save the gate photo",
+    "gateSaved": "Gate photo saved.",
+    "gateRemove": "Remove the gate photo",
+    "gateRemoved": "Gate photo removed.",
+    "gateAlt": "The gate at {landmark}"
   },
   "notifications": {
     "unknown": "You have a new message from MarkX.",
@@ -1478,5 +1502,28 @@
     "create": "Create the product",
     "propose": "Send to MarkX for review",
     "proposed": "Sent. MarkX checks it before buyers see it; you can add your offer once it is approved."
+  },
+  "lite": {
+    "on": "Lite mode (smaller pictures)",
+    "off": "Turn lite mode off",
+    "state": "Lite mode is on.",
+    "picture": "Picture {number}",
+    "photo": "Photo by {store}"
+  },
+  "share": {
+    "title": "Share",
+    "storeLead": "Send this shop's link, print its QR code, or post its card on Telegram or TikTok.",
+    "productLead": "Send this product's link, print its QR code, or post its card on Telegram or TikTok.",
+    "link": "Link",
+    "telegram": "Share on Telegram",
+    "cardTelegram": "Card for Telegram (1200 × 630)",
+    "cardTiktok": "Card for TikTok (1080 × 1920)",
+    "qr": "QR code",
+    "qrAlt": "QR code for {name}",
+    "qrDownload": "Download the QR code",
+    "verified": "Verified on {brand}",
+    "scan": "Scan to open on {brand}",
+    "titleOf": "Share {name}",
+    "cardFailed": "The card could not be made on this phone. Try again, or share the link."
   }
 }

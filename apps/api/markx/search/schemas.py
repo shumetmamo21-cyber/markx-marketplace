@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import StringConstraints
+from pydantic import Field, StringConstraints
 
 from markx.core.schemas import ApiModel, PhoneText
 
@@ -32,9 +32,24 @@ class ProductCardOut(ApiModel):
     thumb_url: str | None
 
 
+class DeliveredToZoneOut(ApiModel):
+    """One result delivered to the buyer's zone (C-03; D-107): the cheapest
+    price plus delivery to the door there, in santim, and the fastest
+    promised delivery, in hours."""
+
+    product_id: uuid.UUID
+    total_santim: int
+    fastest_hours: int
+
+
 class SearchOut(ApiModel):
     query: str
     total: int
+    # The delivery zone the totals are for (C-03); null without one.
+    zone_code: str | None = None
+    # With a zone: the results on this page that are delivered there; a
+    # result missing here is not delivered to that zone.
+    delivered: list[DeliveredToZoneOut] = Field(default_factory=list)
     results: list[ProductCardOut]
     # Offered when nothing matched (D.8): the nearest products by spelling.
     did_you_mean: list[ProductCardOut]

@@ -69,20 +69,30 @@ def search_products(
     min_level: Annotated[int | None, Query(ge=0, le=3)] = None,
     min_rating: Annotated[int | None, Query(ge=1, le=5)] = None,
     in_stock: bool = False,
-    sort: Literal["relevance", "price", "freshness"] = "relevance",
+    zone: Annotated[str | None, Query(pattern=r"^[a-z][a-z0-9_]*$", max_length=40)] = None,
+    max_delivery_hours: Annotated[int | None, Query(ge=1, le=720)] = None,
+    sort: Literal["relevance", "price", "freshness", "total"] = "relevance",
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     offset: Annotated[int, Query(ge=0, le=1000)] = 0,
     lang: LangQuery = "am",
 ) -> SearchOut:
     """Products, never listings (D.8). Prices in santim; the "from" price is
-    the lowest in stock. Every first page is logged with its result count."""
+    the lowest in stock. Every first page is logged with its result count.
+
+    With `zone` (a delivery zone's code), `delivered` gives, for each result
+    delivered there, the cheapest total to the door and the fastest promised
+    delivery (C-03);
+    `max_delivery_hours` keeps only products delivered there within that
+    time, and `sort=total` orders by the total to the door. Both need
+    `zone` (`zone_required` otherwise)."""
     # Throttled per network address (`search.requests_per_ip_per_minute`).
     _throttle(db, request, "search", "search.requests_per_ip_per_minute")
     return SearchOut.model_validate(
         selectors.search(
             db, q, language=lang, category=category, brand=brand, condition=condition,
             min_price=min_price, max_price=max_price, min_level=min_level,
-            min_rating=min_rating, in_stock_only=in_stock, sort=sort, limit=limit, offset=offset,
+            min_rating=min_rating, in_stock_only=in_stock, zone=zone,
+            max_delivery_hours=max_delivery_hours, sort=sort, limit=limit, offset=offset,
             user_id=principal.user.id if principal else None,
         )
     )  # fmt: skip

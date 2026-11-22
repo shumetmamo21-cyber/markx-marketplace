@@ -115,6 +115,17 @@
             ],
             "title": "Driver Notes"
           },
+          "gate_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Photo Url"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1000,6 +1011,20 @@
           "file"
         ],
         "title": "Body_add_seller_problem_photo_api_v1_seller__seller_id__orders__seller_order_id__problem_photos_post",
+        "type": "object"
+      },
+      "Body_set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post",
         "type": "object"
       },
       "Body_upload_document_api_v1_seller__seller_id__documents_post": {
@@ -2338,6 +2363,32 @@
         "title": "DeclineIn",
         "type": "object"
       },
+      "DeliveredToZoneOut": {
+        "additionalProperties": false,
+        "description": "One result delivered to the buyer's zone (C-03; D-107): the cheapest\nprice plus delivery to the door there, in santim, and the fastest\npromised delivery, in hours.",
+        "properties": {
+          "fastest_hours": {
+            "title": "Fastest Hours",
+            "type": "integer"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "total_santim": {
+            "title": "Total Santim",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_id",
+          "total_santim",
+          "fastest_hours"
+        ],
+        "title": "DeliveredToZoneOut",
+        "type": "object"
+      },
       "DeliveryAreaOut": {
         "additionalProperties": false,
         "properties": {
@@ -2767,6 +2818,26 @@
           "orders"
         ],
         "title": "FunnelOut",
+        "type": "object"
+      },
+      "GatePhotoLinkOut": {
+        "description": "A buyer's gate photo (C-08; D-107): a link that works for five\nminutes, only for the person it was issued to, while they may see it.",
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "url_expires_at": {
+            "format": "date-time",
+            "title": "Url Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "url_expires_at"
+        ],
+        "title": "GatePhotoLinkOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -6916,6 +6987,13 @@
       "SearchOut": {
         "additionalProperties": false,
         "properties": {
+          "delivered": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveredToZoneOut"
+            },
+            "title": "Delivered",
+            "type": "array"
+          },
           "did_you_mean": {
             "items": {
               "$ref": "#/components/schemas/ProductCardOut"
@@ -6937,6 +7015,17 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "zone_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Code"
           }
         },
         "required": [
@@ -7761,6 +7850,11 @@
           "handover_attempts_left": {
             "title": "Handover Attempts Left",
             "type": "integer"
+          },
+          "has_gate_photo": {
+            "default": false,
+            "title": "Has Gate Photo",
+            "type": "boolean"
           },
           "id": {
             "format": "uuid",
@@ -15248,6 +15342,86 @@
         ]
       }
     },
+    "/api/v1/gate-photos/{photo_id}/content": {
+      "get": {
+        "description": "The photo behind a signed link: the same person it was issued to must\nbe signed in, and still be allowed. Never for a staff session.",
+        "operationId": "read_gate_photo_api_v1_gate_photos__photo_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Photo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expires",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Expires",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "signature",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 20,
+              "title": "Signature",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "seller_order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seller Order"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Gate Photo",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/v1/healthz": {
       "get": {
         "description": "Used by uptime monitors. Reports the API and the database.",
@@ -15492,6 +15666,102 @@
         "summary": "Delete Address",
         "tags": [
           "me"
+        ]
+      }
+    },
+    "/api/v1/me/addresses/{address_id}/gate-photo": {
+      "delete": {
+        "description": "The address no longer has a gate photo. An order already placed with\nit keeps showing it to the shop delivering that order.",
+        "operationId": "remove_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Address Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove My Gate Photo",
+        "tags": [
+          "orders"
+        ]
+      },
+      "post": {
+        "description": "A photo of the gate on one of the buyer's own addresses (a JPEG, PNG or\nWebP as `file`), replacing any earlier one. Kept privately, without its\nmetadata; only the buyer and the shop delivering an order there see it.",
+        "operationId": "set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Address Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_set_my_gate_photo_api_v1_me_addresses__address_id__gate_photo_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set My Gate Photo",
+        "tags": [
+          "orders"
         ]
       }
     },
@@ -16785,7 +17055,7 @@
     },
     "/api/v1/search": {
       "get": {
-        "description": "Products, never listings (D.8). Prices in santim; the \"from\" price is\nthe lowest in stock. Every first page is logged with its result count.",
+        "description": "Products, never listings (D.8). Prices in santim; the \"from\" price is\nthe lowest in stock. Every first page is logged with its result count.\n\nWith `zone` (a delivery zone's code), `delivered` gives, for each result\ndelivered there, the cheapest total to the door and the fastest promised\ndelivery (C-03);\n`max_delivery_hours` keeps only products delivered there within that\ntime, and `sort=total` orders by the total to the door. Both need\n`zone` (`zone_required` otherwise).",
         "operationId": "search_products_api_v1_search_get",
         "parameters": [
           {
@@ -16934,6 +17204,42 @@
           },
           {
             "in": "query",
+            "name": "zone",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Zone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_delivery_hours",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 720,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Delivery Hours"
+            }
+          },
+          {
+            "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
@@ -16941,7 +17247,8 @@
               "enum": [
                 "relevance",
                 "price",
-                "freshness"
+                "freshness",
+                "total"
               ],
               "title": "Sort",
               "type": "string"
@@ -18840,6 +19147,60 @@
         "summary": "Dispatch Seller Order",
         "tags": [
           "seller: orders"
+        ]
+      }
+    },
+    "/api/v1/seller/{seller_id}/orders/{seller_order_id}/gate-photo": {
+      "get": {
+        "description": "A five-minute link to the buyer's gate photo, for the roles that see\nbuyers' contacts, while this shop delivers the order to the door\n(`has_gate_photo` on the order says when). `gate_photo_not_available`\notherwise.",
+        "operationId": "seller_order_gate_photo_api_v1_seller__seller_id__orders__seller_order_id__gate_photo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatePhotoLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seller Order Gate Photo",
+        "tags": [
+          "seller: pictures"
         ]
       }
     },

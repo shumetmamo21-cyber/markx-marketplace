@@ -25,15 +25,25 @@ from typing import Any, Literal
 from sqlalchemy import Select, Text, and_, case, false, func, literal, or_, select
 from sqlalchemy.orm import Session
 
-from markx.catalog.models import Brand, Category, Product, ProductStatus, ProductTranslation
+from markx.catalog.models import (
+    Brand,
+    Category,
+    Product,
+    ProductStatus,
+    ProductTranslation,
+    ProductVariant,
+)
 from markx.core import settings_store
-from markx.core.errors import NotFound
+from markx.core.errors import NotFound, ValidationFailed
 from markx.core.ethiopic import detect_script, normalize_text, skeleton_key
+from markx.delivery.models import DeliveryMode, DeliveryRate, DeliveryZone
 from markx.images.selectors import first_thumbnails
+from markx.offers.models import Inventory, Offer, OfferStatus
 from markx.search.models import SearchDocument, SearchQuery, SearchSynonym
+from markx.sellers.models import Seller, SellerStatus, Store
 from markx.trust.models import RatingSummary
 
-Sort = Literal["relevance", "price", "freshness"]
+Sort = Literal["relevance", "price", "freshness", "total"]
 
 MAX_QUERY_LENGTH = 100
 MAX_WORDS = 8
@@ -125,6 +135,68 @@ def _brand_id(db: Session, slug: str | None) -> uuid.UUID | None:
     return found
 
 
+def _zone_id(db: Session, code: str | None) -> uuid.UUID | None:
+    if code is None:
+        return None
+    found = db.scalar(
+        select(DeliveryZone.id).where(DeliveryZone.code == code, DeliveryZone.is_active)
+    )
+    if found is None:
+        raise NotFound("zone_not_found", "That delivery zone was not found.")
+    return found
+
+
+def _delivered(db: Session, zone_id: uuid.UUID, max_hours: int | None) -> Any:
+    """Per product, the cheapest total to the buyer's door in one zone and the
+    fastest promised delivery there (C-03; D-107). Computed on every read,
+    never stored, from exactly the offers the product page lists (D-029): an
+    active offer in stock, from a trading shop verified to the publishing
+    level, on an active version. A total is the offer's price plus the fee of
+    one active delivery method the offer uses into the zone (the shop's rider
+    or the partner courier); the cheapest pair is the product page's own
+    total (`offers.selectors.product_offers`). PROVISIONAL (P-107-1,
+    D-107): collection at the shop is not delivery to the door and counts
+    for neither. With `max_hours`, only
+    methods promised within that many hours count, so the total is the
+    cheapest way to have it within that time."""
+    method_matches = or_(
+        and_(
+            DeliveryRate.method == DeliveryMode.SELLER_RIDER.value, Offer.delivers_by_seller_rider
+        ),
+        and_(
+            DeliveryRate.method == DeliveryMode.PARTNER_COURIER.value,
+            Offer.delivers_by_partner_courier,
+        ),
+    )
+    statement = (
+        select(
+            ProductVariant.product_id.label("product_id"),
+            func.min(Offer.price_santim + DeliveryRate.fee_santim).label("total"),
+            func.min(DeliveryRate.promised_hours).label("hours"),
+        )
+        .select_from(Offer)
+        .join(Inventory, Inventory.offer_id == Offer.id)
+        .join(Seller, Seller.id == Offer.seller_id)
+        .join(Store, Store.seller_id == Seller.id)
+        .join(ProductVariant, ProductVariant.id == Offer.variant_id)
+        .join(
+            DeliveryRate,
+            and_(DeliveryRate.zone_id == zone_id, DeliveryRate.is_active, method_matches),
+        )
+        .where(
+            Offer.status == OfferStatus.ACTIVE,
+            Seller.status == SellerStatus.ACTIVE,
+            Seller.verification_level >= settings_store.get_int(db, "sellers.min_level_to_publish"),
+            ProductVariant.is_active,
+            Inventory.on_hand - Inventory.reserved > 0,
+        )
+        .group_by(ProductVariant.product_id)
+    )
+    if max_hours is not None:
+        statement = statement.where(DeliveryRate.promised_hours <= max_hours)
+    return statement.subquery("delivered")
+
+
 def _public_documents() -> Select[Any]:
     """Documents of products a buyer may see right now. The document says so
     already, but it is rebuilt by the worker a little after a change; the
@@ -192,12 +264,21 @@ def search(
     min_level: int | None = None,
     min_rating: int | None = None,
     in_stock_only: bool = False,
+    zone: str | None = None,
+    max_delivery_hours: int | None = None,
     sort: Sort = "relevance",
     limit: int = 20,
     offset: int = 0,
     user_id: uuid.UUID | None = None,
     log: bool = True,
 ) -> dict[str, Any]:
+    if zone is None and (sort == "total" or max_delivery_hours is not None):
+        # A total to the door and a delivery time exist only for a place
+        # (C-03): never guessed for a buyer who has not said where.
+        raise ValidationFailed(
+            "zone_required", "Choose your delivery area to sort by total or filter by speed."
+        )
+    zone_id = _zone_id(db, zone)
     raw = query.strip()[:MAX_QUERY_LENGTH]
     normalized = " ".join(normalize_text(raw).split(" ")[:MAX_WORDS])
 
@@ -249,6 +330,16 @@ def search(
         )
     if in_stock_only:
         statement = statement.where(SearchDocument.in_stock)
+    delivered: Any = None
+    if zone_id is not None:
+        delivered = _delivered(db, zone_id, max_delivery_hours)
+        statement = statement.join(
+            delivered,
+            delivered.c.product_id == SearchDocument.product_id,
+            # The speed filter keeps only what arrives in time; without it
+            # every product stays, those that do not deliver there last.
+            isouter=max_delivery_hours is None,
+        )
 
     total = int(db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
 
@@ -270,6 +361,9 @@ def search(
         )
     elif sort == "freshness":
         order = (SearchDocument.freshest_price_at.desc().nulls_last(), *relevance)
+    elif sort == "total":
+        # Total cost to the door (C-03): never changed by a paid placement.
+        order = (delivered.c.total.asc().nulls_last(), *relevance)
     else:
         order = relevance
     docs = list(
@@ -277,6 +371,20 @@ def search(
             statement.order_by(*order, SearchDocument.product_id).limit(limit).offset(offset)
         )
     )
+    totals: dict[uuid.UUID, dict[str, Any]] = {}
+    if delivered is not None and docs:
+        totals = {
+            row.product_id: {
+                "product_id": row.product_id,
+                "total_santim": int(row.total),
+                "fastest_hours": int(row.hours),
+            }
+            for row in db.execute(
+                select(delivered).where(
+                    delivered.c.product_id.in_([doc.product_id for doc in docs])
+                )
+            )
+        }
 
     did_you_mean: list[dict[str, Any]] = []
     if total == 0 and normalized:
@@ -309,6 +417,8 @@ def search(
     return {
         "query": raw,
         "total": total,
+        "zone_code": zone if zone_id is not None else None,
+        "delivered": [totals[doc.product_id] for doc in docs if doc.product_id in totals],
         "results": _cards(db, docs, language),
         "did_you_mean": did_you_mean,
     }
