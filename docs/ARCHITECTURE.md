@@ -260,7 +260,15 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   `_refuse_above_unconfirmed_for`), never across the two. `_notify_buyer`
   does nothing for a guest order. **Limits for new accounts (AD-13):**
   `is_brand_new` and `_refuse_above_new_buyer_caps`; a guest always counts
-  as brand-new.
+  as brand-new, and a signed-in account for its first 30 days (F-27,
+  D-109). **A guest's cancel (F-28, D-109):** `cancel_by_guest` (route
+  `POST /track/{order_id}/seller-orders/{seller_order_id}/cancel`, with the
+  tracking link's own `expires` and `signature`) cancels one shop's part of
+  a guest's order while it is still `placed` (`GUEST_MAY_CANCEL_FROM`),
+  releases its stock in the same transaction and tells the shop as
+  `cancel_by_buyer` does; a signed-in buyer's link never acts. The
+  cancellation cool-down (`_cancellation_cooldown_ends`) counts an account,
+  or a guest's number and address, never across the two.
 - **Locks are taken in one order, each kind in ascending id:** the buyer's
   cart, then (a guest's checkout only) an advisory lock on the guest's
   phone number and then one on the network address, then sellers, then
@@ -278,7 +286,9 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   seller confirms and vanish if the part ends undelivered. The public
   tracking page (`tracking_view`) is the buyer's page minus the handover
   code, the recipient's details and the actions; on a guest's order it
-  keeps the handover code, because it is the guest's only page (D-108).
+  keeps the handover code, because it is the guest's only page (D-108),
+  and offers the one action a guest has: cancelling a part before the shop
+  answers (D-109).
 - Tests: `tests/unit/test_order_rules.py`, `tests/api/test_cart.py`,
   `tests/api/test_checkout.py`, `tests/api/test_tracking.py` (the secure
   link), `tests/api/test_fulfilment.py` (placed to
@@ -291,8 +301,16 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   the last unit, and every pair of operations that share locks).
   Guest checkout and new accounts: `tests/api/test_d108_guest_checkout.py`,
   `tests/api/test_d108_new_account_limits.py`,
-  `tests/db/test_d108_guest_limit_contention.py`; the browser journey
-  `apps/web/e2e/guest-checkout.mjs`.
+  `tests/db/test_d108_guest_limit_contention.py`; a guest's cancel and the
+  30 days: `tests/api/test_d109_guest_cancel.py`,
+  `tests/api/test_d109_new_account_days.py`,
+  `tests/db/test_d109_guest_cancel_contention.py`; the browser journey
+  `apps/web/e2e/guest-checkout.mjs`. **The tests written before D-109 run
+  with the new-account days at 0**, as they were written (an autouse
+  fixture in `tests/conftest.py`): they sign an account in a moment before
+  it orders, to test other rules. A test of the new-account limits carries
+  the `founders_new_account_days` marker (the shipped 30 days) or sets the
+  days itself.
 
 ## File storage
 

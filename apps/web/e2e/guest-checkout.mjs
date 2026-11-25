@@ -8,16 +8,21 @@
 // sign-in page's "Order as a guest", with a name, an address and a phone
 // number (a new one each run). Delivered to the door, paid at the door; the
 // guest gets the tracking link and nothing more, and the page shows nothing
-// of the demo buyer's account. The shop accepts, packs and sends the parcel;
-// the guest's link then shows the handover code, which the shop enters at
-// the door. Then the same pages in Amharic. That a guest using an existing
-// account's number sees nothing of it is proven by the API's tests
-// (tests/api/test_d108_guest_checkout.py).
+// of the demo buyer's account. Until the shop answers, the link offers one
+// action: cancelling (F-28, D-109). The shop accepts, packs and sends the
+// parcel; the cancel is gone, and the guest's link shows the handover code,
+// which the shop enters at the door. Then the same pages in Amharic, and a
+// second guest order cancelled from its link before the shop answers: the
+// page asks once more, and the shop's stock is back at once. That a guest
+// using an existing account's number sees nothing of it is proven by the
+// API's tests (tests/api/test_d108_guest_checkout.py).
 //
 // It leaves one guest order delivered, which stays open until its problem
 // window ends: one address may hold three open guest orders (P-108-4), so
-// on one database about three runs fit in three days. Guest orders never
-// count against an account, so no other journey's buyer is affected.
+// on one database about three runs fit in three days, and each run's
+// cancellation counts towards the address's cool-down (three in a day,
+// P-109-1). Guest orders never count against an account, so no other
+// journey's buyer is affected.
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -131,9 +136,11 @@ try {
   const page = await guest.locator('main').innerText();
   expect(page.includes(code) && !page.includes('Demo Buyer') && !page.includes('demo building'), 'the guest page shows the demo buyer or misses the order');
   expect(await guest.locator('[data-handover-code]').count() === 0, 'a code before the parcel is ready');
+  // Before the shop answers, the one action a guest has: cancelling (F-28, D-109).
+  await guest.getByRole('button', { name: 'Cancel this part' }).waitFor();
   await checkAccessibility(guest, 'guest tracking page, placed (en)');
   await fits(guest, 'guest tracking page');
-  console.log('4 no session, no account; the link shows the order and nothing of the demo buyer');
+  console.log('4 no session, no account; the link shows the order, nothing of the demo buyer, and a cancel until the shop answers');
 
   // 5. The shop accepts, packs and sends it; the guest's link shows the code.
   const shopPage = await (await browser.newContext({ viewport: { width: 360, height: 800 } })).newPage();
@@ -157,6 +164,7 @@ try {
   await shown.waitFor();
   const handover = (await shown.innerText()).match(/\b\d{6}\b/)[0];
   await guest.getByText('Give this code only after you have inspected the goods').waitFor();
+  expect(await guest.getByRole('button', { name: 'Cancel this part' }).count() === 0, 'a cancel button after the shop answered');
   await checkAccessibility(guest, 'guest tracking page, on the way (en)');
   await guest.screenshot({ path: join(SHOTS, 'guest-handover-code-en.png'), fullPage: true });
   console.log('5 the shop accepted and sent it; the guest\'s link shows the handover code');
@@ -184,6 +192,62 @@ try {
   await fits(amharic, '/am/track');
   await amharic.screenshot({ path: join(SHOTS, 'guest-tracking-am.png'), fullPage: true });
   console.log('7 the guest pages in Amharic');
+
+  // 8. A second guest order, cancelled from its link before the shop answers
+  // (F-28, D-109): offered in Amharic too, the page asks once more, the
+  // shop's stock is back at once, and the button is gone. The journeys before
+  // this one may have sold the first phone out, so it takes any phone still
+  // in stock that a shop's rider delivers, within a guest's ETB 50,000.
+  const second = await (await browser.newContext({ viewport: { width: 360, height: 800 } })).newPage();
+  watch(second, 'second guest');
+  const callSecond = caller(second);
+  await second.goto(`${BASE}/en/checkout/guest`);
+  let other = null;
+  for (const slug of ['infinix-hot-40i', 'samsung-galaxy-a16', 'xiaomi-redmi-13c', 'tecno-spark-20']) {
+    const found = await callSecond('GET', `/api/v1/catalog/products/${slug}/offers?zone=bole`);
+    other = found.body?.offers?.find((o) => o.delivers_by_seller_rider && o.in_stock && o.total_santim <= 5_000_000);
+    if (other) break;
+  }
+  expect(other, 'no phone left in stock that a rider delivers, for the second guest order');
+  const asOtherShop = other.store_name === offer.store_name ? asShop : await signInByCode(await (await browser.newContext({ viewport: { width: 360, height: 800 } })).newPage(), SHOP_PHONES[other.store_name]);
+  const otherSellerId = other.store_name === offer.store_name ? sellerId : (await asOtherShop('GET', '/api/v1/me')).body.sellers?.[0]?.seller_id;
+  expect(otherSellerId, `the seller id of ${other.store_name}`);
+  expect((await callSecond('PUT', `/api/v1/cart/items/${other.id}`, { quantity: 1 })).status === 200, 'second cart');
+  await second.reload();
+  await second.fill('input[name=recipient]', 'Journey Guest Almaz');
+  await second.fill('input[name=phone]', `0911${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`);
+  await second.selectOption('select[name=area]', { label: 'Bole Medhanialem' });
+  await second.fill('input[name=landmark]', 'Beside the journey test kiosk, blue door');
+  await second.getByRole('button', { name: 'Review' }).click();
+  await second.getByText('Grand total').waitFor();
+  await second.getByRole('button', { name: 'Place order' }).click();
+  const secondPlaced = second.getByRole('heading', { name: /Your order MX-[A-Z0-9]{6} is placed\./ });
+  const secondRefusal = second.locator('main [role=alert]');
+  await secondPlaced.or(secondRefusal).first().waitFor();
+  if (await secondRefusal.count()) throw new Error(`the second guest order was refused: ${await secondRefusal.first().innerText()}`);
+  const secondCode = (await secondPlaced.innerText()).match(/MX-[A-Z0-9]{6}/)[0];
+  const secondLink = await second.locator('[data-guest-link]').innerText();
+  const held = async () => (await asOtherShop('GET', `/api/v1/seller/${otherSellerId}/offers`)).body.find((o) => o.id === other.id)?.reserved;
+  const heldPlaced = await held();
+  expect(Number.isInteger(heldPlaced) && heldPlaced >= 1, `the shop's offer holds nothing for the order: ${heldPlaced}`);
+  await second.goto(secondLink.replace('/en/track/', '/am/track/'));
+  await second.getByRole('button', { name: 'ይህን ክፍል ሰርዝ' }).waitFor();
+  await second.getByText('ሱቁ መልስ እስኪሰጥ ድረስ').waitFor();
+  await checkAccessibility(second, 'guest tracking page with its cancel (am)');
+  await second.goto(secondLink);
+  await second.getByRole('button', { name: 'Cancel this part' }).click();
+  await second.getByText(`Cancel your order from ${other.store_name}?`).waitFor();
+  await checkAccessibility(second, 'guest tracking page, asking before it cancels (en)');
+  await fits(second, 'guest tracking page, asking before it cancels');
+  await second.getByRole('button', { name: 'Yes, cancel it' }).click();
+  await second.getByText('Cancelled', { exact: true }).first().waitFor();
+  expect(await second.getByRole('button', { name: 'Cancel this part' }).count() === 0, 'the cancel button stayed after cancelling');
+  const heldAfter = await held();
+  expect(heldAfter === heldPlaced - 1, `the stock was not back at once: ${heldPlaced} held, then ${heldAfter}`);
+  const cancelledRow = (await asOtherShop('GET', `/api/v1/seller/${otherSellerId}/orders`)).body.find((row) => row.order_code === secondCode);
+  expect(cancelledRow?.status === 'cancelled', `the shop's view of the cancelled order: ${JSON.stringify(cancelledRow)}`);
+  await second.screenshot({ path: join(SHOTS, 'guest-cancelled-en.png'), fullPage: true });
+  console.log(`8 ${secondCode} cancelled from its link before the shop answered; the shop's stock was back at once`);
 } finally {
   await browser.close();
 }

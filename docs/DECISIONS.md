@@ -5700,7 +5700,8 @@ brand-new.
    the goods", and "You ordered as a guest. This link is the only way back
    to your order: keep it." No action: no cancelling, no "the goods are
    right", no problem report, no review. The problem window passes and the
-   part completes by itself.
+   part completes by itself. (**Changed by D-109:** a guest may cancel a
+   shop's part from the link before the shop answers, F-28.)
 5. Refusals are words in the guest's language: above ETB 50,000, one open
    order per number, too many guest orders from one connection, collection
    chosen, guest checkout switched off, a signed-in browser, the bot check.
@@ -5778,6 +5779,9 @@ Refusals per address say nothing about whose orders they are.
 
 ### 6. The tracking link and nothing more
 
+(**Changed by D-109:** and one action, cancelling a shop's part before the
+shop answers, F-28.)
+
 - The answer to placing is exactly `{order_code, tracking_path,
   tracking_expires_at}` (sixty days, D-048), `no-store`. Nothing is sent to
   the guest afterwards: no Telegram, no SMS, no in-app message; **the
@@ -5846,12 +5850,12 @@ setting; each change is audit-logged.
 
 | | Setting or rule | Value | Why this value |
 | --- | --- | --- | --- |
-| P-108-1 | `risk.new_account_days` | 0 days (recommended 30) | The founder's choice: no existing test changes, and the founder decides when signed-in accounts get the caps. 30 days covers a first order's delivery and problem window several times |
+| P-108-1 | `risk.new_account_days` | 0 days (recommended 30); **replaced by D-109:** 30 days, the founder's decision (F-27) | The founder's choice: no existing test changes, and the founder decides when signed-in accounts get the caps. 30 days covers a first order's delivery and problem window several times |
 | P-108-2 | `risk.new_account_max_order_value_santim` | ETB 50,000 | Accessories and most entry and mid-range phones fit; a flagship phone or a laptop on a first order, to an address nobody confirmed, waits for Telegram sign-in or an older account |
 | P-108-3 | `risk.new_account_max_open_orders` | 1 | One order out at the door at a time until the buyer has received one; a prankster cannot send three shops' riders at once |
 | P-108-4 | `guest_checkout.max_open_orders_per_ip` | 3 | The existing per-buyer value, counted per address as the founder asked. **Many customers may share one mobile address (UNKNOWN how many); raise this first if honest guests are refused, above all while Telegram is blocked** |
 | P-108-5 | `guest_checkout.attempts_per_ip_per_hour` | 30 | The existing per-buyer checkout rate, per address |
-| P-108-6 | (a rule) per-number and per-address counts | The existing values: 3 open orders, 5 units of an offer and 10 of a shop waiting for an answer, 30 checkouts an hour per number; the address exact, kept as a keyed hash; no cool-down (a guest cannot cancel) | The founder's "counted per phone number and per network address", with the existing limits |
+| P-108-6 | (a rule) per-number and per-address counts | The existing values: 3 open orders, 5 units of an offer and 10 of a shop waiting for an answer, 30 checkouts an hour per number; the address exact, kept as a keyed hash; no cool-down (a guest cannot cancel; **changed by D-109:** a guest may cancel, so the cool-down counts per number and per address, P-109-1) | The founder's "counted per phone number and per network address", with the existing limits |
 | P-108-7 | (a rule) the handover code on a guest's link | From `ready` until the handover, as on the signed-in page | Section 6: otherwise a guest cannot receive the goods |
 | P-108-8 | (a rule) an account's age | From `users.created_at`; a completed order does not end it sooner | What "how long an account counts as new" says; an account made by an invitation counts from then |
 
@@ -5919,6 +5923,221 @@ checkout page (new), the sign-in and tracking pages, both message files,
 lock order), `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT_STATUS.md`,
 `docs/HANDOFF.md`.
 
+## D-109 F-27 and F-28, decided by the founder: new accounts have the limits for their first 30 days; a guest may cancel before the shop answers
+
+Branch `claude/lucid-babbage-38jzfq`, continued from `main` at `e06bd83`
+(the merge of pull request #16, D-108, on the founder's written approval of
+25 November 2026, without the independent review, the founder's decision;
+`main` passed CI #191 and Browser journeys #67 on it). One small pull
+request into `main`; the founder approved its merge in advance, a normal
+merge pinned to its last commit, once every check on that commit passes.
+**No migration. Nothing deployed; no server, account, bot, SMS, bucket or
+paid resource.**
+
+### 0. The founder's decisions (25 November 2026)
+
+1. **F-27:** brand-new signed-in accounts get the new-buyer limits for their
+   first 30 days. P-108-1 is 30.
+2. **F-28:** a guest may cancel their own order from the tracking link, but
+   only before the shop answers. The held stock is released at once. After
+   the shop answers, there is no cancel button. Every message in English and
+   Amharic.
+
+The rules as before: no test or check weakened or removed; new tests fail on
+the old code and pass on the new.
+
+### 1. F-27: 30 days
+
+- `risk.new_account_days` defaults to **30** (it was 0). Its description,
+  in both languages, now says it is the founder's decision (F-27), not
+  PROVISIONAL. Operations may still change it (0 to 365) in the settings
+  screen; each change is audit-logged.
+- An account made less than 30 days ago (`is_brand_new`) pays at the door
+  only for orders up to ETB 50,000 (P-108-2) and holds one open
+  pay-at-the-door order at a time (P-108-3); from day 30 on, the ordinary
+  limits (ETB 300,000, three open orders). A guest always counts as new.
+  P-108-8 (an account's age counts from its creation; a completed order does
+  not end it sooner) is unchanged and still PROVISIONAL.
+- **At the launch** every account is new, so for the first month nobody who
+  signs in can pay at the door for more than ETB 50,000 at once or hold two
+  open orders (F-27's warning). Operations can lower the days at once if
+  that holds honest buyers back.
+
+### 2. F-27, the existing tests and the browser journeys
+
+**Measured:** the whole suite with only the default changed to 30: **74 of
+the 2,219 tests fail** (2,145 pass). Nearly all sign a test account in a
+moment before it orders, then place an order above ETB 50,000 (the shared
+test shop's two-shop order is ETB 55,050) or hold several open orders, to
+test other rules: stock limits, two-shop orders, deliveries, reviews, the
+dashboard, the races. The 30 days refuse those orders at checkout, as they
+should. Three ways were weighed:
+
+- (a) **chosen:** the tests written before D-109 run with the days at 0, as
+  when they were written;
+- (b) refused: every test account made a year old: it would change what
+  other tests read about accounts (the dashboard counts new accounts by when
+  they were made);
+- (c) refused: the 74 tests edited one by one: the largest change, to tests
+  that check other rules.
+
+So `tests/conftest.py` gains **one autouse fixture that stores
+`risk.new_account_days = 0` at the start of every test**, unless the test
+carries the marker `founders_new_account_days`, which runs it with the
+shipped 30 days. Each of the 74 runs unchanged and checks exactly what it
+checked. The three new test files carry the marker. The code ships 30; the
+fixture sets only the test database.
+
+**Existing tests changed because the founder's decisions changed what they
+assert** (each stays at least as strict):
+
+- `tests/api/test_d108_new_account_limits.py::test_the_new_buyer_limits_are_provisional_settings`:
+  P-108-1 is no longer required to be PROVISIONAL with 0 days; it is now
+  required to be the founder's decision in both languages, with 30 days.
+  P-108-2 to P-108-5 must still be PROVISIONAL. The module's docstring says
+  why.
+- `tests/api/test_d108_guest_checkout.py::test_a_guest_orders_with_a_name_an_address_and_a_phone_and_gets_only_the_tracking_link`
+  and `::test_a_guest_has_no_way_to_act_on_the_order`: on a guest's order
+  the shop has not answered, `can_cancel` must now be true (F-28); every
+  other check is unchanged, and "no other action" (no "the goods are right",
+  no problem report, no signed-in route) still holds.
+
+No other existing test changed.
+
+**The browser journeys.** Their demo buyer (0911000950) is made by the
+demo data a moment before they run, and orders in seven of them; with 30
+days it would be refused. The demo data (`scripts/seed_demo.py`, DEMO data
+only) now makes the demo buyer a customer of 90 days. An account a journey
+makes itself (the Telegram sign-in's) gets the 30 days like any new buyer;
+it orders one phone, under ETB 50,000. No journey step changed for F-27.
+
+### 3. F-28: a guest cancels from the link
+
+- **What a guest sees.** On the tracking page of a guest's order, each
+  shop's part still waiting for the shop's answer (`placed`) shows **"Cancel
+  this part"**, with "You can cancel this shop's part until the shop
+  answers. Its goods go back on sale at once." The button asks once more:
+  "Cancel your order from {shop}? The shop is told at once, and this cannot
+  be undone." **"Yes, cancel it"** or "Keep my order". The page then shows
+  the part cancelled, with no button. Everything in Amharic too.
+- **The API:** `POST /api/v1/track/{order_id}/seller-orders/{seller_order_id}/cancel`,
+  with the tracking link's own `expires` and `signature`
+  (`service.cancel_by_guest`). It:
+  - opens the link as the page does: a forged or expired link gets 404
+    `tracking_link_invalid`, another order's part 404 `order_not_found`;
+  - refuses a signed-in buyer's order (409 `order_cannot_be_cancelled`):
+    their link still never acts (D-048); they cancel from their own page as
+    before;
+  - locks the shop's part as the shop's answer locks it, and refuses unless
+    it is still `placed` (409 `order_cannot_be_cancelled`): once the shop
+    has accepted or declined, or the order expired unanswered, there is no
+    button and the API refuses;
+  - moves the part to `cancelled` as the buyer's own cancellation, by no
+    account (reason `cancelled_by_buyer`), **releases its stock in the same
+    transaction**, cancels its waiting shipment, and tells the shop's people
+    with `order.cancelled_by_buyer`: the same words as for a signed-in
+    buyer, so the shop's view stays the same (C-07);
+  - answers with the link's page, `no-store`.
+- Like every request that changes something, it needs the MarkX app's header
+  and the site's own origin (H.2).
+- The lock order is that of every cancellation: the seller order, then the
+  stock.
+
+### 4. The cancellation cool-down counts for guests (PROVISIONAL P-109-1)
+
+D-108 left the cool-down off for guests "since a guest cannot cancel". Now a
+guest can, so **the cool-down (D-099: three cancelled orders within 24
+hours, P-099-5 and P-099-6) counts for guests per phone number and per
+network address**, as every other buying limit does (D-108, P-108-6). Per
+number: `cancellation_cooldown`, the accounts' own words. Per address:
+`guest_network_cooldown`, "Several guest orders from your connection were
+cancelled recently, so guest orders from it are paused for a while. Try
+again later, or sign in with Telegram." (a guest refused for an address
+they share may have cancelled nothing). An account's cancellations never
+count against a guest with its number, nor a guest's against the account
+(D-108, section 3). The values are the existing ones: PROVISIONAL **P-109-1**,
+to be confirmed before going live, since many customers may share one
+mobile address (F-29).
+
+### 5. What this changes in earlier decisions, said plainly
+
+- **D-108, section 2 item 4 and section 6** ("nothing more", "no
+  cancelling"): a guest now has one action, cancelling a shop's part before
+  the shop answers.
+- **D-108, P-108-1:** 30 days, the founder's decision; no longer
+  PROVISIONAL.
+- **D-108, P-108-6** ("no cool-down, a guest cannot cancel"): the cool-down
+  counts per number and per address (P-109-1).
+- **D-048** holds for every signed-in buyer: their link never acts.
+
+### 6. PROVISIONAL values (THE FOUNDER MUST CONFIRM OR CHANGE THEM BEFORE MARKX GOES LIVE)
+
+| | Setting or rule | Value | Why this value |
+| --- | --- | --- | --- |
+| P-109-1 | (a rule) the cancellation cool-down for guests | Per phone number and per network address, with the existing values: three cancelled orders within 24 hours (P-099-5, P-099-6) | The founder's "the existing buying limits apply to guests, counted per phone number and per network address" (C-07); without it a guest could place and cancel without end, and the shop is told each time. **Raise it, or P-099-5, if honest guests behind one mobile address are refused (F-29)** |
+
+The rule is marked `PROVISIONAL P-109-1` where it lives
+(`markx/orders/service.py`, `place_guest_order`).
+
+### 7. Not built, and what remains risky
+
+- **A tracking link passed on** (forwarded in a chat) lets whoever holds it
+  cancel the order before the shop answers. The link is the guest's only
+  key (C-07); the second question guards against a slip of the finger, not
+  against a person holding the link.
+- A guest gives no reason when cancelling (a signed-in buyer may); the shop
+  sees a buyer's cancellation either way.
+- A guest still cannot confirm receipt, report a problem or review; F-28's
+  options (c) and (d) were not chosen.
+- Guests behind one shared mobile address (F-29) may now also meet the
+  address's cool-down.
+- The new Amharic words await the native editor, as all Amharic does.
+- The local journey run left out the Telegram and Turnstile steps (they
+  restart the API or the web app with other settings); CI runs them.
+
+### 8. Tests
+
+- **New:** `tests/api/test_d109_guest_cancel.py` (7),
+  `tests/api/test_d109_new_account_days.py` (4) and
+  `tests/db/test_d109_guest_cancel_contention.py` (10: two races, five
+  rounds each): 21 API and database tests, run with the shipped 30 days;
+  **21 of 21 fail on the old code** (`e06bd83`, with only the new test files
+  and the new `tests/conftest.py`): the route answers 404, and
+  `cancel_by_guest`, the 30 days and the P-109-1 mark do not exist there.
+- **The whole suite on this branch: 2,242 passed, 0 failed, 0 skipped**
+  (2,219 and the 23 new tests of that moment; the age cases were then
+  joined into one test with the same checks, and the P-109-1 mark test was
+  added; those files: 11 passed). Details: "Tests executed" in
+  `docs/DEVELOPMENT_STATUS.md`, D-109.
+- **Web:** `src/lib/guest-cancel.test.ts` (10). On the old code it cannot
+  load (its module is new); with only its new module copied in, 8 of the 10
+  still fail, because the words do not exist there; the other two check the
+  module's own rule and a message that already existed. All web unit tests:
+  229 in 23 files (219 in 22 before); lint, types and the production build
+  pass; page weight unchanged (the product page 209.3 KB of its 210 KB).
+- **The browser journeys on this machine,** in CI's order on a fresh demo
+  database (the API, the demo data, the production build, Chromium): the
+  seller dashboard, buyer, staff, admin, shop screens, setup and account,
+  network cut, resend cooldown, the D-107 features, and the guest journey
+  with its new step 8 all passed; axe found nothing; no console errors. Not
+  run here: the Telegram and Turnstile steps, which restart the API or the
+  web app with other settings; CI runs them.
+- **Existing tests:** three changed, as section 2 says; none weakened or
+  removed; the 74 run with 0 days, exactly as written.
+
+### 9. Changed
+
+API: `markx/orders/` (`service.py`, `selectors.py`, `router.py`),
+`markx/core/` (`settings_store.py`, `settings_am.py`),
+`scripts/seed_demo.py` (the demo buyer's age), both OpenAPI copies;
+`tests/conftest.py` (the fixture and its marker), three new test files and
+the two D-108 test files above. Web: `src/components/GuestCancel.tsx`
+(new), `src/lib/guest-cancel.ts` and its test (new), the tracking page,
+both message files, the generated schema, `e2e/guest-checkout.mjs`. CI: a
+comment in `.github/workflows/journeys.yml`. Documents: this entry, F-27
+and F-28 marked decided, D-108's PROVISIONAL table,
+`docs/ARCHITECTURE.md`, `docs/DEVELOPMENT_STATUS.md`, `docs/HANDOFF.md`.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -5938,7 +6157,7 @@ own shop proposed the product) is OPEN with no provisional answer. SI-1
 21 November 2026: see D-101, which sets eight PROVISIONAL values and rules,
 P-101-1 to P-101-8, and raises F-24 and F-25 (OPEN; recommendations
 given). D-103 (server readiness) sets three PROVISIONAL values, P-103-1 to
-P-103-3, and leaves certificate renewal off until F-17 is decided. D-105 (backups) sets six PROVISIONAL values, P-105-1 to P-105-6, D-106 (five Release 1 features) five, P-106-1 to P-106-5, and D-107 (five more Release 1 features) seven, P-107-1 to P-107-7. D-108 (guest checkout C-07 and limits for new accounts AD-13, decided by the founder) sets eight, P-108-1 to P-108-8, and raises F-27 to F-29 (OPEN; recommendations given).** Treat this list as part of the launch
+P-103-3, and leaves certificate renewal off until F-17 is decided. D-105 (backups) sets six PROVISIONAL values, P-105-1 to P-105-6, D-106 (five Release 1 features) five, P-106-1 to P-106-5, and D-107 (five more Release 1 features) seven, P-107-1 to P-107-7. D-108 (guest checkout C-07 and limits for new accounts AD-13, decided by the founder) sets eight, P-108-1 to P-108-8, and raises F-27 to F-29. F-27 and F-28 were decided by the founder on 25 November 2026 (D-109, which makes P-108-1 the founder's 30 days and sets one PROVISIONAL value, P-109-1); F-29 is OPEN (a recommendation given).** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -6415,6 +6634,10 @@ deciding, but product pages are shared by every seller."
   launch every account is new, so for the first month nobody could buy a
   flagship phone or a laptop at the door: weigh that against the pilot.
 - **Founder's approval required: yes.**
+- **Decided by the founder (25 November 2026):** brand-new signed-in
+  accounts get the new-buyer limits for their first 30 days; P-108-1 is 30.
+  Whether a completed order should end it sooner was not decided (P-108-8
+  stays: it does not). Built in D-109, sections 1 and 2.
 
 ### F-28 What a guest may do besides follow the link (D-108)
 
@@ -6428,6 +6651,11 @@ deciding, but product pages are shared by every seller."
 - **Engineer's recommendation:** (a) for the pilot; (b) is the first worth
   adding. Not (d).
 - **Founder's approval required: yes.**
+- **Decided by the founder (25 November 2026):** (b). A guest may cancel
+  their own order from the tracking link, but only before the shop answers;
+  the held stock is released at once; after the shop answers there is no
+  cancel button; every message in English and Amharic. (c) and (d) were not
+  chosen. Built in D-109, sections 3 and 4.
 
 ### F-29 Guests who share one mobile address (D-108, P-108-4 and P-108-5)
 

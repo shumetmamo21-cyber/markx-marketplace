@@ -2,11 +2,13 @@
 
 The founder's choice of 24 November 2026: a guest always counts as a
 brand-new buyer (see test_d108_guest_checkout.py); a signed-in account counts
-as one for `risk.new_account_days` after it was created, which is 0 until the
-founder sets it (recommended 30). A brand-new buyer may pay at the door for
-orders up to a smaller total (ETB 50,000) and may hold one open
-pay-at-the-door order at a time. Every value is PROVISIONAL (P-108-1 to
-P-108-8) and a risk limit operations may change.
+as one for `risk.new_account_days` after it was created, which was 0 until
+the founder set it to 30 on 25 November 2026 (F-27; D-109, where these tests
+run with the days at 0 unless they set them, as they were written:
+tests/conftest.py). A brand-new buyer may pay at the door for orders up to a
+smaller total (ETB 50,000) and may hold one open pay-at-the-door order at a
+time. The other values are PROVISIONAL (P-108-2 to P-108-8), and every one
+is a risk limit operations may change.
 
 Every test here fails on the code before D-108: the settings do not exist.
 """
@@ -120,7 +122,6 @@ def test_an_account_older_than_the_days_has_the_ordinary_limits(
 
 def test_the_new_buyer_limits_are_provisional_settings(db: DbSession) -> None:
     for key, number in (
-        ("risk.new_account_days", "P-108-1"),
         ("risk.new_account_max_order_value_santim", "P-108-2"),
         ("risk.new_account_max_open_orders", "P-108-3"),
         ("guest_checkout.max_open_orders_per_ip", "P-108-4"),
@@ -130,13 +131,18 @@ def test_the_new_buyer_limits_are_provisional_settings(db: DbSession) -> None:
         assert spec.description.startswith(f"PROVISIONAL ({number})"), key
         assert "before going live" in spec.description, key
         assert DESCRIPTIONS_AM[key].startswith(f"ጊዜያዊ ({number})"), key
-    # The founder's decisions are settings too, and say whose decision they are.
-    for key in ("guest_checkout.enabled", "guest_checkout.shop_collection"):
+    # The founder's decisions are settings too, and say whose decision they are:
+    # P-108-1 became one on 25 November 2026 (F-27, D-109).
+    for key in (
+        "risk.new_account_days",
+        "guest_checkout.enabled",
+        "guest_checkout.shop_collection",
+    ):
         assert "founder" in settings_store.SETTINGS[key].description, key
         assert "መሥራቹ" in DESCRIPTIONS_AM[key], key
     assert settings_store.SETTINGS["guest_checkout.enabled"].default is True
     assert settings_store.SETTINGS["guest_checkout.shop_collection"].default is False
-    assert settings_store.SETTINGS["risk.new_account_days"].default == 0
+    assert settings_store.SETTINGS["risk.new_account_days"].default == 30
     assert settings_store.SETTINGS["risk.new_account_max_order_value_santim"].default == 5_000_000
     assert settings_store.SETTINGS["risk.new_account_max_open_orders"].default == 1
 

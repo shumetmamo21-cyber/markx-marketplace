@@ -3297,6 +3297,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/track/{order_id}/seller-orders/{seller_order_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Guest Cancel From Tracking Link
+         * @description A guest cancels one shop's part of their order from the secure link,
+         *     before the shop answers (F-28, D-109). Only a guest's order: a signed-in
+         *     buyer cancels from their own page. The answer is the link's page.
+         */
+        post: operations["guest_cancel_from_tracking_link_api_v1_track__order_id__seller_orders__seller_order_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -13475,6 +13497,42 @@ export interface operations {
             header?: never;
             path: {
                 order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    guest_cancel_from_tracking_link_api_v1_track__order_id__seller_orders__seller_order_id__cancel_post: {
+        parameters: {
+            query: {
+                expires: number;
+                signature: string;
+                lang?: string;
+            };
+            header?: never;
+            path: {
+                order_id: string;
+                seller_order_id: string;
             };
             cookie?: never;
         };

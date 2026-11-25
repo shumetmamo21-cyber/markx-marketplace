@@ -227,8 +227,10 @@ jobs:
 
       # D-108: a visitor without Telegram orders as a guest (C-07) and gets
       # the tracking link only; the shop accepts and sends the parcel; the
-      # link shows the handover code, which the shop enters. A guest order
-      # counts against no account, so it disturbs no other journey's buyer.
+      # link shows the handover code, which the shop enters. D-109: a second
+      # guest order is cancelled from its link before the shop answers
+      # (F-28), and the shop's stock is back at once. A guest order counts
+      # against no account, so it disturbs no other journey's buyer.
       # Before the Turnstile step, which serves the site with a site key.
       - name: Guest checkout, the tracking link and the handover code
         working-directory: apps/web

@@ -1,26 +1,54 @@
 # Development status
 
-**Last updated:** 25 November 2026, by the **guest checkout and new-account
-limits session** (D-108) on branch `claude/lucid-babbage-38jzfq`, from
-`main` at `5794234` with the complete history. **`5794234` is main's last
-merge commit before this work: the merge of pull request #15 (D-107).** Its
-pull request is named in the section below. Before it, pull request #14
-(D-106) was merged as `e1849be`; pull request #13 (D-105) as `6378764`;
-pull request #12 (D-104) as `9daaf57`; pull request #11 as `7093e6c`; pull
-request #10 (D-102) as `9b3658f`; pull request #9 (D-101) as `fe4546f`; the
-frontend resilience session (D-100, pull request #8) as `b79caab`; the order
-life-cycle hardening session (D-099, pull request #7) as `fae2514`; the
-staff conflict and phone digits session (D-098, pull request #6) as
-`c70b338`; the checks and secret-scan session (D-097, pull request #5) as
-`d01fef7`, and the backup trust hardening session (D-096, pull request #4)
-as `773bbb6`.
+**Last updated:** 25 November 2026, by the **F-27 and F-28 session**
+(D-109) on branch `claude/lucid-babbage-38jzfq`, from `main` at `e06bd83`
+with the complete history. **`e06bd83` is main's last merge commit before
+this work: the merge of pull request #16 (D-108)**, on the founder's
+written approval of 25 November 2026, without the independent review (the
+founder's decision); `main` passed CI #191 and Browser journeys #67 on it.
+This work's pull request is named in the section below. Before it, pull
+request #15 (D-107) was merged as `5794234`; pull request #14 (D-106) as
+`e1849be`; pull request #13 (D-105) as `6378764`; pull request #12 (D-104)
+as `9daaf57`; pull request #11 as `7093e6c`; pull request #10 (D-102) as
+`9b3658f`; pull request #9 (D-101) as `fe4546f`; the frontend resilience
+session (D-100, pull request #8) as `b79caab`; the order life-cycle
+hardening session (D-099, pull request #7) as `fae2514`; the staff conflict
+and phone digits session (D-098, pull request #6) as `c70b338`; the checks
+and secret-scan session (D-097, pull request #5) as `d01fef7`, and the
+backup trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## F-27 and F-28, decided by the founder (25 November 2026, D-109)
+
+One small pull request into `main` (its number and runs: "Tests executed",
+25 November 2026, D-109); the founder approved its merge in advance once
+every check passes. **No migration. Nothing deployed; no server, account,
+bot, SMS, bucket or paid resource.** Details and one PROVISIONAL value
+(P-109-1): `docs/DECISIONS.md`, D-109.
+
+| Decision | What a person sees | Proof |
+| --- | --- | --- |
+| F-27 new accounts have the new-buyer limits for their first 30 days (P-108-1 = 30) | A buyer whose account is less than 30 days old pays at the door for orders up to ETB 50,000 and holds one open order at a time; from day 30 the ordinary limits; operations may change the days | `tests/api/test_d109_new_account_days.py` (4); the setting's words in both languages |
+| F-28 a guest cancels from the tracking link before the shop answers | "Cancel this part" on the guest's tracking page while the shop has not answered, asked once more; the stock goes back at once; no button once the shop accepts, declines or the order expires; a signed-in buyer's link still never acts | `tests/api/test_d109_guest_cancel.py`; `tests/db/test_d109_guest_cancel_contention.py` (10, races); `src/lib/guest-cancel.test.ts` (10); the guest journey's steps 4, 5 and 8 |
+| The cancellation cool-down counts for guests too (P-109-1) | Three cancelled orders within 24 hours pause new guest orders from that number, or from that network address | `test_the_cancellation_cool_down_counts_for_guests_per_number_and_per_address` |
+
+**The tests written before D-109 run with the new-account days at 0**, as
+they were written (one autouse fixture in `tests/conftest.py`): with 30,
+74 of them fail, because they sign an account in a moment before it orders
+to test other rules. Tests of the new-account limits run with the shipped
+30 days. Three D-108 tests that asserted the founder's earlier choices (0
+days; a guest has no cancel) now assert the new ones. The demo data's buyer
+is a customer of 90 days, so the browser journeys keep their screens.
 
 ## Guest checkout and limits for new accounts (24 and 25 November 2026, D-108)
 
 Both decided by the founder. One pull request into `main`: **#16**
-(https://github.com/shumetmamo21-cyber/markx-marketplace/pull/16), **not
-merged**: it changes order rules, so an independent review follows; its
-runs are in "Tests executed", 25 November 2026 (D-108). **One migration
+(https://github.com/shumetmamo21-cyber/markx-marketplace/pull/16),
+**merged as `e06bd83`** on the founder's written approval of 25 November
+2026, without the independent review (the founder's decision); `main`
+passed CI #191 and Browser journeys #67. Its runs are in "Tests executed",
+25 November 2026 (D-108). F-27 and F-28 were decided the same day (D-109,
+above): new accounts have the limits for 30 days, and a guest may cancel
+before the shop answers. **One migration
 (0024). Nothing deployed; no server, account, bot, SMS, bucket or paid
 resource.** Details, the founder's two answers of 24 November 2026 and
 eight PROVISIONAL values (P-108-1 to P-108-8): `docs/DECISIONS.md`, D-108.
@@ -962,7 +990,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P6 | Seller onboarding and dashboard | **Done on the API side.** Application, private document upload, staff review queue, verification levels with the checks behind the badge, owner and manager members, store page, payout account, dashboard counts. The web screens (session ten, D-075): application, documents, team, store settings, legal details, payout account, overview. Documents can live in a private S3 or R2 bucket (D-090). **Not done:** share cards and QR code, ownership transfer, closing a shop on the web, the real private bucket itself (F-01) |
 | P7 | Seller listings and inventory | **Done on the API side.** Offers, price history, inventory and movements, quick edit, product proposals, the ranked offers list, the check-in, the stale-offer job **now run by the worker**, and a staff takedown that holds (D-032). The web screens: offers with quick edit (session six), add an offer and the shop's own photos (session ten). **Not done:** the seller Telegram bot, product proposals from a seller on the web |
 | P8 | Search and product discovery | **Mostly done on the API side.** Search documents kept fresh through the outbox with an hourly rebuild (D-051); normalisation, letter merging and skeleton keys; prefix, sound and trigram matching; filters and sorting; suggestions and "did you mean"; the product-request form; the query log, the zero-result report and the synonym tool (D-052). **Throttled per address** (D-059). **Not done:** the two completion criteria (a golden set of 100 real queries, and timings at real size), "total cost to the door" as a sort, a delivery-speed filter (the rating filter exists: `min_rating`, D-080), edge caching and pages readable by search engines (they need the web app) |
-| P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Guest checkout (C-07) and limits for new accounts (AD-13), as the founder decided: D-108** (a guest orders with a name, an address and a number nobody confirmed, belongs to no account, pays at the door and gets the tracking link only). **Not done:** the legal disclosure wording (a founder input) |
+| P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Guest checkout (C-07) and limits for new accounts (AD-13), as the founder decided: D-108** (a guest orders with a name, an address and a number nobody confirmed, belongs to no account, pays at the door and gets the tracking link only); **F-27 and F-28 decided: D-109** (signed-in accounts have the new-buyer limits for their first 30 days; a guest may cancel from the link before the shop answers). **Not done:** the legal disclosure wording (a founder input) |
 | P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. The next-best offer after a decline or an expiry (D-049). Problems on a delivered order: `delivered -> disputed` by the buyer in the window, `disputed -> completed | refunded` by staff, Release 1 form with no money moved (D-050). Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`, `tests/api/test_disputes.py`). **Photos on a problem report** (D-062) and **reviews of completed items with the seller's reply** (D-066) exist on the API. The web screens for both, and the problem's messages and evidence photos, exist (session ten). **Not done:** photos on reviews, the bot. Criteria 3 and 5 need the bot and real buyers |
 | P11 | Admin operations | **Mostly done on the API side.** The orders desk, problem cases and decisions, seller review, search tools (earlier sessions); **the audit-log viewer, switches and risk limits, staff accounts, the dispatch board, the business dashboard, picture moderation and the operations status** (D-062, D-064, D-065). **Review moderation (AD-12) and the reports queue (AD-16)** too (D-066, D-067). **Data exports for an accountant** (D-068) and **seller performance figures with the weekly message** (D-073). Session nine built their admin screens (D-070 to D-072). The seller's performance screen exists (session ten, D-075). **Not done:** the runbooks, seller statements (Release 2) |
 | P12–P16 | Everything else | **Not started** (tables exist; no behaviour) |
@@ -1249,8 +1277,9 @@ Decisions D-036 to D-050.
   delivered to the door, and its only window is the tracking link, which
   for a guest's order shows the handover code. Its limits count per number
   and per network address; a guest is always a brand-new buyer (ETB 50,000,
-  one open order). Signed-in accounts get the same caps once the founder
-  sets `risk.new_account_days` (0 now).
+  one open order). Signed-in accounts get the same caps for their first 30
+  days (F-27, D-109). A guest may cancel a shop's part from the link before
+  the shop answers (F-28, D-109: `POST /track/{order_id}/seller-orders/{id}/cancel`).
 
 - **The cart** lives on the server. A visitor's cart is found by a secret in
   an `HttpOnly` cookie (only its hash is stored); it moves into the person's
@@ -1879,10 +1908,13 @@ Be careful with these. They were written and never exercised.
 
 - **25 November 2026, guest checkout (D-108), what remains risky:** a guest who
   loses the tracking link cannot get it back (MarkX has no confirmed way to
-  reach a guest, F-28); a guest cannot cancel, confirm receipt or report a
-  problem ("nothing more", F-28); many guests behind one mobile address may
-  be refused by P-108-4 (3 open guest orders per address), above all while
-  Telegram is blocked (F-29), and nothing counts those refusals yet; a shop
+  reach a guest, F-28); a guest may cancel only before the shop answers
+  (D-109) and cannot confirm receipt or report a problem; a tracking link
+  passed on lets its holder cancel before the shop answers (D-109); many
+  guests behind one mobile address may
+  be refused by P-108-4 (3 open guest orders per address) or by the
+  address's cancellation cool-down (P-109-1), above all while Telegram is
+  blocked (F-29), and nothing counts those refusals yet; a shop
   could place guest orders to itself to add completed orders to its record
   (bounded by the per-number and per-address limits and the bot check;
   the orders desk's answer marks a guest's order, `is_guest`, but the
@@ -1895,9 +1927,13 @@ Be careful with these. They were written and never exercised.
   address may hold three open guest orders (P-108-4), so on one demo
   database about three runs fit in three days (CI starts each run on a
   fresh one). A refused run says so in the guest's words.
-- **25 November 2026, new-account limits are off for signed-in accounts**
-  until the founder sets `risk.new_account_days` (P-108-1, F-27); guests
-  have them from the first day (the founder's choice).
+- **25 November 2026, new-account limits for signed-in accounts (F-27,
+  D-109):** 30 days from when the account was made. At the launch every
+  account is new, so for the first month nobody signed in pays at the door
+  above ETB 50,000 at once; operations can lower the days at once. The
+  tests written before D-109 run with the days at 0 (`tests/conftest.py`),
+  so the combination of a brand-new account with what they test is checked
+  only by the new-account tests.
 - **22 November 2026, two observations on the backups (R13-1, R13-2; D-106
   section 0), not blockers:** a validly signed secrets copy can name a file
   outside the folder `open-secrets --out` writes to (it then creates that
@@ -2118,6 +2154,45 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**F-27 and F-28** (D-109), on 25 November 2026, branch
+`claude/lucid-babbage-38jzfq` from `main` at `e06bd83` (complete history).
+PostgreSQL 17.12 and MinIO in containers, with `MARKX_TEST_MINIO_REQUIRED=1`,
+`MARKX_TEST_BACKUP_REQUIRED=1`, the least-privilege MinIO users and
+PostgreSQL 17.12's tools, as in CI. Docker was started again once, after the
+session's machine restarted.
+
+```text
+uv run pytest -q -p no:cacheprovider, only the default changed to 30 days (D-109 section 2)
+                                                          ->  74 failed, 2145 passed, in 26 min 51 s
+uv run pytest -q -p no:cacheprovider (this branch)        ->  2242 passed, 0 failed, 0 skipped, in 27 min 23 s
+  = 2219 + the 23 new tests of that moment; afterwards the age cases were joined into one test (the same
+  checks; 7 -> 4 tests in test_d109_new_account_days.py) and the P-109-1 mark test was added
+the new tests, as committed: test_d109_guest_cancel.py (7), test_d109_new_account_days.py (4),
+  tests/db/test_d109_guest_cancel_contention.py (10)     ->  21 passed
+the new tests on e06bd83 (worktree, the new files and the new tests/conftest.py only)
+                                                          ->  21 of 21 fail (the route answers 404; cancel_by_guest,
+                                                              the 30 days and the P-109-1 mark do not exist there)
+the D-108 guest and new-account tests, with the new ones  ->  passed
+ruff check / ruff format --check / mypy markx             ->  passed / 281 files already formatted / no issues in 161 files
+alembic upgrade head / alembic check                      ->  at 0024 / no new upgrade operations
+check_openapi_copy --exact openapi.json / the web's copy  ->  both match the API exactly (the new route only)
+apps/web: npm run lint / typecheck / test / build         ->  passed / passed / 229 passed in 23 files (main: 219 in 22) / built
+  src/lib/guest-cancel.test.ts on e06bd83                 ->  cannot load (./guest-cancel is new); with only that module
+                                                              copied in, 8 of 10 fail (the words do not exist)
+page weight (production build, the demo data)             ->  every page within its budget; product 209.3 KB, as before
+journeys on this machine, in CI's order on a fresh demo database (API, demo data, production build, Chromium):
+  seller-dashboard, buyer, staff, admin-queues, shop-screens, setup-and-account, network-recovery,
+  sign-in-cooldown, release1-d107, guest-checkout (its new step 8 included)
+                                                          ->  all passed; axe: no violations; console errors: none
+  not run here: the Telegram and Turnstile steps (they restart the API or the web app with other settings)
+GitHub, pull request #17, on 1b7900e: Browser journeys #68 -> the guest journey's new step 8 failed: "An item is
+  out of stock now". The journeys before it (Telegram sign-in among them, not run here) had sold the first phone
+  out, and step 8 reused it: a cause in the journey, not the product. Reproduced here (each rider-delivered
+  Tecno Spark 20 cut to one unit, fresh demo database): the journey as pushed fails the same way; with step 8
+  taking any phone still in stock that a rider delivers (and that phone's shop), it passes. CI #192 was
+  superseded by the fix. The pull request's later runs are on the pull request.
+```
 
 **Guest checkout and limits for new accounts** (D-108), on 24 and 25
 November 2026, branch `claude/lucid-babbage-38jzfq` from `main` at

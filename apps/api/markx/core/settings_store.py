@@ -225,7 +225,9 @@ _SPECS: tuple[SettingSpec, ...] = (
         3,
         "int",
         "PROVISIONAL (P-099-5), to be confirmed before going live: orders a buyer may cancel "
-        "within the cool-down period below before new orders are refused for a while.",
+        "within the cool-down period below before new orders are refused for a while. For "
+        "guests, who may cancel since F-28, counted per phone number and per network address "
+        "(D-109).",
         1,
         50,
     ),
@@ -241,21 +243,20 @@ _SPECS: tuple[SettingSpec, ...] = (
     ),
     # Limits for new accounts (AD-13) and guest checkout (C-07), D-108.
     #   The founder's choices of 24 November 2026: a guest always counts as a
-    #   brand-new buyer and gets the strict caps below; a signed-in account
-    #   counts as brand-new for `risk.new_account_days` after it was created,
-    #   0 (none) until the founder sets it (recommended 30); a guest's goods
-    #   are delivered to the door, never collected, until operations allow it.
-    #   PROVISIONAL (P-108-1 to P-108-5, D-108): every value below is a
+    #   brand-new buyer and gets the strict caps below; a guest's goods are
+    #   delivered to the door, never collected, until operations allow it.
+    #   The founder's decision of 25 November 2026 (F-27, D-109): a signed-in
+    #   account counts as brand-new for its first 30 days.
+    #   PROVISIONAL (P-108-2 to P-108-5, D-108): every other value below is a
     #   business choice THE FOUNDER MUST CONFIRM OR CHANGE BEFORE MARKX GOES
     #   LIVE (`orders.service.place_order`, `place_guest_order`).
     SettingSpec(
         "risk.new_account_days",
-        0,
+        30,
         "int",
-        "PROVISIONAL (P-108-1), to be confirmed before going live: days after it was created "
-        "during which a signed-in account counts as brand-new and gets the new-buyer limits "
-        "below (AD-13). 0 means no signed-in account does (the founder's choice until they set "
-        "it; 30 is recommended); a guest always counts as brand-new.",
+        "Days after it was created during which a signed-in account counts as brand-new and "
+        "gets the new-buyer limits below (AD-13): 30, the founder's decision of 25 November "
+        "2026 (F-27). 0 means no signed-in account does; a guest always counts as brand-new.",
         0,
         365,
     ),

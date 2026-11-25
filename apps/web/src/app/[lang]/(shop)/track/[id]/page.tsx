@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { GuestCancel } from "@/components/GuestCancel";
 import { serverApi } from "@/lib/api/server";
 import { formatDateTime, formatPrice } from "@/lib/format";
+import { cancelWords, guestMayCancel } from "@/lib/guest-cancel";
 import { fill, isLocale } from "@/lib/i18n";
 import { statusLabel } from "@/lib/labels";
 import { getMessages } from "@/lib/messages";
@@ -16,7 +18,8 @@ function one(value: string | string[] | undefined): string {
 // The order page from a secure link, without signing in (blueprint D.14,
 // D-048). The API leaves out the recipient's details and every action; a
 // forged or expired link is "not found". The handover code comes only on a
-// guest's order, whose only page this is (C-07, D-108).
+// guest's order, whose only page this is (C-07, D-108), and so does the one
+// action: cancelling a shop's part before the shop answers (F-28, D-109).
 export default async function TrackPage({ params, searchParams }: PageProps<"/[lang]/track/[id]">) {
   const { lang, id } = await params;
   if (!isLocale(lang)) notFound();
@@ -50,6 +53,9 @@ export default async function TrackPage({ params, searchParams }: PageProps<"/[l
               <p className="price text-3xl font-extrabold tracking-[0.3em]">{part.handover_code}</p>
               <p className="text-sm">{t.orders.handoverWarning}</p>
             </div>
+          ) : null}
+          {guestMayCancel(order, part) ? (
+            <GuestCancel orderId={order.id} partId={part.id} expires={expires} signature={signature} lang={lang} words={cancelWords(t, part.store_name)} />
           ) : null}
           <ul className="space-y-1 text-sm">
             {part.items.map((item) => (
