@@ -5,7 +5,7 @@
 Everything is created the way a person would create it: staff curate the
 catalogue and delivery zones, sellers are invited, sign in with a code,
 apply with documents, are approved by staff and list offers, and a buyer
-signs in and saves an address. Every rule, audit row and search document is
+signs in and saves an address (a customer of long standing: D-109). Every rule, audit row and search document is
 therefore produced by the same code as in production.
 
 ALL OF IT IS DEMO DATA. The shops, people, phone numbers and prices are made
@@ -19,7 +19,7 @@ from __future__ import annotations
 import io
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pyotp
@@ -39,6 +39,11 @@ from markx.worker.runner import run_once
 STAFF_PHONE = "0911000900"
 STAFF_PASSWORD = os.environ.get("MARKX_DEMO_STAFF_PASSWORD", "demo-only-staff-password-1")
 BUYER_PHONE = "0911000950"
+# F-27 (D-109): a signed-in account has the new-buyer limits for its first
+# 30 days. The demo buyer is a customer of long standing, so the journeys can
+# show every order screen with it; an account a journey makes itself (the
+# Telegram sign-in) meets the limits as any new buyer does.
+DEMO_BUYER_AGE_DAYS = 90
 
 
 class Browser:
@@ -297,6 +302,11 @@ def main() -> int:
         json={"recipient_name": "Demo Buyer", "phone": BUYER_PHONE, "delivery_area_id": area_id,
               "landmark": "Behind the demo building, blue gate"},
     )  # fmt: skip
+    with session_scope() as session:
+        demo_buyer = session.scalar(select(User).where(User.phone == normalize_phone(BUYER_PHONE)))
+        if demo_buyer is None:
+            raise SystemExit("the demo buyer was not created")
+        demo_buyer.created_at = datetime.now(UTC) - timedelta(days=DEMO_BUYER_AGE_DAYS)
 
     run_once(datetime.now(UTC), outbox_limit=None)  # the search documents, every message
     sys.stdout.write(

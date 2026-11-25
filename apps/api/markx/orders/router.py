@@ -489,6 +489,30 @@ def track_order(
     return OrderOut.model_validate(selectors.tracking_view(db, order, lang))
 
 
+@router.post(
+    "/track/{order_id}/seller-orders/{seller_order_id}/cancel",
+    response_model=OrderOut,
+    tags=["orders"],
+)
+def guest_cancel_from_tracking_link(
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    expires: Annotated[int, Query(ge=0)],
+    signature: Annotated[str, Query(min_length=20, max_length=64)],
+    response: Response,
+    db: Db,
+    lang: LangQuery = "am",
+) -> OrderOut:
+    """A guest cancels one shop's part of their order from the secure link,
+    before the shop answers (F-28, D-109). Only a guest's order: a signed-in
+    buyer cancels from their own page. The answer is the link's page."""
+    order = service.cancel_by_guest(
+        db, order_id, seller_order_id, expires=expires, signature=signature
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return OrderOut.model_validate(selectors.tracking_view(db, order, lang))
+
+
 # -- the seller's orders -----------------------------------------------------------
 
 

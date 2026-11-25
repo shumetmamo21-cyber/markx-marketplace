@@ -20971,6 +20971,92 @@
           "orders"
         ]
       }
+    },
+    "/api/v1/track/{order_id}/seller-orders/{seller_order_id}/cancel": {
+      "post": {
+        "description": "A guest cancels one shop's part of their order from the secure link,\nbefore the shop answers (F-28, D-109). Only a guest's order: a signed-in\nbuyer cancels from their own page. The answer is the link's page.",
+        "operationId": "guest_cancel_from_tracking_link_api_v1_track__order_id__seller_orders__seller_order_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "seller_order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Seller Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expires",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Expires",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "signature",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 20,
+              "title": "Signature",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Guest Cancel From Tracking Link",
+        "tags": [
+          "orders"
+        ]
+      }
     }
   }
 }

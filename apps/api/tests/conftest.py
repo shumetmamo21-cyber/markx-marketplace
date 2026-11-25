@@ -111,6 +111,34 @@ def _clean_slate(migrator_engine: Engine) -> None:
             fake_outbox.unlink()
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "founders_new_account_days: run with the new-account days MarkX ships with "
+        "(30, the founder's decision F-27; D-109)",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _new_account_days_as_the_older_tests_were_written(
+    request: pytest.FixtureRequest, _clean_slate: None, migrator_engine: Engine
+) -> None:
+    """F-27 (D-109): MarkX ships with the founder's 30 days, during which a
+    signed-in account has the new-buyer limits (AD-13). The tests written
+    before D-109 sign an account in a moment before it orders, to test other
+    rules, and the 30 days would refuse those orders at checkout. They keep
+    running exactly as they were written, with the days at 0, so each still
+    checks what it checked. Every test of the new-account limits runs with
+    the shipped 30 days (the `founders_new_account_days` marker) or sets the
+    days itself, as operations may."""
+    if request.node.get_closest_marker("founders_new_account_days"):
+        return
+    with migrator_engine.begin() as connection:
+        connection.execute(
+            text("insert into settings (key, value) values ('risk.new_account_days', '0')")
+        )
+
+
 @pytest.fixture
 def db() -> Iterator[Session]:
     """A session on the application role, for arranging data and asserting on it."""

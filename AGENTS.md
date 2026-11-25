@@ -102,7 +102,10 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
   queued by the flush listener.
 - **A shipment changes only through `_track`** in `markx/orders/service.py`,
   and the handover code is never stored, logged or shown to anyone but the
-  signed-in buyer (D-044). `commit_stock` is called only from
+  buyer: the signed-in buyer's page, and a guest's own tracking link
+  (D-044, D-108). A tracking link does one thing besides showing the order:
+  on a guest's order, it cancels a shop's part before the shop answers
+  (`cancel_by_guest`, D-109). `commit_stock` is called only from
   `_commit_held_stock`, which completion and a refund without the goods use.
 - **A dispute case is guarded by its seller order's lock** (D-050): lock the
   seller order first, never the case. Only `resolve_dispute` decides one.

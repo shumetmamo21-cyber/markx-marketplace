@@ -970,6 +970,32 @@ def _refuse_during_cancellation_cooldown(db: Session, user: User, now: datetime)
         )
 
 
+def _refuse_during_guest_cancellation_cooldown(
+    db: Session, by_phone: Any, by_network: Any, now: datetime
+) -> None:
+    """The cool-down for a guest (D-109): the number's own cancellations in
+    the account's words, then the address's in the guest page's own words,
+    since a guest refused for an address they share may have cancelled
+    nothing. Guest orders only: an account's cancellations never count
+    against a guest with its number, nor a guest's against the account."""
+    again_at = _cancellation_cooldown_ends(db, by_phone, now)
+    if again_at is not None:
+        raise Conflict(
+            "cancellation_cooldown",
+            "You cancelled several orders recently, so new orders are paused for a while. "
+            "Please try again later.",
+            details={"order_again_at": again_at.isoformat()},
+        )
+    again_at = _cancellation_cooldown_ends(db, by_network, now)
+    if again_at is not None:
+        raise Conflict(
+            "guest_network_cooldown",
+            "Several guest orders from your connection were cancelled recently, so guest orders "
+            "from it are paused for a while.",
+            details={"order_again_at": again_at.isoformat()},
+        )
+
+
 def _refuse_above_unconfirmed_limits(db: Session, user: User, quote: Quote) -> None:
     _refuse_above_unconfirmed_for(db, Order.buyer_user_id == user.id, quote)
 
@@ -1474,8 +1500,11 @@ def place_guest_order(
         raise _guest_network_limit(
             "open_orders", settings_store.get_int(db, "guest_checkout.max_open_orders_per_ip")
         )
-    # The cancellation cool-down (D-099) counts a buyer's own cancellations;
-    # a guest cannot cancel, so it never applies to one.
+    # The cancellation cool-down (D-099) counts a buyer's own cancellations.
+    # A guest may cancel since F-28 (D-109), so it counts per number and per
+    # address, with the existing values (PROVISIONAL P-109-1, to be
+    # confirmed before going live; P-108-6 extended).
+    _refuse_during_guest_cancellation_cooldown(db, by_phone, by_network, now)
     _refuse_above_unconfirmed_for(db, by_phone, quote)
     _refuse_above_unconfirmed_for(db, by_network, quote, network=True)
 
@@ -1717,6 +1746,62 @@ def cancel_by_buyer(
     )
     _notify_seller(db, seller_order, order, "order.cancelled_by_buyer")
     return seller_order
+
+
+# A guest cancels only before the shop answers (F-28, the founder's decision
+# of 25 November 2026; D-109): a shop that has accepted has set the goods
+# aside, and one that declined or let the order expire has ended it. A
+# signed-in buyer may cancel until the goods are packed
+# (`_BUYER_MAY_CANCEL_FROM`).
+GUEST_MAY_CANCEL_FROM = (SellerOrderStatus.PLACED,)
+
+
+def cancel_by_guest(
+    db: Session,
+    order_id: uuid.UUID,
+    seller_order_id: uuid.UUID,
+    *,
+    expires: int,
+    signature: str,
+    now: datetime | None = None,
+) -> Order:
+    """A guest cancels one shop's part of their order from the tracking link,
+    before the shop answers (F-28, D-109).
+
+    The link is the guest's only key (C-07): a forged or expired one gets the
+    same answer as an order that does not exist (`open_tracking_link`). A
+    signed-in buyer's link never acts (D-048): they cancel from their own
+    page. The stock held for the part goes back at once, in this
+    transaction, and the shop is told in the same words as when a signed-in
+    buyer cancels (the shop sees what it sees for a signed-in buyer, C-07).
+    The part is locked as the shop's answer locks it, so whichever comes
+    first wins."""
+    order = open_tracking_link(db, order_id, expires=expires, signature=signature, now=now)
+    refused = Conflict("order_cannot_be_cancelled", "This order can no longer be cancelled here.")
+    if order.buyer_user_id is not None:
+        raise refused
+    seller_order = db.scalar(
+        select(SellerOrder)
+        .where(SellerOrder.id == seller_order_id, SellerOrder.order_id == order.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+    if seller_order is None:
+        raise NotFound("order_not_found", "That order was not found.")
+    if seller_order.status not in GUEST_MAY_CANCEL_FROM:
+        raise refused
+    _refuse_if_paid(seller_order, "order_paid_contact_support")
+    # Read once this call holds the part, as `cancel_by_buyer` does.
+    now = now or _now()
+    _move(
+        db, seller_order, SellerOrderStatus.CANCELLED, actor_type=ActorType.BUYER,
+        actor_user_id=None, reason="cancelled_by_buyer", now=now,
+    )  # fmt: skip
+    _release_everything(
+        db, [seller_order.id], actor_type=ActorType.BUYER, actor_user_id=None, now=now
+    )
+    _notify_seller(db, seller_order, order, "order.cancelled_by_buyer")
+    return order
 
 
 def expire_unanswered_orders(db: Session, *, now: datetime | None = None) -> int:

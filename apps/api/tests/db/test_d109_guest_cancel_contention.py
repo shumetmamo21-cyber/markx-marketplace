@@ -28,6 +28,9 @@ from markx.sellers.models import Seller, SellerMember
 from tests.bazaar import Bazaar, assert_stock_is_consistent, stock
 from tests.db.test_d108_guest_limit_contention import _browser, _place, _race
 
+# These tests run with what MarkX ships: 30 new-account days (F-27).
+pytestmark = pytest.mark.founders_new_account_days
+
 
 @pytest.fixture
 def bazaar(db: Session) -> Bazaar:

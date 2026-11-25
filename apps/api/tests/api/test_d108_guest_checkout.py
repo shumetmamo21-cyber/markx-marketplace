@@ -213,8 +213,9 @@ def test_a_guest_orders_with_a_name_an_address_and_a_phone_and_gets_only_the_tra
         "zone_code", "zone_name_am", "zone_name_en", "area_name_am", "area_name_en", "city",
     }  # fmt: skip
     part = tracked["seller_orders"][0]
+    # The one action, before the shop answers: cancelling (F-28, D-109).
     assert (part["can_cancel"], part["can_confirm_received"], part["can_report_problem"]) == (
-        False,
+        True,
         False,
         False,
     )
@@ -712,11 +713,12 @@ def test_a_guest_has_no_way_to_act_on_the_order(bazaar: Bazaar, db: DbSession) -
         ),
     ):
         assert response.status_code == 401, response.text
-    # The tracking page offers no action either, at any stage.
+    # The tracking page offers no other action: only cancelling before the
+    # shop answers (F-28, D-109; after it answers, none at all,
+    # test_d109_guest_cancel.py).
     part_view = _track(placed["tracking_path"])["seller_orders"][0]
-    assert not any(
-        part_view[flag] for flag in ("can_cancel", "can_confirm_received", "can_report_problem")
-    )
+    assert part_view["can_cancel"] is True
+    assert not any(part_view[flag] for flag in ("can_confirm_received", "can_report_problem"))
 
 
 # -- the shop sees exactly what it sees for a signed-in buyer -----------------------------------------------

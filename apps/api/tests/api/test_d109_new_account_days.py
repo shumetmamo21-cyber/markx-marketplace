@@ -25,6 +25,9 @@ from tests.bazaar import Bazaar, stock
 from tests.conftest import error_code
 from tests.factories import add_to_cart, checkout
 
+# These tests run with what MarkX ships: 30 new-account days (F-27).
+pytestmark = pytest.mark.founders_new_account_days
+
 
 @pytest.fixture
 def bazaar(db: DbSession) -> Bazaar:

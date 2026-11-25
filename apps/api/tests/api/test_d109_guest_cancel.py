@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -41,15 +42,16 @@ from tests.bazaar import Bazaar, assert_stock_is_consistent, stock
 from tests.conftest import ApiClient, error_code
 from tests.factories import add_to_cart, address_body, checkout
 
+# These tests run with what MarkX ships: 30 new-account days (F-27).
+pytestmark = pytest.mark.founders_new_account_days
+
 
 @pytest.fixture
 def bazaar(db: DbSession) -> Bazaar:
     return Bazaar(db)
 
 
-def _cancel(
-    path: str, part_id: Any, *, client: ApiClient | None = None, **override: str
-) -> Any:
+def _cancel(path: str, part_id: Any, *, client: ApiClient | None = None, **override: str) -> Any:
     """Cancel one shop's part through the tracking link `path`, as the page does."""
     route, params = _split(path)
     return (client or ApiClient()).post(
@@ -287,3 +289,9 @@ def test_the_cancellation_cool_down_counts_for_guests_per_number_and_per_address
     # Nothing was held for the refused orders.
     assert stock(db, bazaar.a128["id"]) == (5, 1)
     assert_stock_is_consistent(db)
+
+
+def test_the_guest_cool_down_is_marked_provisional_where_it_lives() -> None:
+    service_py = Path(service.__file__).read_text(encoding="utf-8")
+    assert "PROVISIONAL P-109-1" in service_py
+    assert "_refuse_during_guest_cancellation_cooldown(db, by_phone, by_network, now)" in service_py

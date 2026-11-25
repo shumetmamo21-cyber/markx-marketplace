@@ -43,6 +43,8 @@ from markx.trust.models import CaseStatus, DisputeCase, DisputeMessage
 # As on the product page: in stock or not, never a competitor-readable count.
 PUBLIC_STOCK_CAP = 5
 _BUYER_MAY_CANCEL = ("placed", "confirmed")
+# What the guest's cancel allows (F-28, D-109), from the rule itself.
+_GUEST_MAY_CANCEL = frozenset(status.value for status in service.GUEST_MAY_CANCEL_FROM)
 
 
 def _names(db: Session, product_ids: set[uuid.UUID], language: str) -> dict[uuid.UUID, str]:
@@ -701,7 +703,11 @@ def tracking_view(db: Session, order: Order, language: str) -> dict[str, Any]:
     until the handover, or the guest could never receive the goods.
     A guest's link is never sent anywhere (no Telegram, no SMS, no in-app
     message); it is handed only to the browser that placed the order. A
-    signed-in buyer's link never shows it (D-048)."""
+    signed-in buyer's link never shows it (D-048).
+
+    One action, on a guest's order only: cancelling a shop's part before the
+    shop answers (F-28, D-109; `service.cancel_by_guest` checks again). A
+    signed-in buyer's link still offers none."""
     out = _buyer_order_out(db, order, language)
     guest = order.buyer_user_id is None
     out["tracking_path"] = None
@@ -709,7 +715,11 @@ def tracking_view(db: Session, order: Order, language: str) -> dict[str, Any]:
     for seller_order in out["seller_orders"]:
         if not guest:
             seller_order["handover_code"] = None
-        seller_order["can_cancel"] = False
+        seller_order["can_cancel"] = (
+            guest
+            and seller_order["status"] in _GUEST_MAY_CANCEL
+            and seller_order["paid_at"] is None
+        )
         seller_order["can_confirm_received"] = False
         seller_order["can_report_problem"] = False
         # What the buyer wrote about a problem is for the signed-in page.
