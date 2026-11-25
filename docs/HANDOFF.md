@@ -29,7 +29,10 @@ and merged pull request #13 and built five Release 1 features (D-106),
 and Part A.0000000000000000000000 the same day by the session that built
 five more Release 1 features (D-107), and Part A.00000000000000000000000
 on 25 November 2026 by the session that built guest checkout and the
-limits for new accounts (D-108).
+limits for new accounts (D-108), and Part A.000000000000000000000000 the
+same day by the same session, which merged pull request #16 on the
+founder's written approval and built the founder's decisions F-27 and
+F-28 (D-109).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -41,12 +44,65 @@ the checks actually printed.
 
 ---
 
+# Part A.000000000000000000000000 — F-27 and F-28, decided by the founder (25 November 2026, D-109)
+
+Branch `claude/lucid-babbage-38jzfq`, from `main` at `e06bd83` (the merge
+of pull request #16, on the founder's written approval of 25 November 2026,
+without the independent review, the founder's decision; `main` passed CI
+#191 and Browser journeys #67 on it). One small pull request into `main`;
+the founder approved its merge in advance, a normal merge pinned to its
+last commit, once every check on that commit passes (its number and runs:
+`docs/DEVELOPMENT_STATUS.md`, "Tests executed", D-109). **No migration.
+Nothing deployed; no server, account, bot, SMS, bucket or paid resource.**
+Details: `docs/DECISIONS.md`, D-109.
+
+**For the founder, in plain words:**
+
+1. **New accounts are careful for 30 days (F-27).** Someone whose account
+   is less than 30 days old pays at the door only for orders up to ETB
+   50,000 and has one open order at a time; after 30 days the usual limits
+   apply. Guests always have these limits. Operations can change the 30
+   days in the settings screen.
+2. **A guest can now cancel, but only before the shop answers (F-28).** On
+   the guest's order page there is "Cancel this part"; it asks once more;
+   the goods go back on sale at once and the shop is told, as for any
+   buyer. Once the shop accepts or declines, the button is gone and the
+   cancel is refused. Everything in Amharic too.
+3. **Cancelling often pauses guest orders for a while**, from that phone
+   number or that connection, as it already did for accounts (P-109-1, for
+   you to confirm).
+4. **No existing test was weakened or removed.** 74 older tests make an
+   account a moment before they order, so the 30 days would refuse them;
+   they keep running exactly as written, with the days at 0 just for them,
+   and new tests check the 30 days. Three tests that checked your earlier
+   choices (0 days; a guest has no cancel) now check your new ones. The
+   demo buyer of the browser journeys is now a customer of 90 days.
+
+**What needs you:** P-109-1 (the guests' cool-down), F-29 (many guests
+behind one mobile connection), the other PROVISIONAL values (P-108-2 to
+P-108-8), and the new Amharic words for the native editor.
+
+**For the next engineer:** read D-109 first. MarkX ships 30 new-account
+days, but the test suite stores 0 for every test unless it carries
+`@pytest.mark.founders_new_account_days` (`tests/conftest.py`). A test that
+needs the shipped value carries the marker; a test that orders for a fresh
+account above ETB 50,000, or more than once at a time, runs without it or
+ages its account (`_age` in `tests/api/test_d108_new_account_limits.py`).
+`cancel_by_guest` is the only thing a tracking link can do, and only on a
+guest's order; the tracking view reads `GUEST_MAY_CANCEL_FROM`, the one
+rule. The guest journey now cancels a second order (step 8), so on one
+demo database each run also adds one cancellation to the address's
+cool-down (three a day).
+
+---
+
 # Part A.00000000000000000000000 — Guest checkout and limits for new accounts (25 November 2026, D-108)
 
 Branch `claude/lucid-babbage-38jzfq`, from `main` at `5794234` (the merge
 of pull request #15) with the complete history; no pull request was open.
-One pull request into `main`, **#16**, **not merged**: it changes order
-rules, so an independent review follows. Every check passed on `b58559b`,
+One pull request into `main`, **#16**, **merged as `e06bd83`** on the
+founder's written approval of 25 November 2026, without the independent
+review (the founder's decision; D-109). Every check passed on `b58559b`,
 the code with its documents (CI #189, 7 of 7 jobs, 2219 tests passed;
 Browser journeys #65, the guest journey included); the runs:
 `docs/DEVELOPMENT_STATUS.md`, "Tests executed", 25 November 2026. **One
