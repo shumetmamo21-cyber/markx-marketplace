@@ -2186,6 +2186,12 @@ journeys on this machine, in CI's order on a fresh demo database (API, demo data
   sign-in-cooldown, release1-d107, guest-checkout (its new step 8 included)
                                                           ->  all passed; axe: no violations; console errors: none
   not run here: the Telegram and Turnstile steps (they restart the API or the web app with other settings)
+GitHub, pull request #17, on 1b7900e: Browser journeys #68 -> the guest journey's new step 8 failed: "An item is
+  out of stock now". The journeys before it (Telegram sign-in among them, not run here) had sold the first phone
+  out, and step 8 reused it: a cause in the journey, not the product. Reproduced here (each rider-delivered
+  Tecno Spark 20 cut to one unit, fresh demo database): the journey as pushed fails the same way; with step 8
+  taking any phone still in stock that a rider delivers (and that phone's shop), it passes. CI #192 was
+  superseded by the fix. The pull request's later runs are on the pull request.
 ```
 
 **Guest checkout and limits for new accounts** (D-108), on 24 and 25

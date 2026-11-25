@@ -195,12 +195,24 @@ try {
 
   // 8. A second guest order, cancelled from its link before the shop answers
   // (F-28, D-109): offered in Amharic too, the page asks once more, the
-  // shop's stock is back at once, and the button is gone.
+  // shop's stock is back at once, and the button is gone. The journeys before
+  // this one may have sold the first phone out, so it takes any phone still
+  // in stock that a shop's rider delivers, within a guest's ETB 50,000.
   const second = await (await browser.newContext({ viewport: { width: 360, height: 800 } })).newPage();
   watch(second, 'second guest');
   const callSecond = caller(second);
   await second.goto(`${BASE}/en/checkout/guest`);
-  expect((await callSecond('PUT', `/api/v1/cart/items/${offer.id}`, { quantity: 1 })).status === 200, 'second cart');
+  let other = null;
+  for (const slug of ['infinix-hot-40i', 'samsung-galaxy-a16', 'xiaomi-redmi-13c', 'tecno-spark-20']) {
+    const found = await callSecond('GET', `/api/v1/catalog/products/${slug}/offers?zone=bole`);
+    other = found.body?.offers?.find((o) => o.delivers_by_seller_rider && o.in_stock && o.total_santim <= 5_000_000);
+    if (other) break;
+  }
+  expect(other, 'no phone left in stock that a rider delivers, for the second guest order');
+  const asOtherShop = other.store_name === offer.store_name ? asShop : await signInByCode(await (await browser.newContext({ viewport: { width: 360, height: 800 } })).newPage(), SHOP_PHONES[other.store_name]);
+  const otherSellerId = other.store_name === offer.store_name ? sellerId : (await asOtherShop('GET', '/api/v1/me')).body.sellers?.[0]?.seller_id;
+  expect(otherSellerId, `the seller id of ${other.store_name}`);
+  expect((await callSecond('PUT', `/api/v1/cart/items/${other.id}`, { quantity: 1 })).status === 200, 'second cart');
   await second.reload();
   await second.fill('input[name=recipient]', 'Journey Guest Almaz');
   await second.fill('input[name=phone]', `0911${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`);
@@ -215,7 +227,7 @@ try {
   if (await secondRefusal.count()) throw new Error(`the second guest order was refused: ${await secondRefusal.first().innerText()}`);
   const secondCode = (await secondPlaced.innerText()).match(/MX-[A-Z0-9]{6}/)[0];
   const secondLink = await second.locator('[data-guest-link]').innerText();
-  const held = async () => (await asShop('GET', `/api/v1/seller/${sellerId}/offers`)).body.find((o) => o.id === offer.id)?.reserved;
+  const held = async () => (await asOtherShop('GET', `/api/v1/seller/${otherSellerId}/offers`)).body.find((o) => o.id === other.id)?.reserved;
   const heldPlaced = await held();
   expect(Number.isInteger(heldPlaced) && heldPlaced >= 1, `the shop's offer holds nothing for the order: ${heldPlaced}`);
   await second.goto(secondLink.replace('/en/track/', '/am/track/'));
@@ -224,7 +236,7 @@ try {
   await checkAccessibility(second, 'guest tracking page with its cancel (am)');
   await second.goto(secondLink);
   await second.getByRole('button', { name: 'Cancel this part' }).click();
-  await second.getByText(`Cancel your order from ${offer.store_name}?`).waitFor();
+  await second.getByText(`Cancel your order from ${other.store_name}?`).waitFor();
   await checkAccessibility(second, 'guest tracking page, asking before it cancels (en)');
   await fits(second, 'guest tracking page, asking before it cancels');
   await second.getByRole('button', { name: 'Yes, cancel it' }).click();
@@ -232,7 +244,7 @@ try {
   expect(await second.getByRole('button', { name: 'Cancel this part' }).count() === 0, 'the cancel button stayed after cancelling');
   const heldAfter = await held();
   expect(heldAfter === heldPlaced - 1, `the stock was not back at once: ${heldPlaced} held, then ${heldAfter}`);
-  const cancelledRow = (await asShop('GET', `/api/v1/seller/${sellerId}/orders`)).body.find((row) => row.order_code === secondCode);
+  const cancelledRow = (await asOtherShop('GET', `/api/v1/seller/${otherSellerId}/orders`)).body.find((row) => row.order_code === secondCode);
   expect(cancelledRow?.status === 'cancelled', `the shop's view of the cancelled order: ${JSON.stringify(cancelledRow)}`);
   await second.screenshot({ path: join(SHOTS, 'guest-cancelled-en.png'), fullPage: true });
   console.log(`8 ${secondCode} cancelled from its link before the shop answered; the shop's stock was back at once`);
