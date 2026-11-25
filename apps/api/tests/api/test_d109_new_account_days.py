@@ -34,6 +34,12 @@ def bazaar(db: DbSession) -> Bazaar:
     return Bazaar(db)
 
 
+@pytest.fixture
+def roomy(db: DbSession) -> Bazaar:
+    """Enough stock for four buyers of three units each."""
+    return Bazaar(db, stock=20)
+
+
 def test_the_founder_set_the_new_account_days_to_30(db: DbSession) -> None:
     spec = settings_store.SETTINGS["risk.new_account_days"]
     assert spec.default == 30
@@ -67,30 +73,32 @@ def test_an_account_made_today_has_the_new_buyer_limits(bazaar: Bazaar, db: DbSe
     assert second.json()["error"]["details"] == {"limit": 1}
 
 
-@pytest.mark.parametrize(
-    ("days_old", "brand_new"), [(0, True), (29.9, True), (30.01, False), (90, False)]
-)
 def test_the_limits_last_the_first_30_days_after_the_account_was_made(
-    bazaar: Bazaar, db: DbSession, days_old: float, brand_new: bool
+    roomy: Bazaar, db: DbSession
 ) -> None:
-    buyer, address = bazaar.buyer()
-    _age(db, buyer, days_old)
-    assert service.is_brand_new(db, _user(db, buyer), now=datetime.now(UTC)) is brand_new
-    add_to_cart(buyer, bazaar.a128["id"], 3)  # ETB 55,650, above a new buyer's ETB 50,000
-    answer = checkout(buyer, address, RIDER)
-    if brand_new:
-        assert error_code(answer) == "new_buyer_order_too_large"
-    else:
-        # The ordinary limits: up to ETB 300,000 and three open orders.
-        assert answer.status_code == 201, answer.text
-        add_to_cart(buyer, bazaar.b128["id"], 1)
-        assert checkout(buyer, address, COLLECT).status_code == 201
+    bazaar = roomy
+    for days_old, brand_new in ((0, True), (29.9, True), (30.01, False), (90, False)):
+        buyer, address = bazaar.buyer()
+        _age(db, buyer, days_old)
+        now = datetime.now(UTC)
+        assert service.is_brand_new(db, _user(db, buyer), now=now) is brand_new, days_old
+        add_to_cart(buyer, bazaar.a128["id"], 3)  # ETB 55,650, above a new buyer's ETB 50,000
+        answer = checkout(buyer, address, RIDER)
+        if brand_new:
+            assert error_code(answer) == "new_buyer_order_too_large", days_old
+        else:
+            # The ordinary limits: up to ETB 300,000 and three open orders.
+            assert answer.status_code == 201, (days_old, answer.text)
+            add_to_cart(buyer, bazaar.b128["id"], 1)
+            assert checkout(buyer, address, COLLECT).status_code == 201, days_old
 
 
 def test_operations_may_still_change_the_days(bazaar: Bazaar, db: DbSession) -> None:
+    buyer, address = bazaar.buyer()
+    # The founder's 30 days first: an account made today is brand-new.
+    assert service.is_brand_new(db, _user(db, buyer), now=datetime.now(UTC)) is True
     settings_store.set_setting(db, "risk.new_account_days", 0)
     db.commit()
-    buyer, address = bazaar.buyer()
     assert service.is_brand_new(db, _user(db, buyer), now=datetime.now(UTC)) is False
     add_to_cart(buyer, bazaar.a128["id"], 3)
     assert checkout(buyer, address, RIDER).status_code == 201

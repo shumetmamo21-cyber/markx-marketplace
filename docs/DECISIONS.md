@@ -6098,11 +6098,17 @@ The rule is marked `PROVISIONAL P-109-1` where it lives
 ### 8. Tests
 
 - **New:** `tests/api/test_d109_guest_cancel.py` (7),
-  `tests/api/test_d109_new_account_days.py` (7) and
+  `tests/api/test_d109_new_account_days.py` (4) and
   `tests/db/test_d109_guest_cancel_contention.py` (10: two races, five
-  rounds each): 24 API and database tests, run with the shipped 30 days.
-  Their results on this branch and on the old code (`e06bd83`): "Tests
-  executed" in `docs/DEVELOPMENT_STATUS.md`, D-109.
+  rounds each): 21 API and database tests, run with the shipped 30 days;
+  **21 of 21 fail on the old code** (`e06bd83`, with only the new test files
+  and the new `tests/conftest.py`): the route answers 404, and
+  `cancel_by_guest`, the 30 days and the P-109-1 mark do not exist there.
+- **The whole suite on this branch: 2,242 passed, 0 failed, 0 skipped**
+  (2,219 and the 23 new tests of that moment; the age cases were then
+  joined into one test with the same checks, and the P-109-1 mark test was
+  added; those files: 11 passed). Details: "Tests executed" in
+  `docs/DEVELOPMENT_STATUS.md`, D-109.
 - **Web:** `src/lib/guest-cancel.test.ts` (10). On the old code it cannot
   load (its module is new); with only its new module copied in, 8 of the 10
   still fail, because the words do not exist there; the other two check the

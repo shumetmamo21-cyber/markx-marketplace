@@ -27,7 +27,7 @@ bot, SMS, bucket or paid resource.** Details and one PROVISIONAL value
 
 | Decision | What a person sees | Proof |
 | --- | --- | --- |
-| F-27 new accounts have the new-buyer limits for their first 30 days (P-108-1 = 30) | A buyer whose account is less than 30 days old pays at the door for orders up to ETB 50,000 and holds one open order at a time; from day 30 the ordinary limits; operations may change the days | `tests/api/test_d109_new_account_days.py` (7); the setting's words in both languages |
+| F-27 new accounts have the new-buyer limits for their first 30 days (P-108-1 = 30) | A buyer whose account is less than 30 days old pays at the door for orders up to ETB 50,000 and holds one open order at a time; from day 30 the ordinary limits; operations may change the days | `tests/api/test_d109_new_account_days.py` (4); the setting's words in both languages |
 | F-28 a guest cancels from the tracking link before the shop answers | "Cancel this part" on the guest's tracking page while the shop has not answered, asked once more; the stock goes back at once; no button once the shop accepts, declines or the order expires; a signed-in buyer's link still never acts | `tests/api/test_d109_guest_cancel.py`; `tests/db/test_d109_guest_cancel_contention.py` (10, races); `src/lib/guest-cancel.test.ts` (10); the guest journey's steps 4, 5 and 8 |
 | The cancellation cool-down counts for guests too (P-109-1) | Three cancelled orders within 24 hours pause new guest orders from that number, or from that network address | `test_the_cancellation_cool_down_counts_for_guests_per_number_and_per_address` |
 
@@ -2154,6 +2154,39 @@ Be careful with these. They were written and never exercised.
   D-083). Before that they were never deleted.
 
 ## Tests executed
+
+**F-27 and F-28** (D-109), on 25 November 2026, branch
+`claude/lucid-babbage-38jzfq` from `main` at `e06bd83` (complete history).
+PostgreSQL 17.12 and MinIO in containers, with `MARKX_TEST_MINIO_REQUIRED=1`,
+`MARKX_TEST_BACKUP_REQUIRED=1`, the least-privilege MinIO users and
+PostgreSQL 17.12's tools, as in CI. Docker was started again once, after the
+session's machine restarted.
+
+```text
+uv run pytest -q -p no:cacheprovider, only the default changed to 30 days (D-109 section 2)
+                                                          ->  74 failed, 2145 passed, in 26 min 51 s
+uv run pytest -q -p no:cacheprovider (this branch)        ->  2242 passed, 0 failed, 0 skipped, in 27 min 23 s
+  = 2219 + the 23 new tests of that moment; afterwards the age cases were joined into one test (the same
+  checks; 7 -> 4 tests in test_d109_new_account_days.py) and the P-109-1 mark test was added
+the new tests, as committed: test_d109_guest_cancel.py (7), test_d109_new_account_days.py (4),
+  tests/db/test_d109_guest_cancel_contention.py (10)     ->  21 passed
+the new tests on e06bd83 (worktree, the new files and the new tests/conftest.py only)
+                                                          ->  21 of 21 fail (the route answers 404; cancel_by_guest,
+                                                              the 30 days and the P-109-1 mark do not exist there)
+the D-108 guest and new-account tests, with the new ones  ->  passed
+ruff check / ruff format --check / mypy markx             ->  passed / 281 files already formatted / no issues in 161 files
+alembic upgrade head / alembic check                      ->  at 0024 / no new upgrade operations
+check_openapi_copy --exact openapi.json / the web's copy  ->  both match the API exactly (the new route only)
+apps/web: npm run lint / typecheck / test / build         ->  passed / passed / 229 passed in 23 files (main: 219 in 22) / built
+  src/lib/guest-cancel.test.ts on e06bd83                 ->  cannot load (./guest-cancel is new); with only that module
+                                                              copied in, 8 of 10 fail (the words do not exist)
+page weight (production build, the demo data)             ->  every page within its budget; product 209.3 KB, as before
+journeys on this machine, in CI's order on a fresh demo database (API, demo data, production build, Chromium):
+  seller-dashboard, buyer, staff, admin-queues, shop-screens, setup-and-account, network-recovery,
+  sign-in-cooldown, release1-d107, guest-checkout (its new step 8 included)
+                                                          ->  all passed; axe: no violations; console errors: none
+  not run here: the Telegram and Turnstile steps (they restart the API or the web app with other settings)
+```
 
 **Guest checkout and limits for new accounts** (D-108), on 24 and 25
 November 2026, branch `claude/lucid-babbage-38jzfq` from `main` at
