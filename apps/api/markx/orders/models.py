@@ -17,15 +17,18 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from markx.accounts.models import LANGUAGES
+from markx.accounts.models import LANGUAGES, PHONE_PATTERN
 from markx.core.db import Base, CreatedAt, Timestamps, UUIDPrimaryKey, in_check
 from markx.offers.models import Condition
 
 MAX_QUANTITY_PER_LINE = 20
+# The length of a keyed hash (HMAC-SHA256) or a token hash (SHA-256).
+HASH_BYTES = 32
 
 
 class PaymentMode(StrEnum):
@@ -105,6 +108,15 @@ class Order(UUIDPrimaryKey, CreatedAt, Base):
     """The buyer's whole checkout: the parent order (blueprint D.11, G.5).
 
     It has no status column. Its status is always derived from its seller orders.
+
+    The buyer is a signed-in account (`buyer_user_id`) or a guest (C-07,
+    D-108): a person without Telegram, or anyone while Telegram is blocked,
+    who gave a name, a delivery address and a phone number. A guest's number
+    is not confirmed, so a guest order belongs to no account and is never
+    joined to the account that has the same number: it carries the number
+    the guest typed (`guest_phone`), for the limits counted per number, and
+    keyed hashes of the network address it came from and of the browser's
+    cart secret, never the address or the secret itself.
     """
 
     __tablename__ = "orders"
@@ -120,16 +132,61 @@ class Order(UUIDPrimaryKey, CreatedAt, Base):
             "grand_total_santim = items_total_santim + delivery_total_santim",
             name="grand_total_adds_up",
         ),
+        # Exactly one buyer: an account or a guest, never both, never neither (D-108).
+        CheckConstraint("(buyer_user_id is null) <> (guest_phone is null)", name="one_buyer"),
+        CheckConstraint(
+            f"guest_phone is null or guest_phone ~ '{PHONE_PATTERN}'",
+            name="guest_phone_international_format",
+        ),
+        # C-07: a guest pays at the door only, never in advance (D-108).
+        CheckConstraint(
+            "guest_phone is null or payment_mode = 'direct'", name="guest_pays_at_the_door"
+        ),
+        CheckConstraint(
+            "(guest_phone is null) = (guest_network_hash is null) "
+            "and (guest_phone is null) = (guest_browser_hash is null)",
+            name="guest_keys_with_guest",
+        ),
+        CheckConstraint(
+            f"(guest_network_hash is null or octet_length(guest_network_hash) = {HASH_BYTES}) "
+            f"and (guest_browser_hash is null or octet_length(guest_browser_hash) = {HASH_BYTES})",
+            name="guest_key_lengths",
+        ),
         # The same submission sent twice creates one order (D.10). Scoped to the
         # buyer, so one person's key can never return another person's order.
         UniqueConstraint("buyer_user_id", "idempotency_key"),
         Index("ix_orders_buyer_created", "buyer_user_id", "created_at"),
+        # A guest's key is scoped to the browser that sent it (D-108).
+        Index(
+            "uq_orders_guest_browser_idempotency_key",
+            "guest_browser_hash",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("guest_browser_hash is not null"),
+        ),
+        Index(
+            "ix_orders_guest_phone",
+            "guest_phone",
+            postgresql_where=text("guest_phone is not null"),
+        ),
+        Index(
+            "ix_orders_guest_network_hash",
+            "guest_network_hash",
+            postgresql_where=text("guest_network_hash is not null"),
+        ),
     )
 
     code: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    buyer_user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    # Empty for a guest's order (C-07, D-108).
+    buyer_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
+    # The guest's phone number as typed and normalised, NOT confirmed (D-108).
+    guest_phone: Mapped[str | None] = mapped_column(Text)
+    # Keyed hashes: of the network address the guest order came from, and of
+    # the guest browser's cart secret (which scopes the idempotency key).
+    guest_network_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
+    guest_browser_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
     payment_mode: Mapped[str] = mapped_column(Text, nullable=False)
     currency: Mapped[str] = mapped_column(Text, nullable=False, server_default="ETB")
     items_total_santim: Mapped[int] = mapped_column(BigInteger, nullable=False)

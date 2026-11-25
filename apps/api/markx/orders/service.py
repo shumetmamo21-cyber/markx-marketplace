@@ -39,7 +39,8 @@ from markx.audit import service as audit
 from markx.audit.service import Actor
 from markx.catalog import selectors as catalog_selectors
 from markx.catalog.models import Product, ProductStatus, ProductVariant
-from markx.core import settings_store
+from markx.core import ratelimit, settings_store
+from markx.core.botcheck import GUEST_CHECKOUT_ACTION, get_bot_check
 from markx.core.codes import new_order_code
 from markx.core.errors import Conflict, NotFound, PermissionDenied, ValidationFailed
 from markx.core.ids import uuid7
@@ -49,6 +50,7 @@ from markx.core.security import (
     constant_time_equal,
     derive_numeric_code,
     hash_token,
+    keyed_hash,
     new_token,
     sign,
 )
@@ -480,8 +482,60 @@ class SellerQuote:
 
 
 @dataclass(frozen=True, slots=True)
+class GuestAddress:
+    """Where a guest's order goes (C-07, D-108): the same details as a saved
+    address, typed at checkout. They are kept only in the order's own copy of
+    the address, never saved as an address, and the phone number is the
+    guest's word: nobody confirmed it."""
+
+    recipient_name: str
+    phone: str
+    phone2: str | None
+    delivery_area_id: uuid.UUID
+    landmark: str
+    latitude: float | None
+    longitude: float | None
+    driver_notes: str | None
+    # A guest has no saved address and no gate photo (C-08 is for accounts).
+    id: None = None
+    gate_photo_id: None = None
+
+
+def guest_address(
+    db: Session,
+    *,
+    recipient_name: str,
+    raw_phone: str,
+    raw_phone2: str | None,
+    delivery_area_id: uuid.UUID,
+    landmark: str,
+    latitude: float | None,
+    longitude: float | None,
+    driver_notes: str | None,
+) -> GuestAddress:
+    """The guest's details, checked as a saved address is checked
+    (`accounts.create_address`): an Ethiopian mobile number, an active area,
+    a whole map pin or none."""
+    area = db.get(DeliveryArea, delivery_area_id)
+    if area is None or not area.is_active:
+        raise ValidationFailed("area_unknown", "Choose an area from the list.")
+    if (latitude is None) != (longitude is None):
+        raise ValidationFailed("map_pin_incomplete", "A map pin needs both latitude and longitude.")
+    return GuestAddress(
+        recipient_name=" ".join(recipient_name.split()),
+        phone=accounts.parse_phone(raw_phone),
+        phone2=accounts.parse_phone(raw_phone2) if raw_phone2 else None,
+        delivery_area_id=area.id,
+        landmark=landmark.strip(),
+        latitude=latitude,
+        longitude=longitude,
+        driver_notes=(driver_notes or "").strip() or None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class Quote:
-    address: Address
+    address: Address | GuestAddress
     area: DeliveryArea
     zone: DeliveryZone
     groups: list[SellerQuote]
@@ -514,6 +568,50 @@ def build_quote(
     chosen method.
     """
     address = accounts.get_own_address(db, user.id, address_id)
+    return _quote(db, cart, address, deliveries=deliveries, lock=lock)
+
+
+def build_guest_quote(
+    db: Session,
+    cart: Cart,
+    guest: GuestAddress,
+    *,
+    deliveries: Mapping[str, str],
+    lock: bool = False,
+) -> Quote:
+    """The guest's review step (C-07, D-108): priced exactly as a signed-in
+    buyer's, for the address the guest typed. Refused at once when guest
+    checkout is off, when a shop's part would be collected rather than
+    delivered to the door (unless operations allow it), and when the total
+    is above a guest's largest pay-at-the-door order (AD-13), so the guest
+    learns it before placing the order; placing checks everything again."""
+    _refuse_while_guest_checkout_is_off(db)
+    quote = _quote(db, cart, guest, deliveries=deliveries, lock=lock)
+    if not settings_store.get_bool(db, "guest_checkout.shop_collection"):
+        collected = sorted(
+            group.store.slug
+            for group in quote.groups
+            if group.delivery.method == DeliveryMode.SHOP_COLLECTION
+        )
+        if collected:
+            raise Conflict(
+                "guest_collection_unavailable",
+                "Guests pay at the door: choose delivery to your door, or sign in with Telegram "
+                "to collect at the shop.",
+                details={"store_slugs": collected},
+            )
+    _refuse_above_new_buyer_value(db, quote)
+    return quote
+
+
+def _quote(
+    db: Session,
+    cart: Cart,
+    address: Address | GuestAddress,
+    *,
+    deliveries: Mapping[str, str],
+    lock: bool,
+) -> Quote:
     area = db.get(DeliveryArea, address.delivery_area_id)
     zone = db.get(DeliveryZone, area.zone_id) if area is not None else None
     if area is None or zone is None or not area.is_active or not zone.is_active:
@@ -665,7 +763,8 @@ def _new_code(db: Session) -> str:
 def _address_snapshot(quote: Quote) -> dict[str, Any]:
     address, area, zone = quote.address, quote.area, quote.zone
     return {
-        "address_id": str(address.id),
+        # A guest's address was typed, never saved (D-108): no id.
+        "address_id": str(address.id) if address.id is not None else None,
         "recipient_name": address.recipient_name,
         "phone": address.phone,
         "phone2": address.phone2,
@@ -737,6 +836,10 @@ def _notify_seller(db: Session, seller_order: SellerOrder, order: Order, templat
 
 
 def _notify_buyer(db: Session, seller_order: SellerOrder, order: Order, template: str) -> None:
+    if order.buyer_user_id is None:
+        # A guest gets the tracking link and nothing more (C-07, D-108): no
+        # message, and above all none to the account that has the number.
+        return
     notifications.notify(
         db, order.buyer_user_id, template,
         {"order_id": str(order.id), "seller_order_id": str(seller_order.id), "order_code": order.code},
@@ -764,6 +867,8 @@ def _suggest_next_best(db: Session, seller_order: SellerOrder, order: Order) -> 
     """The seller declined or stayed silent: point the buyer at the next-best
     offer for each line (C-26). Identifiers only; the page reads the live
     price, which may have changed by the time the buyer looks."""
+    if order.buyer_user_id is None:
+        return  # a guest is told nothing except by the tracking link (D-108)
     for found in next_best_offers(db, seller_order, order):
         notifications.notify(
             db, order.buyer_user_id, "order.next_best_offer",
@@ -785,16 +890,17 @@ def open_order_count(db: Session, user_id: uuid.UUID, *, now: datetime | None = 
     A part stalled on the road or after a failed handover past its limit does
     not count (M6, D-099): only the shop can move it on, and staff are told.
     It keeps its status and its stock (`orders.stalled`)."""
-    now = now or _now()
+    return _open_orders(db, Order.buyer_user_id == user_id, now=now or _now())
+
+
+def _open_orders(db: Session, whose: Any, *, now: datetime) -> int:
+    """`open_order_count` for any one buyer: an account, a guest's phone
+    number or the network address guest orders came from (D-108)."""
     return int(
         db.scalar(
             select(func.count(func.distinct(SellerOrder.order_id)))
             .join(Order, Order.id == SellerOrder.order_id)
-            .where(
-                Order.buyer_user_id == user_id,
-                SellerOrder.status.in_(list(OPEN)),
-                ~stalled.stalled(db, now),
-            )
+            .where(whose, SellerOrder.status.in_(list(OPEN)), ~stalled.stalled(db, now))
         )
         or 0
     )
@@ -853,13 +959,22 @@ def _refuse_during_cancellation_cooldown(db: Session, user: User, now: datetime)
 
 
 def _refuse_above_unconfirmed_limits(db: Session, user: User, quote: Quote) -> None:
+    _refuse_above_unconfirmed_for(db, Order.buyer_user_id == user.id, quote)
+
+
+def _refuse_above_unconfirmed_for(
+    db: Session, whose: Any, quote: Quote, *, network: bool = False
+) -> None:
+    """The per-offer and per-shop unit limits (H2, D-099) for any one buyer:
+    an account, a guest's phone number, or (`network`) the network address
+    guest orders came from, which is refused in its own words (D-108)."""
     per_offer = settings_store.get_int(db, "orders.max_unconfirmed_units_per_offer")
     per_seller = settings_store.get_int(db, "orders.max_unconfirmed_units_per_seller")
     waiting = db.execute(
         select(OrderItem.offer_id, SellerOrder.seller_id, func.sum(OrderItem.quantity))
         .join(SellerOrder, SellerOrder.id == OrderItem.seller_order_id)
         .join(Order, Order.id == SellerOrder.order_id)
-        .where(Order.buyer_user_id == user.id, SellerOrder.status == SellerOrderStatus.PLACED)
+        .where(whose, SellerOrder.status == SellerOrderStatus.PLACED)
         .group_by(OrderItem.offer_id, SellerOrder.seller_id)
     ).all()
     by_offer: dict[uuid.UUID, int] = {}
@@ -870,6 +985,8 @@ def _refuse_above_unconfirmed_limits(db: Session, user: User, quote: Quote) -> N
     for group in quote.groups:
         for line in group.lines:
             if by_offer.get(line.offer.id, 0) + line.item.quantity > per_offer:
+                if network:
+                    raise _guest_network_limit("unconfirmed_offer", per_offer)
                 raise Conflict(
                     "unconfirmed_offer_limit",
                     "You have ordered as many of this item as MarkX allows before the shop "
@@ -878,12 +995,70 @@ def _refuse_above_unconfirmed_limits(db: Session, user: User, quote: Quote) -> N
                 )
         units = sum(line.item.quantity for line in group.lines)
         if by_seller.get(group.seller.id, 0) + units > per_seller:
+            if network:
+                raise _guest_network_limit("unconfirmed_store", per_seller)
             raise Conflict(
                 "unconfirmed_store_limit",
                 "You have ordered as many items from this shop as MarkX allows before it "
                 "answers. Wait for the shop to confirm, then order more.",
                 details={"store_slug": group.store.slug, "limit": per_seller},
             )
+
+
+def _guest_network_limit(kind: str, limit: int) -> Conflict:
+    """A guest refused because of the guest orders from their network address
+    (D-108). It says nothing about whose orders they are."""
+    return Conflict(
+        "guest_network_limit",
+        "Too many guest orders are waiting from your connection right now. Try again later, "
+        "or sign in with Telegram.",
+        details={"limit_kind": kind, "limit": limit},
+    )
+
+
+# -- limits for brand-new buyers (AD-13, D-108) ------------------------------------------
+#
+# The founder's choices of 24 November 2026, PROVISIONAL (P-108-1 to P-108-3,
+# `core/settings_store.py`): a guest always counts as a brand-new buyer; a
+# signed-in account counts as one for `risk.new_account_days` after it was
+# created, which is 0 (no account) until the founder sets it. A brand-new
+# buyer may pay at the door for orders up to a smaller total and may hold
+# fewer open pay-at-the-door orders at a time. In Release 1 there is no other
+# way to pay, so an order outside these limits is refused, saying why; a
+# guest never gets another way to pay (C-07: pay at the door only).
+
+
+def is_brand_new(db: Session, user: User, *, now: datetime) -> bool:
+    """Whether this signed-in account still counts as brand-new (AD-13).
+
+    PROVISIONAL P-108-8, to be confirmed before going live: an account's age
+    counts from when the account was created (`users.created_at`), which for
+    an account made by an invitation or by staff may be before its first
+    sign-in; completed orders do not shorten it."""
+    days = settings_store.get_int(db, "risk.new_account_days")
+    return days > 0 and user.created_at > now - timedelta(days=days)
+
+
+def _refuse_above_new_buyer_value(db: Session, quote: Quote) -> None:
+    limit = settings_store.get_int(db, "risk.new_account_max_order_value_santim")
+    if quote.grand_total.amount > limit:
+        raise Conflict(
+            "new_buyer_order_too_large",
+            "As a new buyer you can pay at the door for orders up to a smaller total for now.",
+            details={"limit_santim": limit},
+        )
+
+
+def _refuse_above_new_buyer_caps(db: Session, quote: Quote, *, open_orders: int) -> None:
+    _refuse_above_new_buyer_value(db, quote)
+    limit = settings_store.get_int(db, "risk.new_account_max_open_orders")
+    if open_orders >= limit:
+        raise Conflict(
+            "new_buyer_too_many_open_orders",
+            "As a new buyer you can have only a few open orders at a time for now. Wait until "
+            "one is delivered, then order again.",
+            details={"limit": limit},
+        )
 
 
 def place_order(
@@ -920,20 +1095,7 @@ def place_order(
         raise PermissionDenied("account_not_active", "This account cannot place orders.")
 
     quote = build_quote(db, user, cart, address_id=address_id, deliveries=deliveries, lock=True)
-    if quote.price_changes:
-        raise Conflict(
-            "price_changed",
-            "A price changed since you last looked. Check your cart and try again.",
-            details={"items": quote.price_changes},
-        )
-    # The total the buyer agreed to on the review step. It is compared, never
-    # used: a browser that sends a lower figure is refused, not obeyed.
-    if expected_total_santim != quote.grand_total.amount:
-        raise Conflict(
-            "total_changed",
-            "The total is not what you were shown. Check your order and try again.",
-            details={"total_santim": quote.grand_total.amount},
-        )
+    _refuse_changed_quote(quote, expected_total_santim)
     own = set(
         db.scalars(
             select(SellerMember.seller_id).where(
@@ -951,24 +1113,96 @@ def place_order(
                 "store_slugs": sorted(g.store.slug for g in quote.groups if g.seller.id in own)
             },
         )
-    if quote.grand_total.amount > settings_store.get_int(db, "orders.max_order_value_santim"):
-        raise Conflict("order_too_large", "This order is above the largest total MarkX accepts.")
-    if open_order_count(db, user.id, now=now) >= settings_store.get_int(
-        db, "orders.max_open_direct_orders"
-    ):
-        raise Conflict(
-            "too_many_open_orders", "Finish or cancel an open order before placing another."
-        )
+    _refuse_above_order_value(db, quote)
+    open_orders = open_order_count(db, user.id, now=now)
+    _refuse_too_many_open_orders(db, open_orders)
+    # AD-13 (D-108): a brand-new account's own, smaller limits. No account is
+    # brand-new until the founder sets `risk.new_account_days` (P-108-1).
+    if is_brand_new(db, user, now=now):
+        _refuse_above_new_buyer_caps(db, quote, open_orders=open_orders)
     _refuse_during_cancellation_cooldown(db, user, now)
     _refuse_above_unconfirmed_limits(db, user, quote)
 
+    order = _write_order(
+        db, quote, now=now, buyer_user_id=user.id, guest=None, payment_method=payment_method,
+        idempotency_key=idempotency_key, channel=channel, language=user.language,
+    )  # fmt: skip
+    notifications.notify(
+        db, user.id, "order.placed",
+        {
+            "order_id": str(order.id),
+            "order_code": order.code,
+            # The page that opens from a Telegram or SMS message without sign-in (D.14).
+            "tracking_path": issue_tracking_link(order, now=now).path,
+        },
+    )  # fmt: skip
+    clear_cart(db, cart)
+    db.flush()
+    return order, False
+
+
+def _refuse_changed_quote(quote: Quote, expected_total_santim: int) -> None:
+    if quote.price_changes:
+        raise Conflict(
+            "price_changed",
+            "A price changed since you last looked. Check your cart and try again.",
+            details={"items": quote.price_changes},
+        )
+    # The total the buyer agreed to on the review step. It is compared, never
+    # used: a browser that sends a lower figure is refused, not obeyed.
+    if expected_total_santim != quote.grand_total.amount:
+        raise Conflict(
+            "total_changed",
+            "The total is not what you were shown. Check your order and try again.",
+            details={"total_santim": quote.grand_total.amount},
+        )
+
+
+def _refuse_above_order_value(db: Session, quote: Quote) -> None:
+    if quote.grand_total.amount > settings_store.get_int(db, "orders.max_order_value_santim"):
+        raise Conflict("order_too_large", "This order is above the largest total MarkX accepts.")
+
+
+def _refuse_too_many_open_orders(db: Session, open_orders: int) -> None:
+    if open_orders >= settings_store.get_int(db, "orders.max_open_direct_orders"):
+        raise Conflict(
+            "too_many_open_orders", "Finish or cancel an open order before placing another."
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _Guest:
+    """What a guest's order carries instead of an account (D-108)."""
+
+    phone: str
+    network_hash: bytes
+    browser_hash: bytes
+
+
+def _write_order(
+    db: Session,
+    quote: Quote,
+    *,
+    now: datetime,
+    buyer_user_id: uuid.UUID | None,
+    guest: _Guest | None,
+    payment_method: str,
+    idempotency_key: str,
+    channel: str,
+    language: str,
+) -> Order:
+    """G.5 steps 3 to 7 for a priced, checked quote: the stock holds, then the
+    order, its seller orders, lines, reservations, shipments, payment intents
+    and first events, and each shop's alert. The buyer is an account or a
+    guest, never both (`ck_orders_one_buyer`); the shops see the same order
+    either way."""
     # Step 3: hold stock for every line, in ascending offer id order, before
     # anything else is written. One line short ends the whole order.
     item_ids = {line.offer.id: uuid7() for line in quote.lines}
     for line in sorted(quote.lines, key=lambda held: held.offer.id):
         if not offers.hold_stock(
             db, line.offer.id, line.item.quantity, reference_type="order_item",
-            reference_id=item_ids[line.offer.id], actor_user_id=user.id,
+            reference_id=item_ids[line.offer.id], actor_user_id=buyer_user_id,
         ):  # fmt: skip
             raise Conflict(
                 "out_of_stock",
@@ -985,7 +1219,12 @@ def place_order(
     order = Order(
         id=uuid7(),
         code=_new_code(db),
-        buyer_user_id=user.id,
+        buyer_user_id=buyer_user_id,
+        guest_phone=guest.phone if guest else None,
+        guest_network_hash=guest.network_hash if guest else None,
+        guest_browser_hash=guest.browser_hash if guest else None,
+        # Release 1 has only direct payment, at the door; for a guest the
+        # database holds it too (`ck_orders_guest_pays_at_the_door`).
         payment_mode=PaymentMode.DIRECT.value,
         items_total_santim=quote.items_total.amount,
         delivery_total_santim=quote.delivery_total.amount,
@@ -993,7 +1232,7 @@ def place_order(
         address_snapshot=_address_snapshot(quote),
         delivery_zone_id=quote.zone.id,
         channel=channel,
-        language=user.language,
+        language=language,
         idempotency_key=idempotency_key,
     )
     db.add(order)
@@ -1085,20 +1324,154 @@ def place_order(
                 from_status=None,
                 to_status=SellerOrderStatus.PLACED.value,
                 actor_type=ActorType.BUYER.value,
-                actor_user_id=user.id,
+                actor_user_id=buyer_user_id,
                 occurred_at=func.clock_timestamp(),
             )
         )
         db.flush()
         _notify_seller(db, seller_order, order, "order.placed_for_seller")
-    notifications.notify(
-        db, user.id, "order.placed",
-        {
-            "order_id": str(order.id),
-            "order_code": order.code,
-            # The page that opens from a Telegram or SMS message without sign-in (D.14).
-            "tracking_path": issue_tracking_link(order, now=now).path,
-        },
+    return order
+
+
+# -- guest checkout (C-07, D-108) ----------------------------------------------------------
+#
+# Sign-in is Telegram only (SI-1), so a buyer without Telegram, or anyone while
+# Telegram is blocked, orders as a guest: a name, a delivery address and a
+# phone number, typed at checkout. The founder's rules (24 November 2026):
+#
+# - The number is NOT confirmed, so a guest order never opens, joins or
+#   reveals the account that has that number. It belongs to no account: no
+#   account is made, found or signed in, nothing of an account is read, no
+#   account's limits count it and it counts against none, no message goes to
+#   anyone about it but the shop. Every answer is the same whether the
+#   number has an account or not.
+# - Pay at the door only: a direct order, delivered to the door (collection
+#   only once operations allow it), never paid in advance.
+# - The buying limits and the bot check apply, counted per phone number and
+#   per network address; a guest always counts as a brand-new buyer (AD-13).
+# - The guest gets the secure tracking link and nothing more: no session, no
+#   order list, no cancelling, no problem report, no review.
+# - The shop sees exactly what it sees for a signed-in buyer.
+#
+# PROVISIONAL P-108-6, to be confirmed before going live: the per-number and
+# per-address counts use the existing limits' own values (3 open orders, 5
+# units of an offer and 10 of a shop waiting for the shop's answer, 30
+# checkouts an hour per number), except the two per-address settings of
+# P-108-4 and P-108-5; an address is the exact network address the request
+# came from, kept only as a keyed hash; the cancellation cool-down never
+# applies, because a guest cannot cancel.
+#
+# Locks, in the order of the module docstring with two advisory locks after
+# the cart: the browser's cart, then the guest's phone number, then the
+# network address, then sellers, offers and stock as for every order.
+
+GUEST_NETWORK_PURPOSE = "guest-network-address"
+GUEST_CHECKOUTS_PER_PHONE_PER_HOUR = 30  # as for an account (`checkout:{user}`)
+
+
+def _refuse_while_guest_checkout_is_off(db: Session) -> None:
+    if not settings_store.get_bool(db, "guest_checkout.enabled"):
+        raise PermissionDenied(
+            "guest_checkout_off", "Ordering as a guest is switched off. Sign in with Telegram."
+        )
+
+
+def guest_network_hash(ip: str | None) -> bytes:
+    """A keyed hash of the network address a guest order came from: enough to
+    count guest orders per address, without keeping the address. A caller
+    with no identifiable address shares one count: fail safe, not open."""
+    return keyed_hash(GUEST_NETWORK_PURPOSE, ip or "unknown")
+
+
+def anonymous_cart_for_update(db: Session, token: str) -> Cart | None:
+    """A visitor's cart, locked: one browser's guest checkouts take turns."""
+    return db.scalar(
+        select(Cart).where(Cart.anon_token_hash == hash_token(token)).with_for_update()
+    )
+
+
+def _lock_guest(db: Session, kind: str, key: str) -> None:
+    db.execute(
+        text("select pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"guest-checkout:{kind}:{key}"},
+    )
+
+
+def place_guest_order(
+    db: Session,
+    *,
+    cart_token: str,
+    guest_fields: Mapping[str, Any],
+    ip: str | None,
+    bot_token: str | None,
+    deliveries: Mapping[str, str],
+    payment_method: str,
+    expected_total_santim: int,
+    idempotency_key: str,
+    language: str,
+    now: datetime | None = None,
+) -> tuple[Order, bool]:
+    """Turn a visitor's cart into a guest order (C-07, D-108).
+
+    `guest_fields` are `guest_address`'s arguments, checked only after the
+    repeat test below. Returns the order and whether it already existed: the
+    same idempotency key sent again from the same browser returns the first
+    order, before anything else (the bot check's one-time token was used by
+    the first). Any refusal raises, and the caller's rollback undoes every
+    stock hold taken so far."""
+    now = now or _now()
+    _refuse_while_guest_checkout_is_off(db)
+    cart = anonymous_cart_for_update(db, cart_token)
+    if cart is None or cart.anon_token_hash is None:
+        raise ValidationFailed("cart_empty", "Your cart is empty.")
+    browser_hash = cart.anon_token_hash
+    existing = db.scalar(
+        select(Order).where(
+            Order.guest_browser_hash == browser_hash, Order.idempotency_key == idempotency_key
+        )
+    )
+    if existing is not None:
+        return existing, True
+    guest = guest_address(db, **guest_fields)
+    if not get_bot_check(GUEST_CHECKOUT_ACTION).verify(bot_token, ip):
+        raise PermissionDenied("bot_check_failed", "We could not confirm you are a person.")
+    hour = timedelta(hours=1)
+    ratelimit.hit(f"checkout:guest:phone:{guest.phone}", GUEST_CHECKOUTS_PER_PHONE_PER_HOUR, hour)
+    ratelimit.hit(
+        f"checkout:guest:ip:{ip or 'unknown'}",
+        settings_store.get_int(db, "guest_checkout.attempts_per_ip_per_hour"),
+        hour,
+    )
+    network_hash = guest_network_hash(ip)
+    _lock_guest(db, "phone", guest.phone)
+    _lock_guest(db, "network", network_hash.hex())
+
+    quote = build_guest_quote(db, cart, guest, deliveries=deliveries, lock=True)
+    _refuse_changed_quote(quote, expected_total_santim)
+    _refuse_above_order_value(db, quote)
+    # Counted over guest orders only: never an account's, whatever its number.
+    by_phone = Order.guest_phone == guest.phone
+    by_network = Order.guest_network_hash == network_hash
+    open_orders = _open_orders(db, by_phone, now=now)
+    _refuse_too_many_open_orders(db, open_orders)
+    # A guest always counts as a brand-new buyer (AD-13).
+    _refuse_above_new_buyer_caps(db, quote, open_orders=open_orders)
+    if _open_orders(db, by_network, now=now) >= settings_store.get_int(
+        db, "guest_checkout.max_open_orders_per_ip"
+    ):
+        raise _guest_network_limit(
+            "open_orders", settings_store.get_int(db, "guest_checkout.max_open_orders_per_ip")
+        )
+    # The cancellation cool-down (D-099) counts a buyer's own cancellations;
+    # a guest cannot cancel, so it never applies to one.
+    _refuse_above_unconfirmed_for(db, by_phone, quote)
+    _refuse_above_unconfirmed_for(db, by_network, quote, network=True)
+
+    order = _write_order(
+        db, quote, now=now, buyer_user_id=None,
+        guest=_Guest(phone=guest.phone, network_hash=network_hash, browser_hash=browser_hash),
+        payment_method=payment_method, idempotency_key=idempotency_key, channel="web",
+        language=language,
     )  # fmt: skip
     clear_cart(db, cart)
     db.flush()

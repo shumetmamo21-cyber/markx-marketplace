@@ -29,3 +29,18 @@ export async function getSignInMethods(): Promise<SignInMethods> {
   }
   return { telegram: false, sms: false, staff_phone_password: false };
 }
+
+export type GuestCheckoutTerms = components["schemas"]["GuestCheckoutTermsOut"];
+
+/** What ordering as a guest offers today (C-07, D-108). When the API cannot
+ * be asked, guest checkout is off: no form is offered that would fail. */
+export async function getGuestCheckoutTerms(): Promise<GuestCheckoutTerms> {
+  const api = await serverApi();
+  try {
+    const { data } = await api.GET("/api/v1/checkout/guest/terms", {});
+    if (data) return data;
+  } catch {
+    // The API is unreachable; the page says guest checkout is unavailable.
+  }
+  return { enabled: false, max_order_value_santim: 0, shop_collection: false };
+}

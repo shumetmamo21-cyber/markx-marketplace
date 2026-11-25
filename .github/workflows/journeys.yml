@@ -225,6 +225,15 @@ jobs:
         working-directory: apps/web
         run: node e2e/release1-d107.mjs "$RUNNER_TEMP/shots"
 
+      # D-108: a visitor without Telegram orders as a guest (C-07) and gets
+      # the tracking link only; the shop accepts and sends the parcel; the
+      # link shows the handover code, which the shop enters. A guest order
+      # counts against no account, so it disturbs no other journey's buyer.
+      # Before the Turnstile step, which serves the site with a site key.
+      - name: Guest checkout, the tracking link and the handover code
+        working-directory: apps/web
+        run: node e2e/guest-checkout.mjs "$RUNNER_TEMP/shots"
+
       # D-085: the same build, served again with a Turnstile site key. The
       # journey answers every request to challenges.cloudflare.com itself, so
       # nothing reaches Cloudflare; the value is a placeholder, not a key.

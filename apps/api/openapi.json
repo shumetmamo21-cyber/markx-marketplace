@@ -2840,6 +2840,225 @@
         "title": "GatePhotoLinkOut",
         "type": "object"
       },
+      "GuestCheckoutIn": {
+        "additionalProperties": false,
+        "description": "There is no price, and no way to pay in advance, in this request: a\nguest pays at the door only (C-07).",
+        "properties": {
+          "bot_token": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bot Token"
+          },
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryChoiceIn"
+            },
+            "maxItems": 30,
+            "title": "Deliveries",
+            "type": "array"
+          },
+          "expected_total_santim": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Total Santim",
+            "type": "integer"
+          },
+          "guest": {
+            "$ref": "#/components/schemas/GuestDetailsIn"
+          },
+          "idempotency_key": {
+            "pattern": "^[A-Za-z0-9_-]{16,64}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "payment_method": {
+            "enum": [
+              "cash",
+              "telebirr",
+              "bank_transfer",
+              "ethqr"
+            ],
+            "title": "Payment Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "guest",
+          "deliveries",
+          "payment_method",
+          "expected_total_santim",
+          "idempotency_key"
+        ],
+        "title": "GuestCheckoutIn",
+        "type": "object"
+      },
+      "GuestCheckoutTermsOut": {
+        "additionalProperties": false,
+        "description": "What the guest checkout offers today (C-07, AD-13; D-108).",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_order_value_santim": {
+            "title": "Max Order Value Santim",
+            "type": "integer"
+          },
+          "shop_collection": {
+            "title": "Shop Collection",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "max_order_value_santim",
+          "shop_collection"
+        ],
+        "title": "GuestCheckoutTermsOut",
+        "type": "object"
+      },
+      "GuestDetailsIn": {
+        "additionalProperties": false,
+        "description": "A guest's name, delivery address and phone number (C-07, D-108),\nchecked as a saved address is. The number is NOT confirmed: it is used\nfor the delivery and for the limits counted per number, never to find,\nopen or join the account that has it.",
+        "properties": {
+          "delivery_area_id": {
+            "format": "uuid",
+            "title": "Delivery Area Id",
+            "type": "string"
+          },
+          "driver_notes": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Notes"
+          },
+          "landmark": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Landmark",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "phone": {
+            "maxLength": 24,
+            "minLength": 9,
+            "title": "Phone",
+            "type": "string"
+          },
+          "phone2": {
+            "anyOf": [
+              {
+                "maxLength": 24,
+                "minLength": 9,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone2"
+          },
+          "recipient_name": {
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Recipient Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient_name",
+          "phone",
+          "delivery_area_id",
+          "landmark"
+        ],
+        "title": "GuestDetailsIn",
+        "type": "object"
+      },
+      "GuestOrderOut": {
+        "additionalProperties": false,
+        "description": "All a guest gets (C-07, D-108): the order's code and its secure\ntracking link. Nothing is sent to the guest afterwards, so the link is\nthe only way back to the order.",
+        "properties": {
+          "order_code": {
+            "title": "Order Code",
+            "type": "string"
+          },
+          "tracking_expires_at": {
+            "format": "date-time",
+            "title": "Tracking Expires At",
+            "type": "string"
+          },
+          "tracking_path": {
+            "title": "Tracking Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_code",
+          "tracking_path",
+          "tracking_expires_at"
+        ],
+        "title": "GuestOrderOut",
+        "type": "object"
+      },
+      "GuestQuoteIn": {
+        "additionalProperties": false,
+        "properties": {
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryChoiceIn"
+            },
+            "maxItems": 30,
+            "title": "Deliveries",
+            "type": "array"
+          },
+          "guest": {
+            "$ref": "#/components/schemas/GuestDetailsIn"
+          }
+        },
+        "required": [
+          "guest",
+          "deliveries"
+        ],
+        "title": "GuestQuoteIn",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4348,6 +4567,10 @@
             "title": "Id",
             "type": "string"
           },
+          "is_guest": {
+            "title": "Is Guest",
+            "type": "boolean"
+          },
           "items_total_santim": {
             "title": "Items Total Santim",
             "type": "integer"
@@ -4385,6 +4608,7 @@
           "status",
           "created_at",
           "tracking_path",
+          "is_guest",
           "payment_mode",
           "currency",
           "items_total_santim",
@@ -15163,6 +15387,125 @@
         ]
       }
     },
+    "/api/v1/checkout/guest": {
+      "post": {
+        "description": "Place a guest's order: 201 the first time; 200 with the same order\nwhen the same browser sends the same idempotency key again. The answer\nis the order's code and its secure tracking link, and nothing more: no\naccount is made, found or signed in, whatever the phone number.",
+        "operationId": "place_guest_order_api_v1_checkout_guest_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestCheckoutIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Place Guest Order",
+        "tags": [
+          "checkout"
+        ]
+      }
+    },
+    "/api/v1/checkout/guest/quote": {
+      "post": {
+        "description": "A guest's review step: every price, fee and total, computed by the\nserver, for the delivery address the guest typed.",
+        "operationId": "quote_guest_checkout_api_v1_checkout_guest_quote_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuestQuoteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quote Guest Checkout",
+        "tags": [
+          "checkout"
+        ]
+      }
+    },
+    "/api/v1/checkout/guest/terms": {
+      "get": {
+        "description": "What ordering as a guest offers today (C-07, AD-13): whether it is on,\nthe largest order a guest may pay at the door, and whether a guest may\ncollect at the shop.",
+        "operationId": "guest_checkout_terms_api_v1_checkout_guest_terms_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestCheckoutTermsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Guest Checkout Terms",
+        "tags": [
+          "checkout"
+        ]
+      }
+    },
     "/api/v1/checkout/quote": {
       "post": {
         "description": "The review step: every price, fee and total, computed by the server.",
@@ -20555,7 +20898,7 @@
     },
     "/api/v1/track/{order_id}": {
       "get": {
-        "description": "The buyer's order page from a secure link, without signing in (D.14).\nIt never shows the handover code.",
+        "description": "The buyer's order page from a secure link, without signing in (D.14).\nIt shows the handover code only on a guest's order, whose only page it\nis (C-07, D-108); never on a signed-in buyer's.",
         "operationId": "track_order_api_v1_track__order_id__get",
         "parameters": [
           {

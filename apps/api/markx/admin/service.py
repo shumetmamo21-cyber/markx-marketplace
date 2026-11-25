@@ -82,6 +82,14 @@ RISK_LIMITS = frozenset(
     {
         "orders.max_open_direct_orders",
         "orders.max_order_value_santim",
+        # Limits for new accounts and guests (AD-13, C-07; D-108).
+        "risk.new_account_days",
+        "risk.new_account_max_order_value_santim",
+        "risk.new_account_max_open_orders",
+        "guest_checkout.enabled",
+        "guest_checkout.shop_collection",
+        "guest_checkout.max_open_orders_per_ip",
+        "guest_checkout.attempts_per_ip_per_hour",
         "sellers.min_level_to_publish",
         "auth.otp_per_phone_per_hour",
         "auth.otp_per_ip_per_hour",

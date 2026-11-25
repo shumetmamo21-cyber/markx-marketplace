@@ -11,6 +11,8 @@ import { useEffect, useRef } from "react";
 
 const SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 export const SIGN_IN_ACTION = "sign_in"; // must match markx/core/botcheck.py
+// A guest's order (C-07, D-108); the API refuses a token solved for signing in.
+export const GUEST_CHECKOUT_ACTION = "guest_checkout"; // must match markx/core/botcheck.py
 
 type RenderOptions = {
   sitekey: string;
@@ -53,10 +55,12 @@ export function TurnstileWidget({
   siteKey,
   resetKey,
   onToken,
+  action = SIGN_IN_ACTION,
 }: {
   siteKey: string;
   resetKey: number;
   onToken: (token: string | null) => void;
+  action?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const widget = useRef<string | null>(null);
@@ -72,7 +76,7 @@ export function TurnstileWidget({
         if (cancelled || !box.current) return;
         widget.current = turnstile.render(box.current, {
           sitekey: siteKey,
-          action: SIGN_IN_ACTION,
+          action,
           callback: (token) => report.current(token),
           "expired-callback": () => report.current(null),
           "error-callback": () => report.current(null),
@@ -85,7 +89,7 @@ export function TurnstileWidget({
       if (widget.current && window.turnstile) window.turnstile.remove(widget.current);
       widget.current = null;
     };
-  }, [siteKey]);
+  }, [siteKey, action]);
 
   useEffect(() => {
     if (resetKey > 0 && widget.current && window.turnstile) {
