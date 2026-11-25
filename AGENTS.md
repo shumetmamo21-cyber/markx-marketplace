@@ -87,7 +87,9 @@ These come from the blueprint (sections M.3, N and Q.1) and from the founder.
   changes status only through `_move` in `markx/orders/service.py`; the
   database refuses every other move and every move without its event.
 - **Locks are taken in one order:** cart, then sellers, then offers, then
-  seller orders, then stock, each kind in ascending id. See "Orders" in
+  seller orders, then stock, each kind in ascending id; a guest's checkout
+  takes advisory locks on the guest's phone number and then its network
+  address between the cart and the sellers (D-108). See "Orders" in
   `docs/ARCHITECTURE.md`.
 - **The worker must be running** for stale offers to hide, payout changes to
   apply, unanswered orders to expire, delivered orders to complete after the

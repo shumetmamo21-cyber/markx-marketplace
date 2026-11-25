@@ -5,10 +5,11 @@ anyone while Telegram is blocked, may order as a guest with a name, a
 delivery address and a phone number. The number is NOT confirmed, so a
 guest order belongs to no account: `orders.buyer_user_id` may now be empty,
 and then the order carries the guest's number instead (`guest_phone`), for
-the buying limits counted per number. It also carries two keyed hashes,
-never the values themselves: of the network address the order came from
-(the limits counted per address) and of the browser's cart secret (which
-scopes the order's idempotency key to the browser that sent it).
+the buying limits counted per number. It also carries two hashes, never
+the values themselves: a keyed hash of the network address the order came
+from (the limits counted per address) and the SHA-256 of the browser's
+cart secret, as `carts` keeps it (which scopes the order's idempotency key
+to the browser that sent it).
 
 The database holds the rules a guest order must keep:
 

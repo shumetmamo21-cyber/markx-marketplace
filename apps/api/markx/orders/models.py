@@ -115,8 +115,9 @@ class Order(UUIDPrimaryKey, CreatedAt, Base):
     is not confirmed, so a guest order belongs to no account and is never
     joined to the account that has the same number: it carries the number
     the guest typed (`guest_phone`), for the limits counted per number, and
-    keyed hashes of the network address it came from and of the browser's
-    cart secret, never the address or the secret itself.
+    a keyed hash of the network address it came from and the hash of the
+    browser's cart secret (as the cart row keeps it), never the address or
+    the secret itself.
     """
 
     __tablename__ = "orders"
@@ -183,8 +184,9 @@ class Order(UUIDPrimaryKey, CreatedAt, Base):
     )
     # The guest's phone number as typed and normalised, NOT confirmed (D-108).
     guest_phone: Mapped[str | None] = mapped_column(Text)
-    # Keyed hashes: of the network address the guest order came from, and of
-    # the guest browser's cart secret (which scopes the idempotency key).
+    # A keyed hash (HMAC) of the network address the guest order came from,
+    # and the SHA-256 of the guest browser's cart secret, as `carts` keeps it
+    # (it scopes the idempotency key).
     guest_network_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
     guest_browser_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
     payment_mode: Mapped[str] = mapped_column(Text, nullable=False)
