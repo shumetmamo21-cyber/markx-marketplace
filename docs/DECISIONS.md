@@ -5875,8 +5875,9 @@ shop: nothing new to learn.
 - **Many guests behind one mobile address** may meet P-108-4 (F-29).
 - **A shop could place guest orders to itself** to add completed orders to
   its record; it needs a number and an address per open order, the bot
-  check and a real handover. Staff see `is_guest` on the orders desk for
-  pattern review; no automatic check is built.
+  check and a real handover. The orders desk's answer marks a guest's order
+  (`is_guest`; checked by hand on 25 November 2026, no test pins it), but
+  the desk's screen does not show the mark yet; no automatic check is built.
 - **A guest may type someone else's number**: the shop calls a stranger.
   Nothing joins the stranger's account, and nothing is sent to the number.
 - **A guest's details live in the order** like any buyer's (orders are

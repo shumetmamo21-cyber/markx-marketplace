@@ -17,8 +17,9 @@ as `773bbb6`.
 
 ## Guest checkout and limits for new accounts (24 and 25 November 2026, D-108)
 
-Both decided by the founder. One pull request into `main`, **not merged**:
-it changes order rules, so an independent review follows; its number and
+Both decided by the founder. One pull request into `main`: **#16**
+(https://github.com/shumetmamo21-cyber/markx-marketplace/pull/16), **not
+merged**: it changes order rules, so an independent review follows; its
 runs are in "Tests executed", 25 November 2026 (D-108). **One migration
 (0024). Nothing deployed; no server, account, bot, SMS, bucket or paid
 resource.** Details, the founder's two answers of 24 November 2026 and
@@ -30,7 +31,7 @@ eight PROVISIONAL values (P-108-1 to P-108-8): `docs/DECISIONS.md`, D-108.
 | The number is not confirmed: never open, join or reveal an account | No account made or found, no session; the order is in no account's list; the account holder is told nothing; neither counts against the other's limits; the same answer for any number | `test_a_guest_using_the_number_of_an_existing_account_sees_nothing_of_it` and three more; `ck_orders_one_buyer` |
 | Pay at the door only | Only door delivery and the four pay-at-the-door methods; collection waits for operations (the founder's decision) | 2 tests; `ck_orders_guest_pays_at_the_door` |
 | Limits and the bot check per number and per address | One open order per number (a guest is brand-new), 3 per address, the unit limits, 30 tries an hour; Turnstile with its own action | 7 tests; `tests/db/test_d108_guest_limit_contention.py` (11, races) |
-| The tracking link and nothing more | No action on the page; the handover code shows there from "ready" until the handover, or a guest could never receive the goods | 3 tests; the journey hands over with the code from the link |
+| The tracking link and nothing more | No action on the page; the handover code shows there from "ready" until the handover, or a guest could never receive the goods | 4 tests; the journey hands over with the code from the link |
 | The shop sees what it sees for a signed-in buyer | The same order list, detail, customer list and alerts | `test_the_shop_sees_a_guest_order_exactly_as_a_signed_in_buyers` (the JSON compared) |
 | AD-13 new accounts | Up to ETB 50,000 at the door and one open order at a time: guests always; signed-in accounts once the founder sets how long an account counts as new (0 days now; 30 recommended) | `tests/api/test_d108_new_account_limits.py` (6) |
 
@@ -1884,7 +1885,8 @@ Be careful with these. They were written and never exercised.
   Telegram is blocked (F-29), and nothing counts those refusals yet; a shop
   could place guest orders to itself to add completed orders to its record
   (bounded by the per-number and per-address limits and the bot check;
-  staff see `is_guest` on the orders desk); a guest may type someone else's
+  the orders desk's answer marks a guest's order, `is_guest`, but the
+  desk's screen does not show the mark yet); a guest may type someone else's
   number, so the shop may call a stranger (nothing joins the stranger's
   account, nothing is sent to the number). The Amharic words await the
   native editor.
@@ -2148,7 +2150,17 @@ e2e/guest-checkout.mjs (new), on this machine (API, demo data, production build,
   7 steps passed; axe: no violations on 8 pages (English and Amharic); fits 360 px; console errors: none.
   A run on a database already holding three of its open guest orders is refused, as P-108-4 says:
   "Too many guest orders are waiting from your connection right now."
+GitHub, pull request #16, on b58559b (the code with its documents, before this documents commit):
+  CI #189                                                 ->  7 of 7 jobs passed: 2219 passed in 1150.75 s; lint,
+                                                              formatting, types, migrations, both OpenAPI copies;
+                                                              the restore and off-server drills PASSED; the web app,
+                                                              containers, security scan, production stack rehearsal
+  Browser journeys #65                                    ->  passed, every journey; the guest journey's 7 steps,
+                                                              axe clean on 8 pages, console errors: none
 ```
+
+This documents commit runs every check again (CI compares the whole pull
+request with `main`); its runs are on the pull request.
 
 **Five more Release 1 features** (D-107), on 22 November 2026, branch
 `claude/release-1-five-features-g0sl7o` from `main` at `e1849be` (complete

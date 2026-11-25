@@ -45,11 +45,14 @@ the checks actually printed.
 
 Branch `claude/lucid-babbage-38jzfq`, from `main` at `5794234` (the merge
 of pull request #15) with the complete history; no pull request was open.
-One pull request into `main`, **not merged**: it changes order rules, so an
-independent review follows (its number and runs: `docs/DEVELOPMENT_STATUS.md`,
-"Tests executed", 25 November 2026). **One migration (0024). Nothing
-deployed; no server, account, bot, SMS, bucket or paid resource; nothing
-sent to Telegram or by SMS.** Details: `docs/DECISIONS.md`, D-108.
+One pull request into `main`, **#16**, **not merged**: it changes order
+rules, so an independent review follows. Every check passed on `b58559b`,
+the code with its documents (CI #189, 7 of 7 jobs, 2219 tests passed;
+Browser journeys #65, the guest journey included); the runs:
+`docs/DEVELOPMENT_STATUS.md`, "Tests executed", 25 November 2026. **One
+migration (0024). Nothing deployed; no server, account, bot, SMS, bucket or
+paid resource; nothing sent to Telegram or by SMS.** Details:
+`docs/DECISIONS.md`, D-108.
 
 **For the founder, in plain words:**
 
@@ -92,7 +95,9 @@ account's orders against a guest with its number would reveal the account.
 The product page carries the shared `apiErrors` messages whole and has
 about 0.7 KB left under its 210 KB ceiling: put words used by one page in
 that page's own section (as `guest.errors`). The guest journey leaves an
-open guest order; on one database about three runs fit in three days.
+open guest order; on one database about three runs fit in three days. The
+orders desk's answer carries `is_guest`, but the desk's screen does not show
+it yet (a small follow-up, if the founder wants it).
 
 ---
 
