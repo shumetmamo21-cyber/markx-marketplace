@@ -5619,6 +5619,306 @@ pages, the lite switch, QR and share routes (new), both message files,
   cancellation cooldown (D-099) for the journeys after it, so it now runs
   after every journey that places an order and leaves its order accepted.
 
+## D-108 Guest checkout (C-07) and limits for new accounts (AD-13), as the founder decided
+
+24 and 25 November 2026. Branch `claude/lucid-babbage-38jzfq`, from `main`
+at `5794234` (the merge of pull request #15) with the complete history; no
+pull request was open. **Follows** the blueprint D.2, D.10, D.22, H.3 and
+H.4 (C-07, AD-13), as the founder decided them for sign-in by Telegram only
+(SI-1). **One migration (0024).** **Nothing deployed; no account, server,
+bot, SMS, bucket or paid resource; nothing sent to Telegram or by SMS.**
+Business choices are safe defaults marked PROVISIONAL (P-108-1 to
+P-108-8, below); every new word is in English and Amharic.
+
+### 0. The founder's decisions
+
+**C-07 (the task, 24 November 2026).** Sign-in is Telegram only, so a buyer
+without Telegram, or anyone while Telegram is blocked, may order as a guest
+with a name, a delivery address and a phone number. The number is not
+confirmed, so a guest order must never open, join or reveal an existing
+account that has that number. Pay at the door only. The existing buying
+limits and the bot check apply to guests, counted per phone number and per
+network address. The guest gets the secure tracking link and nothing more.
+The seller sees exactly what they see for a signed-in buyer.
+
+**AD-13 (the task).** Order-value caps, pay-at-the-door eligibility and caps
+for brand-new accounts, as the blueprint describes; guests always count as
+brand-new.
+
+**Two answers given during the work (24 November 2026):**
+
+1. *Strict caps for every new account would have made existing tests fail*
+   (every test buyer, and the demo buyer of the browser journeys, is a
+   brand-new account; existing tests have one place an order of ETB 197,650
+   and hold three open orders), and the task forbids changing any existing
+   test. **The founder chose: guests get the strict caps from the first
+   day; signed-in accounts count as new for 0 days until the founder sets
+   the value in the admin settings screen (30 recommended).** Both are
+   built and tested.
+2. *"Pay at the door only": may a guest collect at the shop?* **The founder
+   chose delivery to the door only; a setting lets operations allow
+   collection later** (`guest_checkout.shop_collection`, off).
+
+### 1. What this changes in earlier decisions, said plainly
+
+- **Blueprint C-07 and D.2** say "the account is created at the first
+  order", and D.10 "the phone number is verified before the first order";
+  B.3 has the guest's number "confirmed by code or by Telegram". Since SI-1
+  there is no code to confirm it with, and the founder's rule is the
+  opposite: **no account is created and the number is not confirmed.** The
+  blueprint is left as it is (one source, byte for byte); this record is the
+  change.
+- **D-036** ("there is no separate guest order path; the order is placed by
+  a signed-in account") is replaced for guests: there is now a guest path.
+- **D-048** ("the tracking link never shows the handover code") still holds
+  for every signed-in buyer's order (its test is unchanged). **For a guest's
+  order the link shows the code** (P-108-7), section 6.
+- **D-010** (an idempotency key is unique per buyer): for a guest, per
+  browser.
+
+### 2. What a guest experiences
+
+1. A visitor fills a cart as before. "Continue to checkout" leads to the
+   sign-in page, which now ends with **"No Telegram, or Telegram not
+   working? Order as a guest"** (a link: the sign-in page still has no
+   phone field when SMS is off, as the Telegram journey checks).
+2. `/[lang]/checkout/guest`: name, phone number for the delivery, area,
+   landmark, rider's notes; "No account is made, and MarkX does not check
+   this number". Each shop's part is **delivered to the door** (the shop's
+   rider or a partner courier); collection is not offered. Payment: cash,
+   telebirr, bank transfer or ETHQR, **at the door**. "As a guest you pay at
+   the door, for orders up to ETB 50,000." Review (the shop's legal name,
+   address, return policy, every total, C-27), the bot check (Turnstile,
+   when the site has a key), **Place order**.
+3. The answer: **"Your order MX-… is placed. Save this link now. It is the
+   only way to follow your order and to see your handover code: MarkX cannot
+   send it to you again."**, the link, "Open your order page", "Copy the
+   link". No session, no account, no sign-in.
+4. The order page by the link: the timeline, the shop's phone once it
+   confirms, the rider once on the way, **the handover code from "ready"
+   until the handover**, with "Give this code only after you have inspected
+   the goods", and "You ordered as a guest. This link is the only way back
+   to your order: keep it." No action: no cancelling, no "the goods are
+   right", no problem report, no review. The problem window passes and the
+   part completes by itself.
+5. Refusals are words in the guest's language: above ETB 50,000, one open
+   order per number, too many guest orders from one connection, collection
+   chosen, guest checkout switched off, a signed-in browser, the bot check.
+
+### 3. Never open, join or reveal the account that has the number
+
+A guest order belongs to **no account**: `orders.buyer_user_id` is empty
+and the order carries `guest_phone` (the number as typed, normalised, not
+confirmed). Nothing in the guest path looks an account up by that number
+(it reads only the caller's own session, to send a signed-in person to
+their own checkout):
+
+- **Not opened:** no session, no cookie but the cart's, `/me` stays 401.
+- **Not joined:** no user row is made or found; the order is in no
+  account's list; signing in later with that number (by the account holder,
+  or by a new person: a new, empty account) brings none of it; **the
+  account's orders never count against the guest's limits, and guest orders
+  never count against the account's** (both ways tested: a guest with the
+  number of an account holding an open order still orders, which a shared
+  count of one open order would have refused, and so revealed); no message
+  goes to the account about it (`_notify_buyer` and the next-best offer do
+  nothing for a guest order).
+- **Not revealed:** every answer is the same whether the number has an
+  account or not. The test places one guest order with an account's number
+  and one with an unused number and compares the answers and the tracking
+  pages: identical but for the order's own identifiers, and neither holds
+  the account's name, address, order code or id.
+- The database holds it: `ck_orders_one_buyer` (an account or a guest,
+  never both, never neither).
+
+### 4. Pay at the door only
+
+- The guest request has no field for a payment mode (an extra field is a
+  422); the order is a direct order, paid to the shop at the handover (D-087:
+  a payment is recorded only from the handover on). **The database refuses a
+  guest order paid any other way** (`ck_orders_guest_pays_at_the_door`), so
+  Protected prepayment (Release 2) can never reach a guest by mistake.
+- Delivery to the door only: a part chosen for collection is refused
+  (`guest_collection_unavailable`), at the review step and at placing, until
+  operations switch `guest_checkout.shop_collection` on (the founder's
+  decision). A shop that only offers collection cannot be ordered from as a
+  guest.
+
+### 5. The buying limits and the bot check, per number and per address
+
+`place_guest_order`, in this order, all before any stock is held:
+
+- the repeat test (section 6), then the guest's details checked as a saved
+  address is (Ethiopian mobile number, active area, a whole map pin or
+  none);
+- **the bot check:** Turnstile with its own action, `guest_checkout`, so a
+  token solved for signing in is refused, and the other way round; before
+  anything is counted or held;
+- **30 guest checkouts an hour per number** (as for an account) and
+  `guest_checkout.attempts_per_ip_per_hour` (30) per network address;
+- advisory locks on the number, then the address (after the browser's cart,
+  before sellers and offers), so two browsers cannot slip under a limit
+  together (tested five times each);
+- the order value cap `orders.max_order_value_santim` and a guest's own
+  (section 8);
+- open orders: `orders.max_open_direct_orders` (3) and the new-buyer cap
+  (1) **per number**, and `guest_checkout.max_open_orders_per_ip` (3) **per
+  network address**, each over guest orders only;
+- units waiting for a shop's answer (D-099): 5 of an offer and 10 of a shop
+  **per number and per address**, with the existing settings;
+- the cancellation cool-down counts a buyer's own cancellations; a guest
+  cannot cancel, so it never applies.
+
+The order never keeps the network address: only a keyed hash of it
+(`guest_network_hash`, HMAC with the server's secret), enough to count. The
+hourly try counters are keyed on the number and the address themselves,
+like every other rate limit (`checkout:guest:phone:…`,
+`checkout:guest:ip:…`), and deleted a day after their hour (F-08).
+Refusals per address say nothing about whose orders they are.
+
+### 6. The tracking link and nothing more
+
+- The answer to placing is exactly `{order_code, tracking_path,
+  tracking_expires_at}` (sixty days, D-048), `no-store`. Nothing is sent to
+  the guest afterwards: no Telegram, no SMS, no in-app message; **the
+  number is never used to send anything**, since it may be someone else's.
+- **The handover code on a guest's link (PROVISIONAL P-108-7).** Without it
+  a guest could never receive the goods: only the buyer's code closes a
+  delivery (C-15). The blueprint's own D.14 has the page "that opens from a
+  secure link without signing in" show "the handover code with a warning to
+  share it only at handover"; D-048 left the code off the link only because
+  a signed-in buyer's link travels by Telegram or SMS and the buyer has
+  their signed-in page. A guest's link is handed to nobody but the browser
+  that placed the order. The code shows from `ready` until the handover, as
+  on the signed-in page; the shop's views, the staff desk and every list
+  still leave it out.
+- The same submission sent again from the same browser returns the same
+  order (200), **before the bot check**, whose one-time token the first
+  attempt used; the key is unique per browser
+  (`uq_orders_guest_browser_idempotency_key`, on the SHA-256 of the cart's
+  secret, as the cart row keeps it), so another browser's identical key gets
+  its own order and never the first's link.
+
+### 7. The shop sees exactly what it sees for a signed-in buyer
+
+Both kinds of order are written by one helper, `_write_order`, with the
+same address copy: the shop's views read only that copy, so a guest's
+order looks the same in the list, the detail, the customer list (S-11) and
+the alerts. Tested: a signed-in buyer's order and a guest's with the same
+details give the same JSON for the shop, before and after accepting, but
+for the identifiers and times. `is_guest` is on the buyer's, the tracking
+and the staff views only (staff, for pattern review), never the shop's.
+
+### 8. AD-13: limits for brand-new buyers
+
+- **Who is brand-new:** a guest, always; a signed-in account while it is
+  younger than `risk.new_account_days` (0 until the founder sets it;
+  recommended 30), counted from when the account was created (P-108-8).
+- **Order-value cap:** a brand-new buyer pays at the door for orders up to
+  `risk.new_account_max_order_value_santim` (ETB 50,000); everyone else up
+  to `orders.max_order_value_santim` (ETB 300,000, unchanged).
+- **Caps:** at most `risk.new_account_max_open_orders` (1) open
+  pay-at-the-door orders at a time; everyone else 3 (unchanged).
+- **Pay-at-the-door eligibility:** in Release 1 paying at the door is the
+  only way to pay, so an order outside a brand-new buyer's limits is not
+  eligible and is refused, saying why (`new_buyer_order_too_large`,
+  `new_buyer_too_many_open_orders`, with the limit in the details); nothing
+  is held for it. When Protected prepayment exists (Release 2) such an order
+  could be offered prepayment instead; a guest never.
+- All are risk limits operations may change (C.4), audit-logged.
+
+### 9. On the web
+
+`/[lang]/checkout/guest` (`GuestCheckout.tsx`, `lib/guest-checkout.ts`),
+the sign-in page's link, the handover code and the guest note on the
+tracking page, the Turnstile widget's action, and the words in both
+message files. The guest page's own refusals are in its own section
+(`guest.errors`), not in the shared `apiErrors`: the product page carries
+the shared section whole, and D-107 left it about 1 KB under its ceiling.
+
+### 10. PROVISIONAL values (THE FOUNDER MUST CONFIRM OR CHANGE THEM BEFORE MARKX GOES LIVE)
+
+Settings in `markx/core/settings_store.py`, each marked `PROVISIONAL
+(P-108-n)` there and in Amharic on the admin settings screen; the three
+rules marked where they live; all checked by
+`tests/api/test_d108_new_account_limits.py`. Operations may change every
+setting; each change is audit-logged.
+
+| | Setting or rule | Value | Why this value |
+| --- | --- | --- | --- |
+| P-108-1 | `risk.new_account_days` | 0 days (recommended 30) | The founder's choice: no existing test changes, and the founder decides when signed-in accounts get the caps. 30 days covers a first order's delivery and problem window several times |
+| P-108-2 | `risk.new_account_max_order_value_santim` | ETB 50,000 | Accessories and most entry and mid-range phones fit; a flagship phone or a laptop on a first order, to an address nobody confirmed, waits for Telegram sign-in or an older account |
+| P-108-3 | `risk.new_account_max_open_orders` | 1 | One order out at the door at a time until the buyer has received one; a prankster cannot send three shops' riders at once |
+| P-108-4 | `guest_checkout.max_open_orders_per_ip` | 3 | The existing per-buyer value, counted per address as the founder asked. **Many customers may share one mobile address (UNKNOWN how many); raise this first if honest guests are refused, above all while Telegram is blocked** |
+| P-108-5 | `guest_checkout.attempts_per_ip_per_hour` | 30 | The existing per-buyer checkout rate, per address |
+| P-108-6 | (a rule) per-number and per-address counts | The existing values: 3 open orders, 5 units of an offer and 10 of a shop waiting for an answer, 30 checkouts an hour per number; the address exact, kept as a keyed hash; no cool-down (a guest cannot cancel) | The founder's "counted per phone number and per network address", with the existing limits |
+| P-108-7 | (a rule) the handover code on a guest's link | From `ready` until the handover, as on the signed-in page | Section 6: otherwise a guest cannot receive the goods |
+| P-108-8 | (a rule) an account's age | From `users.created_at`; a completed order does not end it sooner | What "how long an account counts as new" says; an account made by an invitation counts from then |
+
+The founder's decisions, not provisional: `guest_checkout.enabled` (on;
+operations may switch it off in an abuse wave, orders already placed carry
+on) and `guest_checkout.shop_collection` (off).
+
+**How an honest person is affected.** A buyer with Telegram: not at all
+until the founder sets P-108-1. A guest: one order at a time, up to ETB
+50,000, delivered to the door and paid there; they must keep the link. A
+shop: nothing new to learn.
+
+### 11. Not built, and what remains risky
+
+- **A lost link cannot be sent again.** MarkX has no confirmed way to reach
+  a guest; sending the link to the typed number (when SMS returns) could
+  send a stranger the order and its code. The page says so plainly (F-28).
+- **A guest cannot cancel, confirm receipt, report a problem or review**
+  ("nothing more"). Someone who changes their mind refuses at the door; a
+  problem goes to the shop by phone (F-28).
+- **Many guests behind one mobile address** may meet P-108-4 (F-29).
+- **A shop could place guest orders to itself** to add completed orders to
+  its record; it needs a number and an address per open order, the bot
+  check and a real handover. The orders desk's answer marks a guest's order
+  (`is_guest`; checked by hand on 25 November 2026, no test pins it), but
+  the desk's screen does not show the mark yet; no automatic check is built.
+- **A guest may type someone else's number**: the shop calls a stranger.
+  Nothing joins the stranger's account, and nothing is sent to the number.
+- **A guest's details live in the order** like any buyer's (orders are
+  never deleted); a guest has no account page for data requests (C-28).
+- The Amharic words await the native editor, as all Amharic does (I.3).
+- Not tested against Cloudflare itself (as D-085); the guest page's widget
+  is exercised only without a site key on this machine.
+
+### 12. Tests
+
+- **New, every one failing on `main` at `5794234`:**
+  `tests/api/test_d108_guest_checkout.py` (22),
+  `tests/api/test_d108_new_account_limits.py` (6),
+  `tests/db/test_d108_guest_limit_contention.py` (11, two races run five
+  times each and ten guests at once): **39 of 39 fail** on the old code (the
+  routes answer 404, `place_guest_order` and the settings do not exist).
+  Web: `src/lib/guest-checkout.test.ts` (21), which cannot load on the old
+  code (its module is new). The browser journey
+  `apps/web/e2e/guest-checkout.mjs`, added to the journeys workflow after
+  the D-107 journey: a guest orders at 360 px, keeps the link, the shop
+  accepts and sends it, the link shows the code, the shop hands over with
+  it; axe on every page, English and Amharic.
+- The test the founder asked for by name:
+  `test_a_guest_using_the_number_of_an_existing_account_sees_nothing_of_it`.
+- **No existing test or check was changed, loosened or removed**; the
+  journeys workflow gained one step; every existing step is unchanged.
+
+### 13. Changed
+
+API: `markx/orders/` (`models.py`, `service.py`, `selectors.py`,
+`schemas.py`, `router.py`), `markx/core/` (`botcheck.py`,
+`settings_store.py`, `settings_am.py`), `markx/admin/service.py` (the risk
+limits), migration `0024`, both OpenAPI copies. Web: `src/components/`
+(`GuestCheckout.tsx` new, `TurnstileWidget.tsx`), `src/lib/`
+(`guest-checkout.ts` new, `session.ts`, the generated schema), the guest
+checkout page (new), the sign-in and tracking pages, both message files,
+`e2e/guest-checkout.mjs` (new) and its step in
+`.github/workflows/journeys.yml`. Documents: this entry, `AGENTS.md` (the
+lock order), `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT_STATUS.md`,
+`docs/HANDOFF.md`.
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -5638,7 +5938,7 @@ own shop proposed the product) is OPEN with no provisional answer. SI-1
 21 November 2026: see D-101, which sets eight PROVISIONAL values and rules,
 P-101-1 to P-101-8, and raises F-24 and F-25 (OPEN; recommendations
 given). D-103 (server readiness) sets three PROVISIONAL values, P-103-1 to
-P-103-3, and leaves certificate renewal off until F-17 is decided. D-105 (backups) sets six PROVISIONAL values, P-105-1 to P-105-6, D-106 (five Release 1 features) five, P-106-1 to P-106-5, and D-107 (five more Release 1 features) seven, P-107-1 to P-107-7.** Treat this list as part of the launch
+P-103-3, and leaves certificate renewal off until F-17 is decided. D-105 (backups) sets six PROVISIONAL values, P-105-1 to P-105-6, D-106 (five Release 1 features) five, P-106-1 to P-106-5, and D-107 (five more Release 1 features) seven, P-107-1 to P-107-7. D-108 (guest checkout C-07 and limits for new accounts AD-13, decided by the founder) sets eight, P-108-1 to P-108-8, and raises F-27 to F-29 (OPEN; recommendations given).** Treat this list as part of the launch
 checklist. Each item says what the code does, what the engineer recommends
 (now the provisional answer) and why, what it blocks, and whether the
 founder's approval is required. When the founder decides one, it becomes a
@@ -6102,6 +6402,48 @@ deciding, but product pages are shared by every seller."
 - **Decided (21 November 2026):** the founder chose product names only,
   never any buyer detail, in both languages, shortened when long. Built in
   D-104 section 1.
+
+### F-27 How long a signed-in account counts as new (D-108, P-108-1)
+
+- **Today:** 0 days, the founder's choice of 24 November 2026: no signed-in
+  account has the new-buyer limits (ETB 50,000 at the door, one open order);
+  every guest has them. Operations set `risk.new_account_days` in the admin
+  settings screen; it takes effect at once, audit-logged.
+- **To decide:** when to switch it on, and for how long; whether a completed
+  order should end it sooner (today it does not, P-108-8).
+- **Engineer's recommendation:** 30 days once real buyers arrive. At the
+  launch every account is new, so for the first month nobody could buy a
+  flagship phone or a laptop at the door: weigh that against the pilot.
+- **Founder's approval required: yes.**
+
+### F-28 What a guest may do besides follow the link (D-108)
+
+- **Today:** nothing ("nothing more"): no cancelling, no "the goods are
+  right", no problem report, no review, and a lost link cannot be sent
+  again (MarkX has no confirmed way to reach a guest).
+- **Options:** (a) as today; (b) cancel from the link while the shop has not
+  answered, which frees the shop's stock sooner; (c) report a problem from
+  the link; (d) send the link to the typed number once SMS returns, which
+  could reach a stranger.
+- **Engineer's recommendation:** (a) for the pilot; (b) is the first worth
+  adding. Not (d).
+- **Founder's approval required: yes.**
+
+### F-29 Guests who share one mobile address (D-108, P-108-4 and P-108-5)
+
+- **Today:** at most 3 open guest orders and 30 guest checkouts an hour per
+  network address, the existing limits as the founder asked. How many
+  customers share one address on Ethio telecom and Safaricom is UNKNOWN.
+- **Risk:** while Telegram is blocked, everyone orders as a guest, and one
+  shared address could refuse honest guests for days (an open order counts
+  until its problem window ends).
+- **Nothing counts these refusals yet:** the request log shows only that
+  `/api/v1/checkout/guest` answered 409, not which limit refused it; a
+  count per refusal would be a small addition.
+- **Engineer's recommendation:** raise P-108-4 at once if Telegram is
+  blocked, and add that count before the launch. Operations can change both
+  values in the settings screen.
+- **Founder's approval required: yes**, for the values.
 
 ## Open questions carried over from session 1
 

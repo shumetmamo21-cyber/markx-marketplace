@@ -14,8 +14,9 @@ function one(value: string | string[] | undefined): string {
 }
 
 // The order page from a secure link, without signing in (blueprint D.14,
-// D-048). The API leaves out the handover code, the recipient's details and
-// every action; a forged or expired link is "not found".
+// D-048). The API leaves out the recipient's details and every action; a
+// forged or expired link is "not found". The handover code comes only on a
+// guest's order, whose only page this is (C-07, D-108).
 export default async function TrackPage({ params, searchParams }: PageProps<"/[lang]/track/[id]">) {
   const { lang, id } = await params;
   if (!isLocale(lang)) notFound();
@@ -34,6 +35,7 @@ export default async function TrackPage({ params, searchParams }: PageProps<"/[l
       <header className="space-y-1">
         <h1 className="text-2xl font-extrabold">{fill(t.orders.code, { code: order.code })}</h1>
         <p className="text-slate">{fill(t.orders.placedOn, { date: formatDateTime(order.created_at, lang) })} · {statusLabel(t, order.status)}</p>
+        {order.is_guest ? <p className="font-semibold">{t.orders.guestNote}</p> : null}
       </header>
       {order.seller_orders.map((part) => (
         <section key={part.id} aria-label={part.store_name} className="space-y-3 rounded-card border border-line bg-white p-4">
@@ -42,6 +44,13 @@ export default async function TrackPage({ params, searchParams }: PageProps<"/[l
             <span className="rounded-full border border-line px-3 py-1 text-sm font-semibold">{statusLabel(t, part.status)}</span>
           </div>
           {part.seller_contact ? <p className="text-sm">{fill(t.orders.sellerContact, { phone: part.seller_contact.phone })}</p> : null}
+          {part.handover_code ? (
+            <div className="space-y-1 rounded-card border border-ink p-3" data-handover-code="">
+              <p className="font-semibold">{t.orders.handoverTitle}</p>
+              <p className="price text-3xl font-extrabold tracking-[0.3em]">{part.handover_code}</p>
+              <p className="text-sm">{t.orders.handoverWarning}</p>
+            </div>
+          ) : null}
           <ul className="space-y-1 text-sm">
             {part.items.map((item) => (
               <li key={item.id} className="flex justify-between gap-3">

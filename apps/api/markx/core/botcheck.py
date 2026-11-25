@@ -37,6 +37,9 @@ SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 # The action the sign-in widget declares; a token solved for anything else
 # is refused.
 SIGN_IN_ACTION = "sign_in"
+# The action the guest checkout's widget declares (C-07, D-108): a token solved
+# for signing in is not one for placing a guest order, and the other way round.
+GUEST_CHECKOUT_ACTION = "guest_checkout"
 # Turnstile tokens are at most 2048 characters; anything longer is not one.
 MAX_TOKEN_LENGTH = 2048
 # Cloudflare's answer is a few hundred bytes; never read an unbounded body.
@@ -164,7 +167,9 @@ class TurnstileBotCheck:
         )
 
 
-def get_bot_check() -> BotCheck:
+def get_bot_check(action: str = SIGN_IN_ACTION) -> BotCheck:
+    """The bot check for one action: signing in (the default) or placing a
+    guest order (`GUEST_CHECKOUT_ACTION`, D-108)."""
     config = get_config()
     if config.bot_check_provider == "turnstile":
         # The configuration has already refused to load without these.
@@ -173,6 +178,7 @@ def get_bot_check() -> BotCheck:
             secret_key=config.turnstile_secret_key.get_secret_value(),
             allowed_hostnames=config.turnstile_hostnames,
             timeout_seconds=config.turnstile_timeout_seconds,
+            action=action,
             transport=urllib_transport,  # looked up per call, so tests can stand in
         )
     if config.is_real_environment:

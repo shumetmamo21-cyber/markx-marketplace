@@ -1649,6 +1649,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/checkout/guest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place Guest Order
+         * @description Place a guest's order: 201 the first time; 200 with the same order
+         *     when the same browser sends the same idempotency key again. The answer
+         *     is the order's code and its secure tracking link, and nothing more: no
+         *     account is made, found or signed in, whatever the phone number.
+         */
+        post: operations["place_guest_order_api_v1_checkout_guest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/checkout/guest/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote Guest Checkout
+         * @description A guest's review step: every price, fee and total, computed by the
+         *     server, for the delivery address the guest typed.
+         */
+        post: operations["quote_guest_checkout_api_v1_checkout_guest_quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/checkout/guest/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest Checkout Terms
+         * @description What ordering as a guest offers today (C-07, AD-13): whether it is on,
+         *     the largest order a guest may pay at the door, and whether a guest may
+         *     collect at the shop.
+         */
+        get: operations["guest_checkout_terms_api_v1_checkout_guest_terms_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/checkout/quote": {
         parameters: {
             query?: never;
@@ -3219,7 +3285,8 @@ export interface paths {
         /**
          * Track Order
          * @description The buyer's order page from a secure link, without signing in (D.14).
-         *     It never shows the handover code.
+         *     It shows the handover code only on a guest's order, whose only page it
+         *     is (C-07, D-108); never on a signed-in buyer's.
          */
         get: operations["track_order_api_v1_track__order_id__get"];
         put?: never;
@@ -4230,6 +4297,90 @@ export interface components {
              */
             url_expires_at: string;
         };
+        /**
+         * GuestCheckoutIn
+         * @description There is no price, and no way to pay in advance, in this request: a
+         *     guest pays at the door only (C-07).
+         */
+        GuestCheckoutIn: {
+            /** Bot Token */
+            bot_token?: string | null;
+            /** Deliveries */
+            deliveries: components["schemas"]["DeliveryChoiceIn"][];
+            /** Expected Total Santim */
+            expected_total_santim: number;
+            guest: components["schemas"]["GuestDetailsIn"];
+            /** Idempotency Key */
+            idempotency_key: string;
+            /**
+             * Payment Method
+             * @enum {string}
+             */
+            payment_method: "cash" | "telebirr" | "bank_transfer" | "ethqr";
+        };
+        /**
+         * GuestCheckoutTermsOut
+         * @description What the guest checkout offers today (C-07, AD-13; D-108).
+         */
+        GuestCheckoutTermsOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Max Order Value Santim */
+            max_order_value_santim: number;
+            /** Shop Collection */
+            shop_collection: boolean;
+        };
+        /**
+         * GuestDetailsIn
+         * @description A guest's name, delivery address and phone number (C-07, D-108),
+         *     checked as a saved address is. The number is NOT confirmed: it is used
+         *     for the delivery and for the limits counted per number, never to find,
+         *     open or join the account that has it.
+         */
+        GuestDetailsIn: {
+            /**
+             * Delivery Area Id
+             * Format: uuid
+             */
+            delivery_area_id: string;
+            /** Driver Notes */
+            driver_notes?: string | null;
+            /** Landmark */
+            landmark: string;
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
+            /** Phone */
+            phone: string;
+            /** Phone2 */
+            phone2?: string | null;
+            /** Recipient Name */
+            recipient_name: string;
+        };
+        /**
+         * GuestOrderOut
+         * @description All a guest gets (C-07, D-108): the order's code and its secure
+         *     tracking link. Nothing is sent to the guest afterwards, so the link is
+         *     the only way back to the order.
+         */
+        GuestOrderOut: {
+            /** Order Code */
+            order_code: string;
+            /**
+             * Tracking Expires At
+             * Format: date-time
+             */
+            tracking_expires_at: string;
+            /** Tracking Path */
+            tracking_path: string;
+        };
+        /** GuestQuoteIn */
+        GuestQuoteIn: {
+            /** Deliveries */
+            deliveries: components["schemas"]["DeliveryChoiceIn"][];
+            guest: components["schemas"]["GuestDetailsIn"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -4800,6 +4951,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Guest */
+            is_guest: boolean;
             /** Items Total Santim */
             items_total_santim: number;
             /** Payment Mode */
@@ -10102,6 +10255,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_guest_order_api_v1_checkout_guest_post: {
+        parameters: {
+            query?: {
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestCheckoutIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_guest_checkout_api_v1_checkout_guest_quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestQuoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    guest_checkout_terms_api_v1_checkout_guest_terms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestCheckoutTermsOut"];
                 };
             };
         };

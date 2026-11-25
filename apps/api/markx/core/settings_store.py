@@ -239,6 +239,78 @@ _SPECS: tuple[SettingSpec, ...] = (
         1,
         720,
     ),
+    # Limits for new accounts (AD-13) and guest checkout (C-07), D-108.
+    #   The founder's choices of 24 November 2026: a guest always counts as a
+    #   brand-new buyer and gets the strict caps below; a signed-in account
+    #   counts as brand-new for `risk.new_account_days` after it was created,
+    #   0 (none) until the founder sets it (recommended 30); a guest's goods
+    #   are delivered to the door, never collected, until operations allow it.
+    #   PROVISIONAL (P-108-1 to P-108-5, D-108): every value below is a
+    #   business choice THE FOUNDER MUST CONFIRM OR CHANGE BEFORE MARKX GOES
+    #   LIVE (`orders.service.place_order`, `place_guest_order`).
+    SettingSpec(
+        "risk.new_account_days",
+        0,
+        "int",
+        "PROVISIONAL (P-108-1), to be confirmed before going live: days after it was created "
+        "during which a signed-in account counts as brand-new and gets the new-buyer limits "
+        "below (AD-13). 0 means no signed-in account does (the founder's choice until they set "
+        "it; 30 is recommended); a guest always counts as brand-new.",
+        0,
+        365,
+    ),
+    SettingSpec(
+        "risk.new_account_max_order_value_santim",
+        5_000_000,
+        "int",
+        "PROVISIONAL (P-108-2), to be confirmed before going live: the largest order total, in "
+        "santim, that a brand-new buyer or a guest may pay at the door (AD-13).",
+        100,
+        10_000_000_000,
+    ),
+    SettingSpec(
+        "risk.new_account_max_open_orders",
+        1,
+        "int",
+        "PROVISIONAL (P-108-3), to be confirmed before going live: open pay-at-the-door orders "
+        "that a brand-new buyer, or one guest phone number, may hold at a time (AD-13).",
+        1,
+        50,
+    ),
+    SettingSpec(
+        "guest_checkout.enabled",
+        True,
+        "bool",
+        "People without Telegram, or anyone while Telegram is blocked, may order as a guest with "
+        "a name, a delivery address and a phone number (C-07, the founder's decision). Switch it "
+        "off to stop new guest orders; orders already placed carry on.",
+    ),
+    SettingSpec(
+        "guest_checkout.shop_collection",
+        False,
+        "bool",
+        "A guest may choose collection at the shop as well as delivery to the door. Off: a "
+        "guest pays at the door only (the founder's decision, 24 November 2026).",
+    ),
+    SettingSpec(
+        "guest_checkout.max_open_orders_per_ip",
+        3,
+        "int",
+        "PROVISIONAL (P-108-4), to be confirmed before going live: open guest orders that may "
+        "come from one network address at a time. Many customers may share one mobile address, "
+        "so raise this first if honest guests are refused.",
+        1,
+        10_000,
+    ),
+    SettingSpec(
+        "guest_checkout.attempts_per_ip_per_hour",
+        30,
+        "int",
+        "PROVISIONAL (P-108-5), to be confirmed before going live: guest orders one network "
+        "address may try to place in an hour.",
+        1,
+        100_000,
+    ),
     # Seller performance (blueprint S-26; D-069)
     SettingSpec(
         "sellers.weekly_report_enabled",

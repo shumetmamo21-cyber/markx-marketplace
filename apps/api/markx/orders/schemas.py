@@ -143,6 +143,65 @@ class CheckoutIn(QuoteIn):
     idempotency_key: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{16,64}$")]
 
 
+class GuestDetailsIn(ApiModel):
+    """A guest's name, delivery address and phone number (C-07, D-108),
+    checked as a saved address is. The number is NOT confirmed: it is used
+    for the delivery and for the limits counted per number, never to find,
+    open or join the account that has it."""
+
+    recipient_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)
+    ]
+    phone: PhoneText
+    phone2: PhoneText | None = None
+    delivery_area_id: uuid.UUID
+    landmark: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=300)]
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    driver_notes: (
+        Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] | None
+    ) = None
+
+
+class GuestQuoteIn(ApiModel):
+    guest: GuestDetailsIn
+    deliveries: Annotated[list[DeliveryChoiceIn], Field(max_length=30)]
+
+
+class GuestCheckoutIn(GuestQuoteIn):
+    """There is no price, and no way to pay in advance, in this request: a
+    guest pays at the door only (C-07)."""
+
+    payment_method: PaymentMethod
+    # The grand total the guest saw on the review step. Compared, never used.
+    expected_total_santim: Annotated[int, Field(gt=0)]
+    # Made up by the browser once per submission; a repeat from the same
+    # browser returns the same order.
+    idempotency_key: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{16,64}$")]
+    # The one-time token of the bot check (Turnstile, action "guest_checkout").
+    bot_token: str | None = Field(default=None, max_length=4096)
+
+
+class GuestOrderOut(ApiModel):
+    """All a guest gets (C-07, D-108): the order's code and its secure
+    tracking link. Nothing is sent to the guest afterwards, so the link is
+    the only way back to the order."""
+
+    order_code: str
+    tracking_path: str
+    tracking_expires_at: datetime
+
+
+class GuestCheckoutTermsOut(ApiModel):
+    """What the guest checkout offers today (C-07, AD-13; D-108)."""
+
+    enabled: bool
+    # A guest pays at the door, for orders up to this total.
+    max_order_value_santim: int
+    # Whether a guest may collect at the shop instead of a delivery.
+    shop_collection: bool
+
+
 class QuoteGroupOut(ApiModel):
     store_slug: str
     store_name: str
@@ -259,8 +318,9 @@ class BuyerSellerOrderOut(ApiModel):
     # "Report a problem" is open: delivered, and inside the problem window.
     can_report_problem: bool
     problem: ProblemOut | None
-    # The one-time code (C-15), shown only while a handover is awaited and
-    # only to the signed-in buyer. Give it only after seeing the goods.
+    # The one-time code (C-15), shown only while a handover is awaited, to
+    # the signed-in buyer and, on a guest's order, on its tracking page
+    # (D-108). Give it only after seeing the goods.
     handover_code: str | None
     shipment: ShipmentOut
     # Null until the seller confirms (blueprint C.5).
@@ -277,6 +337,9 @@ class OrderOut(ApiModel):
     created_at: datetime
     # The secure link to this page without sign-in (D.14); only on the buyer's own view.
     tracking_path: str | None
+    # Placed by a guest (C-07, D-108): no account, and a phone number nobody
+    # confirmed. Never on a shop's view of the order.
+    is_guest: bool
     payment_mode: str
     currency: str
     items_total_santim: int

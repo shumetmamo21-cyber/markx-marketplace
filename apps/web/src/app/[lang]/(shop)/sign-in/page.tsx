@@ -8,7 +8,7 @@ import { TelegramSignIn } from "@/components/TelegramSignIn";
 import { fill, isLocale } from "@/lib/i18n";
 import { getMessages } from "@/lib/messages";
 import { safeNext } from "@/lib/safe-next";
-import { getMe, getSignInMethods } from "@/lib/session";
+import { getGuestCheckoutTerms, getMe, getSignInMethods } from "@/lib/session";
 
 export const metadata: Metadata = { robots: { index: false } };
 
@@ -21,6 +21,8 @@ export default async function SignInPage({ params, searchParams }: PageProps<"/[
   // Telegram for everyone (D-101, decision SI-1); the SMS code only while
   // the server has SMS switched on, as a backup.
   const methods = me ? null : await getSignInMethods();
+  // No Telegram, or Telegram blocked: a visitor may order as a guest (C-07, D-108).
+  const guest = me ? null : await getGuestCheckoutTerms();
   return (
     <div className="mx-auto max-w-md space-y-5">
       <h1 className="text-2xl font-extrabold">{me ? t.nav.account : t.auth.title}</h1>
@@ -57,6 +59,12 @@ export default async function SignInPage({ params, searchParams }: PageProps<"/[
             </section>
           ) : null}
           {!methods?.telegram && !methods?.sms ? <p role="alert" className="font-semibold">{t.auth.unavailable}</p> : null}
+          {guest?.enabled ? (
+            <section aria-labelledby="guest-order" className="space-y-2 pt-2">
+              <h2 id="guest-order" className="font-bold">{t.guest.noTelegram}</h2>
+              <Link href={`/${lang}/checkout/guest`} className="inline-flex min-h-12 items-center rounded-card border border-ink px-4 font-semibold">{t.guest.orderAsGuest}</Link>
+            </section>
+          ) : null}
         </>
       )}
     </div>

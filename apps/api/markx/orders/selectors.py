@@ -375,7 +375,8 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
                 and seller_order.problem_window_ends_at is not None
                 and now < seller_order.problem_window_ends_at,
                 "problem": problems.get(seller_order.id),
-                # Only the signed-in buyer, only while a handover is awaited.
+                # Only while a handover is awaited, and only to the signed-in
+                # buyer or by a guest order's own link (D-108).
                 "handover_code": service.handover_code(shipment) if awaiting_handover else None,
                 "shipment": _shipment_out(
                     shipment,
@@ -398,6 +399,7 @@ def _buyer_order_out(db: Session, order: Order, language: str) -> dict[str, Any]
         "status": derive_order_status(str(so["status"]) for so in seller_orders),
         "created_at": order.created_at,
         "tracking_path": service.issue_tracking_link(order).path,
+        "is_guest": order.buyer_user_id is None,
         "payment_mode": order.payment_mode,
         "currency": order.currency,
         "items_total_santim": order.items_total_santim,
@@ -690,13 +692,23 @@ _TRACKING_ADDRESS_KEYS = ("zone_code", "zone_name_am", "zone_name_en", "area_nam
 def tracking_view(db: Session, order: Order, language: str) -> dict[str, Any]:
     """The order as the secure link shows it (D.14): the timeline of every
     part, the expected time, the seller's and rider's contact once allowed,
-    the items and totals. Not the handover code, not the recipient's name,
-    phones or pin, and no action: those need the signed-in page."""
+    the items and totals. Not the recipient's name, phones or pin, and no
+    action: those need the signed-in page.
+
+    The handover code only on a guest's order (C-07, D-108; PROVISIONAL
+    P-108-7, to be confirmed before going live): the link is a guest's only
+    page, so it shows the code as the signed-in page does, from `ready`
+    until the handover, or the guest could never receive the goods.
+    A guest's link is never sent anywhere (no Telegram, no SMS, no in-app
+    message); it is handed only to the browser that placed the order. A
+    signed-in buyer's link never shows it (D-048)."""
     out = _buyer_order_out(db, order, language)
+    guest = order.buyer_user_id is None
     out["tracking_path"] = None
     out["address"] = {key: out["address"].get(key) for key in _TRACKING_ADDRESS_KEYS}
     for seller_order in out["seller_orders"]:
-        seller_order["handover_code"] = None
+        if not guest:
+            seller_order["handover_code"] = None
         seller_order["can_cancel"] = False
         seller_order["can_confirm_received"] = False
         seller_order["can_report_problem"] = False

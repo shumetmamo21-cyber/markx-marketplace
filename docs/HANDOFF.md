@@ -27,7 +27,9 @@ day by the session that finished the backups (D-105), and Part
 A.000000000000000000000 on 22 November 2026 by the session that reviewed
 and merged pull request #13 and built five Release 1 features (D-106),
 and Part A.0000000000000000000000 the same day by the session that built
-five more Release 1 features (D-107).
+five more Release 1 features (D-107), and Part A.00000000000000000000000
+on 25 November 2026 by the session that built guest checkout and the
+limits for new accounts (D-108).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -36,6 +38,66 @@ five more Release 1 features (D-107).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.00000000000000000000000 — Guest checkout and limits for new accounts (25 November 2026, D-108)
+
+Branch `claude/lucid-babbage-38jzfq`, from `main` at `5794234` (the merge
+of pull request #15) with the complete history; no pull request was open.
+One pull request into `main`, **#16**, **not merged**: it changes order
+rules, so an independent review follows. Every check passed on `b58559b`,
+the code with its documents (CI #189, 7 of 7 jobs, 2219 tests passed;
+Browser journeys #65, the guest journey included); the runs:
+`docs/DEVELOPMENT_STATUS.md`, "Tests executed", 25 November 2026. **One
+migration (0024). Nothing deployed; no server, account, bot, SMS, bucket or
+paid resource; nothing sent to Telegram or by SMS.** Details:
+`docs/DECISIONS.md`, D-108.
+
+**For the founder, in plain words:**
+
+1. **Anyone can now order without Telegram, as a guest.** On the sign-in
+   page there is "Order as a guest": the person gives a name, a delivery
+   address and a phone number, the shop delivers to the door, and they pay
+   at the door after looking at the goods. They get one thing: a secure
+   link to their order page, shown once, to keep. On that page they follow
+   the order and, once the parcel is ready, see the handover code to give
+   the rider. Nothing is sent to them, and they cannot cancel or report a
+   problem there.
+2. **The phone number is never trusted.** A guest order belongs to no
+   account. If the number belongs to someone's MarkX account, the guest
+   sees nothing of it, the account holder sees nothing of the guest's
+   order, and neither counts against the other's limits. The answer is the
+   same for any number, so nobody can use it to find out who has an
+   account. A test proves exactly that.
+3. **Guests are held to the limits, counted per number and per
+   connection**, and pass the "are you a person" check (Turnstile) with
+   their own action. A guest always counts as a new buyer: at most ETB
+   50,000 per order, one open order per number, three open guest orders
+   from one connection.
+4. **Limits for new accounts (AD-13)** exist for signed-in buyers too, and
+   are switched off until you choose how long an account counts as new, as
+   you decided (recommended 30 days, F-27). Operations can change every
+   limit in the settings screen; each change is recorded.
+5. **The shop sees a guest's order exactly as any other order.**
+
+**What needs you:** P-108-1 to P-108-8 (D-108), and F-27 (how long an
+account counts as new), F-28 (what a guest may do besides follow the link)
+and F-29 (many guests behind one mobile connection, above all while
+Telegram is blocked: raise P-108-4 then). Please have the Amharic words read
+by the native editor.
+
+**For the next engineer:** read D-108 first. A guest order has
+`buyer_user_id` empty: anything that notifies or counts "the buyer" must
+handle that (`_notify_buyer` already does). Count limits per account, or
+for guests per number and per address, never across the two: counting an
+account's orders against a guest with its number would reveal the account.
+The product page carries the shared `apiErrors` messages whole and has
+about 0.7 KB left under its 210 KB ceiling: put words used by one page in
+that page's own section (as `guest.errors`). The guest journey leaves an
+open guest order; on one database about three runs fit in three days. The
+orders desk's answer carries `is_guest`, but the desk's screen does not show
+it yet (a small follow-up, if the founder wants it).
 
 ---
 

@@ -3,6 +3,8 @@
 `/cart...`                       the server-side cart, for a signed-in buyer
                                  or an anonymous visitor
 `/checkout...`                   the priced review step and placing the order
+`/checkout/guest...`             the same for a guest, who gets the secure
+                                 tracking link and nothing more (C-07, D-108)
 `/me/orders...`                  the buyer's own orders
 `/seller/{seller_id}/orders...`  one seller's part of orders, scoped by
                                  `require_seller`
@@ -14,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response
 
@@ -28,10 +30,10 @@ from markx.accounts.deps import (
 )
 from markx.accounts.models import SessionKind
 from markx.accounts.permissions import SellerCapability, StaffCapability, seller_can
-from markx.core import ratelimit
+from markx.core import ratelimit, settings_store
 from markx.core.config import get_config
-from markx.core.errors import PermissionDenied
-from markx.core.http import Db
+from markx.core.errors import Conflict, PermissionDenied, ValidationFailed
+from markx.core.http import Db, client_ip
 from markx.orders import selectors, service
 from markx.orders.models import Cart
 from markx.orders.schemas import (
@@ -42,6 +44,11 @@ from markx.orders.schemas import (
     CheckoutIn,
     DeclineIn,
     DispatchIn,
+    GuestCheckoutIn,
+    GuestCheckoutTermsOut,
+    GuestDetailsIn,
+    GuestOrderOut,
+    GuestQuoteIn,
     HandoverIn,
     OpenProblemOut,
     OrderOut,
@@ -201,7 +208,7 @@ def accept_cart_changes(
 # -- checkout --------------------------------------------------------------------
 
 
-def _choices(body: QuoteIn) -> dict[str, str]:
+def _choices(body: QuoteIn | GuestQuoteIn) -> dict[str, str]:
     return {choice.store_slug: choice.method for choice in body.deliveries}
 
 
@@ -243,6 +250,100 @@ def place_order(
     )
     response.status_code = 200 if replayed else 201
     return OrderOut.model_validate(selectors.buyer_order(db, buyer.user.id, order.id, lang))
+
+
+# -- guest checkout (C-07, D-108) ---------------------------------------------------
+
+
+def _refuse_signed_in(principal: Principal | None) -> None:
+    # A guest is a visitor. A signed-in person checks out from their account,
+    # where their own limits apply; staff never shop with a staff session.
+    _refuse_staff(principal)
+    if principal is not None:
+        raise Conflict(
+            "guest_checkout_signed_in", "You are signed in: check out from your account instead."
+        )
+
+
+def _guest_fields(details: GuestDetailsIn) -> dict[str, Any]:
+    """`service.guest_address`'s arguments, from the guest's form."""
+    return {
+        "recipient_name": details.recipient_name,
+        "raw_phone": details.phone,
+        "raw_phone2": details.phone2,
+        "delivery_area_id": details.delivery_area_id,
+        "landmark": details.landmark,
+        "latitude": details.latitude,
+        "longitude": details.longitude,
+        "driver_notes": details.driver_notes,
+    }
+
+
+@router.get("/checkout/guest/terms", response_model=GuestCheckoutTermsOut, tags=["checkout"])
+def guest_checkout_terms(db: Db) -> GuestCheckoutTermsOut:
+    """What ordering as a guest offers today (C-07, AD-13): whether it is on,
+    the largest order a guest may pay at the door, and whether a guest may
+    collect at the shop."""
+    return GuestCheckoutTermsOut(
+        enabled=settings_store.get_bool(db, "guest_checkout.enabled"),
+        max_order_value_santim=settings_store.get_int(
+            db, "risk.new_account_max_order_value_santim"
+        ),
+        shop_collection=settings_store.get_bool(db, "guest_checkout.shop_collection"),
+    )
+
+
+@router.post("/checkout/guest/quote", response_model=QuoteOut, tags=["checkout"])
+def quote_guest_checkout(
+    body: GuestQuoteIn, request: Request, principal: OptionalPrincipal, db: Db
+) -> QuoteOut:
+    """A guest's review step: every price, fee and total, computed by the
+    server, for the delivery address the guest typed."""
+    _refuse_signed_in(principal)
+    token = request.cookies.get(CART_COOKIE)
+    cart = service.cart_for_token(db, token) if token else None
+    if cart is None:
+        raise ValidationFailed("cart_empty", "Your cart is empty.")
+    guest = service.guest_address(db, **_guest_fields(body.guest))
+    quote = service.build_guest_quote(db, cart, guest, deliveries=_choices(body))
+    return QuoteOut.model_validate(selectors.quote_out(quote))
+
+
+@router.post("/checkout/guest", response_model=GuestOrderOut, tags=["checkout"])
+def place_guest_order(
+    body: GuestCheckoutIn,
+    request: Request,
+    response: Response,
+    principal: OptionalPrincipal,
+    db: Db,
+    lang: LangQuery = "am",
+) -> GuestOrderOut:
+    """Place a guest's order: 201 the first time; 200 with the same order
+    when the same browser sends the same idempotency key again. The answer
+    is the order's code and its secure tracking link, and nothing more: no
+    account is made, found or signed in, whatever the phone number."""
+    _refuse_signed_in(principal)
+    token = request.cookies.get(CART_COOKIE)
+    if not token:
+        raise ValidationFailed("cart_empty", "Your cart is empty.")
+    order, replayed = service.place_guest_order(
+        db,
+        cart_token=token,
+        guest_fields=_guest_fields(body.guest),
+        ip=client_ip(request),
+        bot_token=body.bot_token,
+        deliveries=_choices(body),
+        payment_method=body.payment_method,
+        expected_total_santim=body.expected_total_santim,
+        idempotency_key=body.idempotency_key,
+        language=lang,
+    )
+    response.status_code = 200 if replayed else 201
+    response.headers["Cache-Control"] = "no-store"
+    link = service.issue_tracking_link(order)
+    return GuestOrderOut(
+        order_code=order.code, tracking_path=link.path, tracking_expires_at=link.expires_at
+    )
 
 
 # -- the buyer's orders ------------------------------------------------------------
@@ -381,7 +482,8 @@ def track_order(
     lang: LangQuery = "am",
 ) -> OrderOut:
     """The buyer's order page from a secure link, without signing in (D.14).
-    It never shows the handover code."""
+    It shows the handover code only on a guest's order, whose only page it
+    is (C-07, D-108); never on a signed-in buyer's."""
     order = service.open_tracking_link(db, order_id, expires=expires, signature=signature)
     response.headers["Cache-Control"] = "no-store"
     return OrderOut.model_validate(selectors.tracking_view(db, order, lang))

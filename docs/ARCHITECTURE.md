@@ -247,13 +247,29 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   transaction. Migration `0007` makes the database refuse the same things, so
   a route cannot get round it. **A shipment changes only through `_track`**,
   which writes the tracking event beside it.
+- **Guest checkout (C-07, D-108):** `place_guest_order` and
+  `build_guest_quote` (routes `/checkout/guest/terms`, `/checkout/guest/quote`,
+  `/checkout/guest`). A guest order has no account: `orders.buyer_user_id`
+  is empty and the order carries the guest's unconfirmed number
+  (`guest_phone`), a keyed hash of its network address and the hash of
+  the browser's cart secret; the database holds "an account or a guest, never
+  both" and "a guest pays at the door". Both kinds of order are written by
+  one helper, `_write_order`, so a shop's view of them cannot differ. The
+  limits are counted per account (`Order.buyer_user_id == ...`) or, for a
+  guest, per number and per address (`_open_orders`,
+  `_refuse_above_unconfirmed_for`), never across the two. `_notify_buyer`
+  does nothing for a guest order. **Limits for new accounts (AD-13):**
+  `is_brand_new` and `_refuse_above_new_buyer_caps`; a guest always counts
+  as brand-new.
 - **Locks are taken in one order, each kind in ascending id:** the buyer's
-  cart, then sellers, then offers, then seller orders, then the seller
-  order's shipment, then stock through `hold_stock`, `release_stock` and
-  `commit_stock`. Sellers, offers, seller orders, shipments and payment
-  intents are locked with `with_for_update(key_share=True)` (D-027).
-  Reservations are locked `FOR UPDATE` when released or committed, so stock
-  is given back, or taken off the shelf, at most once.
+  cart, then (a guest's checkout only) an advisory lock on the guest's
+  phone number and then one on the network address, then sellers, then
+  offers, then seller orders, then the seller order's shipment, then stock
+  through `hold_stock`, `release_stock` and `commit_stock`. Sellers, offers,
+  seller orders, shipments and payment intents are locked with
+  `with_for_update(key_share=True)` (D-027). Reservations are locked `FOR
+  UPDATE` when released or committed, so stock is given back, or taken off
+  the shelf, at most once.
 - `markx/payments/ledger.py` posts balanced ledger transactions; the fee on
   a completed seller order is its only caller today.
 - Who sees what: a buyer's order is found only together with the buyer's
@@ -261,7 +277,8 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   that seller's lines (`selectors.py`). Phone numbers appear after the
   seller confirms and vanish if the part ends undelivered. The public
   tracking page (`tracking_view`) is the buyer's page minus the handover
-  code, the recipient's details and the actions.
+  code, the recipient's details and the actions; on a guest's order it
+  keeps the handover code, because it is the guest's only page (D-108).
 - Tests: `tests/unit/test_order_rules.py`, `tests/api/test_cart.py`,
   `tests/api/test_checkout.py`, `tests/api/test_tracking.py` (the secure
   link), `tests/api/test_fulfilment.py` (placed to
@@ -272,6 +289,10 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   `tests/db/test_checkout_contention.py` and
   `tests/db/test_fulfilment_contention.py` for the races (100 checkouts of
   the last unit, and every pair of operations that share locks).
+  Guest checkout and new accounts: `tests/api/test_d108_guest_checkout.py`,
+  `tests/api/test_d108_new_account_limits.py`,
+  `tests/db/test_d108_guest_limit_contention.py`; the browser journey
+  `apps/web/e2e/guest-checkout.mjs`.
 
 ## File storage
 
