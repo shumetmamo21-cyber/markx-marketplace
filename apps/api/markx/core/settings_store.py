@@ -250,7 +250,7 @@ _SPECS: tuple[SettingSpec, ...] = (
     #   LIVE (`orders.service.place_order`, `place_guest_order`).
     SettingSpec(
         "risk.new_account_days",
-        0,
+        30,
         "int",
         "PROVISIONAL (P-108-1), to be confirmed before going live: days after it was created "
         "during which a signed-in account counts as brand-new and gets the new-buyer limits "

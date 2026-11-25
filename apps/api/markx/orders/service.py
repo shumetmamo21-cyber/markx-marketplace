@@ -927,7 +927,13 @@ def _open_orders(db: Session, whose: Any, *, now: datetime) -> int:
 # account, and each account needs its own verified phone number (D.2).
 
 
-def _refuse_during_cancellation_cooldown(db: Session, user: User, now: datetime) -> None:
+def _cancellation_cooldown_ends(db: Session, whose: Any, now: datetime) -> datetime | None:
+    """When one buyer may order again, or None while no cool-down applies.
+
+    `whose` selects the buyer's orders: an account's, or for a guest the
+    orders of one phone number or of one network address (D-109: a guest may
+    cancel since F-28, so the cool-down counts for guests as the other
+    buying limits do, D-108). Only the buyer's own cancellations count."""
     allowed = settings_store.get_int(db, "orders.cancellations_before_cooldown")
     period = timedelta(hours=settings_store.get_int(db, "orders.cancellation_cooldown_hours"))
     cancelled_at = func.max(OrderStatusEvent.occurred_at)
@@ -937,7 +943,7 @@ def _refuse_during_cancellation_cooldown(db: Session, user: User, now: datetime)
             .join(SellerOrder, SellerOrder.id == OrderStatusEvent.seller_order_id)
             .join(Order, Order.id == SellerOrder.order_id)
             .where(
-                Order.buyer_user_id == user.id,
+                whose,
                 OrderStatusEvent.to_status == SellerOrderStatus.CANCELLED,
                 OrderStatusEvent.actor_type == ActorType.BUYER,
                 OrderStatusEvent.occurred_at > now - period,
@@ -946,10 +952,16 @@ def _refuse_during_cancellation_cooldown(db: Session, user: User, now: datetime)
             .order_by(cancelled_at.desc())
         )
     )
-    if len(recent) >= allowed:
-        # Ordering is allowed again once the cancellation that makes the
-        # count reach the limit is older than the period.
-        again_at = recent[allowed - 1] + period
+    if len(recent) < allowed:
+        return None
+    # Ordering is allowed again once the cancellation that makes the count
+    # reach the limit is older than the period.
+    return recent[allowed - 1] + period
+
+
+def _refuse_during_cancellation_cooldown(db: Session, user: User, now: datetime) -> None:
+    again_at = _cancellation_cooldown_ends(db, Order.buyer_user_id == user.id, now)
+    if again_at is not None:
         raise Conflict(
             "cancellation_cooldown",
             "You cancelled several orders recently, so new orders are paused for a while. "

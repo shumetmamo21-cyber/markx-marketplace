@@ -278,6 +278,10 @@
     "copied": "Link copied.",
     "unavailable": "Ordering as a guest is not available right now. Sign in with Telegram to order.",
     "emptyCart": "Your cart is empty. Add something first.",
+    "cancelHint": "You can cancel this shop's part until the shop answers. Its goods go back on sale at once.",
+    "cancelAsk": "Cancel your order from {shop}? The shop is told at once, and this cannot be undone.",
+    "cancelYes": "Yes, cancel it",
+    "cancelNo": "Keep my order",
     "errors": {
       "guest_checkout_off": "Ordering as a guest is switched off right now. Sign in with Telegram to order.",
       "guest_checkout_signed_in": "You are signed in: check out from your account instead.",
@@ -285,7 +289,10 @@
       "guest_network_limit": "Too many guest orders are waiting from your connection right now. Try again later, or sign in with Telegram.",
       "bot_check_failed": "We could not confirm you are a person. Complete the check and try again.",
       "area_unknown": "Choose an area from the list.",
-      "map_pin_incomplete": "A map pin needs both a latitude and a longitude."
+      "map_pin_incomplete": "A map pin needs both a latitude and a longitude.",
+      "guest_network_cooldown": "Several guest orders from your connection were cancelled recently, so guest orders from it are paused for a while. Try again later, or sign in with Telegram.",
+      "order_cannot_be_cancelled": "The shop has already answered, so this part can no longer be cancelled. Refresh the page to see where it is.",
+      "tracking_link_invalid": "This link is not valid any more."
     }
   },
   "orders": {
