@@ -214,15 +214,22 @@ def _choices(body: QuoteIn | GuestQuoteIn) -> dict[str, str]:
 
 @router.post("/checkout/quote", response_model=QuoteOut, tags=["checkout"])
 def quote_checkout(
-    body: QuoteIn, request: Request, response: Response, buyer: Buyer, db: Db
+    body: QuoteIn,
+    request: Request,
+    response: Response,
+    buyer: Buyer,
+    db: Db,
+    lang: LangQuery = "am",
 ) -> QuoteOut:
-    """The review step: every price, fee and total, computed by the server."""
+    """The review step: every price, fee and total, computed by the server,
+    and the notice the buyer reads before placing the order (C-27), in
+    `lang`."""
     cart = _cart(request, response, buyer, db, create=True)
     assert cart is not None
     quote = service.build_quote(
         db, buyer.user, cart, address_id=body.address_id, deliveries=_choices(body)
     )
-    return QuoteOut.model_validate(selectors.quote_out(quote))
+    return QuoteOut.model_validate(selectors.quote_out(db, quote, lang, guest=False))
 
 
 @router.post("/checkout", response_model=OrderOut, tags=["checkout"])
@@ -295,10 +302,15 @@ def guest_checkout_terms(db: Db) -> GuestCheckoutTermsOut:
 
 @router.post("/checkout/guest/quote", response_model=QuoteOut, tags=["checkout"])
 def quote_guest_checkout(
-    body: GuestQuoteIn, request: Request, principal: OptionalPrincipal, db: Db
+    body: GuestQuoteIn,
+    request: Request,
+    principal: OptionalPrincipal,
+    db: Db,
+    lang: LangQuery = "am",
 ) -> QuoteOut:
     """A guest's review step: every price, fee and total, computed by the
-    server, for the delivery address the guest typed."""
+    server, for the delivery address the guest typed, and the notice the
+    guest reads before placing the order (C-27), in `lang`."""
     _refuse_signed_in(principal)
     token = request.cookies.get(CART_COOKIE)
     cart = service.cart_for_token(db, token) if token else None
@@ -306,7 +318,7 @@ def quote_guest_checkout(
         raise ValidationFailed("cart_empty", "Your cart is empty.")
     guest = service.guest_address(db, **_guest_fields(body.guest))
     quote = service.build_guest_quote(db, cart, guest, deliveries=_choices(body))
-    return QuoteOut.model_validate(selectors.quote_out(quote))
+    return QuoteOut.model_validate(selectors.quote_out(db, quote, lang, guest=True))
 
 
 @router.post("/checkout/guest", response_model=GuestOrderOut, tags=["checkout"])

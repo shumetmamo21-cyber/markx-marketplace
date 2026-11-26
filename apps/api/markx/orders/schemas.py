@@ -215,6 +215,16 @@ class QuoteGroupOut(ApiModel):
     total_santim: int
 
 
+class OrderNoticeOut(ApiModel):
+    """The notice the buyer reads before placing the order (C-27, D-110)."""
+
+    version: str
+    # True while the words are the engineering draft, not the founder's own.
+    provisional: bool
+    title: str
+    points: list[str]
+
+
 class QuoteOut(ApiModel):
     items_total_santim: int
     delivery_total_santim: int
@@ -223,6 +233,8 @@ class QuoteOut(ApiModel):
     zone_code: str
     price_changes: list[dict[str, Any]]
     groups: list[QuoteGroupOut]
+    # Shown right above "Place order", in the language asked for (C-27).
+    notice: OrderNoticeOut
 
 
 class OrderItemOut(ApiModel):

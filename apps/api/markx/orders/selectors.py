@@ -25,7 +25,7 @@ from markx.core.money import Money
 from markx.delivery.models import MAX_HANDOVER_ATTEMPTS, DeliveryZone, Shipment, TrackingEvent
 from markx.delivery.selectors import active_rates_for_zone
 from markx.images import gate_photos
-from markx.orders import service
+from markx.orders import notice, service
 from markx.orders.models import (
     Cart,
     Order,
@@ -146,7 +146,9 @@ def cart_view(
     }
 
 
-def quote_out(quote: service.Quote) -> dict[str, Any]:
+def quote_out(db: Session, quote: service.Quote, language: str, *, guest: bool) -> dict[str, Any]:
+    """The review step, with the notice the buyer reads before placing the
+    order (C-27, D-110): the same figures the order is placed with."""
     return {
         "items_total_santim": quote.items_total.amount,
         "delivery_total_santim": quote.delivery_total.amount,
@@ -170,6 +172,9 @@ def quote_out(quote: service.Quote) -> dict[str, Any]:
             }
             for group in quote.groups
         ],
+        "notice": notice.order_notice(
+            db, [group.seller.legal_name for group in quote.groups], language, guest=guest
+        ),
     }
 
 

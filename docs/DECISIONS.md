@@ -6138,6 +6138,124 @@ comment in `.github/workflows/journeys.yml`. Documents: this entry, F-27
 and F-28 marked decided, D-108's PROVISIONAL table,
 `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT_STATUS.md`, `docs/HANDOFF.md`.
 
+## D-110 C-27: the notice before ordering (a PROVISIONAL draft); the outside review of pull requests #14 to #17
+
+26 November 2026. Branch `claude/markx-prelaunch-review-c27-x5sizp`, from
+`main` at `b6f0429` (the merge of pull request #17) with the complete
+history. **Follows** the blueprint D.10 and C-27 ("before the order is
+placed, a review step shows ... the dispute route"). **No migration.
+Nothing deployed; no server, account, bot, SMS, bucket or paid resource.**
+
+### 0. The task
+
+Two parts, from the founder, before MarkX's first real users:
+
+1. **An outside review, read-only,** of what pull requests #14, #15, #16
+   and #17 changed (they were merged without an independent review). Its
+   findings are in `docs/reports/2026-11-26-prs-14-17-prelaunch-review.md`:
+   **one DEFECT** (R17-1, below) and notes. Nothing was changed for it.
+2. **C-27:** a short notice the buyer sees before placing an order, in
+   English and Amharic: who sells, paying at the door, checking the goods
+   before paying, how to raise a problem. The founder has not written it,
+   so the words are a plain draft, PROVISIONAL (P-110-1), kept in one place.
+
+### 1. Where the words live: `apps/api/markx/orders/notice.py`
+
+- **One file, both languages,** side by side in `TEXT`. The founder changes
+  the words there and nowhere else; `VERSION` changes with them.
+- **The server fills two placeholders:** `{sellers}`, the legal names of the
+  shops in the order, from the review step's own figures; `{hours}`, the
+  setting `orders.problem_window_hours` (72), so the notice never promises a
+  different time than the order page allows. One pass of replacement: a
+  legal name holding braces is shown as written, and a test proves it (an
+  earlier draft of this code, replacing one placeholder after the other,
+  would have changed such a name).
+- **Why the API and not the web app's message files:** one file for both
+  languages instead of two; the figures in it (the shops, the hours) are the
+  server's; the Telegram bot or any later channel can show the same words.
+- **The review step carries it:** `QuoteOut.notice` (`OrderNoticeOut`:
+  `version`, `provisional`, `title`, `points`), on both
+  `POST /checkout/quote` and `POST /checkout/guest/quote`, which take `lang`
+  now (Amharic by default, as every route). No extra request, so the notice
+  cannot fail to load while the rest of the review step works.
+- **The last point depends on who buys.** A signed-in buyer reports a
+  problem from the order page within the window; **a guest cannot** (the
+  tracking page offers no report, D-108), so the guest's notice says so and
+  tells the guest to check everything at the door. Saying the opposite
+  would promise a way that does not exist.
+
+### 2. What a buyer sees
+
+On step 4 ("Review and place the order") of both checkouts, between "What
+happens next" and the "Place order" button: a box titled **"Before you
+place your order"** / **"ትዕዛዝዎን ከማስገባትዎ በፊት"** with four points. "Place
+order" stays disabled unless the notice has a title and a point
+(`noticeReady`, `src/lib/order-notice.ts`). The word "PROVISIONAL" is not
+shown to buyers; the API's answer says `provisional: true` and the code and
+these documents mark it.
+
+### 3. The draft (P-110-1, PROVISIONAL, for the founder to replace)
+
+English:
+
+1. You are buying from {sellers}. Each shop sells its own goods and is
+   responsible for them. MarkX connects you with the shop: it does not sell
+   the goods and never holds your money.
+2. You pay the shop when you receive your order, in the way you chose. Do
+   not pay anyone before the goods are in front of you.
+3. Check the goods before you pay: that they are what you ordered, that
+   they work and that nothing is damaged. Give your handover code only
+   after you have checked them. If something is wrong, do not pay and do
+   not give the code.
+4. Signed in: If there is a problem after you receive the goods, report it
+   from your order page within {hours} hours. MarkX staff look at it with
+   the shop.
+   Guest: As a guest you cannot report a problem on MarkX after the goods
+   are handed over, so check everything at the door. Until the shop
+   answers, you can cancel from your order page; once it confirms, its
+   phone number is shown there.
+
+Amharic (for the native editor's check): exactly as in `notice.py`.
+
+### 4. Tests
+
+- `tests/api/test_d110_order_notice.py` (9): both checkouts, both
+  languages, the shops' legal names (two shops joined with "and" / "እና"),
+  the problem window following its setting, the guest's own last point,
+  Amharic by default, the same keys and placeholders in both languages, a
+  legal name with braces. **On `b6f0429` all 9 fail** (the review step has
+  no notice; the module does not exist): "Tests executed", 26 November 2026.
+- `apps/web/src/lib/order-notice.test.ts` (2): the points shown, and "Place
+  order" offered only with a notice. It cannot load on `b6f0429` (the
+  module is new).
+- The browser journeys: the buyer journey and the guest journey now check
+  the notice's four points before "Place order".
+- **No existing test or check was changed or weakened.** `quote_out` takes
+  the database, the language and whether the buyer is a guest; its only two
+  callers are the two quote routes.
+
+### 5. R17-1, the review's DEFECT, not fixed here (the task said read-only)
+
+The production nginx (`infra/production/nginx/templates/markx.conf.template`,
+the location "The five routes that take a file") lets only five upload
+routes send more than 1 MB (`client_max_body_size 1m` in `nginx.conf`). The
+two upload routes added by pull requests #14 and #15, a shop's logo
+(`POST /api/v1/seller/{id}/store/logo`) and a gate photo
+(`POST /api/v1/me/addresses/{id}/gate-photo`), are not in it, so behind
+nginx a file over about 1 MB is refused with 413 before the API sees it,
+while the API accepts 8 MB. The phone usually shrinks a photo first (S-06),
+but sends the original when it cannot. No test runs uploads through nginx.
+**Suggested fix:** add `me/addresses/[^/]+/gate-photo` and
+`seller/[^/]+/store/logo` to that location's pattern and say "seven". The
+founder decides when; it is a one-line change.
+
+### 6. PROVISIONAL values
+
+| Id | Value | Why |
+| --- | --- | --- |
+| P-110-1 | The notice's words (section 3), in English and Amharic | The founder has not written C-27; a plain draft keeps checkout honest until then |
+| P-110-2 | The notice is shown, not recorded: the order does not store which `VERSION` the buyer saw | Recording it needs a migration and the founder's view on whether it is needed legally (F-30) |
+
 ## Decisions that need the founder
 
 **F-01 to F-08 have PROVISIONAL answers (D-083), given at the founder's
@@ -6672,6 +6790,20 @@ deciding, but product pages are shared by every seller."
   blocked, and add that count before the launch. Operations can change both
   values in the settings screen.
 - **Founder's approval required: yes**, for the values.
+
+### F-30 The words of the notice before ordering (C-27; D-110, P-110-1 and P-110-2)
+
+- **Today:** a plain draft by the engineering session, in English and
+  Amharic, in `apps/api/markx/orders/notice.py`, marked PROVISIONAL.
+- **Needed from the founder:** the final words (and a check that they say
+  nothing a lawyer would not allow); the native editor's check of the
+  Amharic; whether MarkX has a support contact a guest can use after the
+  handover (UNKNOWN today: none is in the code, so the draft offers none);
+  and whether each order should record which version of the notice the
+  buyer saw (P-110-2, a small migration).
+- **Also from the review (D-110 section 5):** when to fix R17-1, the
+  production upload limit for logos and gate photos.
+- **Founder's approval required: yes.**
 
 ## Open questions carried over from session 1
 

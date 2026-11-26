@@ -269,6 +269,13 @@ Blueprint G.5 to G.7. All in `markx/orders/`.
   `cancel_by_buyer` does; a signed-in buyer's link never acts. The
   cancellation cool-down (`_cancellation_cooldown_ends`) counts an account,
   or a guest's number and address, never across the two.
+- **The notice before ordering (C-27, D-110):** `orders/notice.py` holds
+  its words, English and Amharic side by side, the one place to change them
+  (PROVISIONAL P-110-1). `selectors.quote_out` adds it to both review steps
+  (`QuoteOut.notice`, in `lang`), with the shops' legal names and the
+  problem window filled in; a guest's last point differs (no report after
+  the handover). The web app shows it above "Place order"
+  (`components/OrderNotice.tsx`, `lib/order-notice.ts`).
 - **Locks are taken in one order, each kind in ascending id:** the buyer's
   cart, then (a guest's checkout only) an advisory lock on the guest's
   phone number and then one on the network address, then sellers, then

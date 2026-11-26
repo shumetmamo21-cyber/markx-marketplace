@@ -32,7 +32,9 @@ on 25 November 2026 by the session that built guest checkout and the
 limits for new accounts (D-108), and Part A.000000000000000000000000 the
 same day by the same session, which merged pull request #16 on the
 founder's written approval and built the founder's decisions F-27 and
-F-28 (D-109).
+F-28 (D-109), and Part A.0000000000000000000000000 on 26 November 2026
+by the session that reviewed pull requests #14 to #17 from outside and
+built C-27, the notice before ordering (D-110).
 **Who this is for:** the founder, and the next AI engineer (Opus Max).
 
 - **Part A — the report for the founder.**
@@ -41,6 +43,56 @@ F-28 (D-109).
 
 Nothing here is new work. It describes what is in the repository and what
 the checks actually printed.
+
+---
+
+# Part A.0000000000000000000000000 — Pre-launch review of pull requests #14 to #17, and C-27 (26 November 2026, D-110)
+
+Branch `claude/markx-prelaunch-review-c27-x5sizp`, from `main` at `b6f0429`
+with the complete history. **Main's recent merge commits:** `b6f0429`
+(pull request #17, D-109), `e06bd83` (#16, D-108), `5794234` (#15,
+D-107), `e1849be` (#14, D-106), all four merged without an independent
+review, the founder's decision. One pull request into `main`; the founder
+approved its merge in advance, a normal merge pinned to its last commit,
+once every check on that commit passes (its number, runs and merge commit:
+`docs/DEVELOPMENT_STATUS.md`, "Tests executed", 26 November 2026). **No
+migration. Nothing deployed; no server, account, bot, SMS, bucket or paid
+resource.** Details: `docs/DECISIONS.md`, D-110.
+
+**For the founder, in plain words:**
+
+1. **The review of the last four pull requests found one thing to fix
+   before real users (R17-1).** On the real server, the web server in front
+   of MarkX lets only some upload routes send a file bigger than about 1 MB;
+   the two new ones, a shop's logo and a buyer's gate photo, were not added.
+   So a big photo would be refused with an unclear error. Nobody's data is
+   at risk; the feature just fails for some people. It is a one-line fix,
+   not made, because the review was to change nothing. The full review is
+   `docs/reports/2026-11-26-prs-14-17-prelaunch-review.md`.
+2. **Nothing else found that lets someone reach another person's account,
+   orders, address, phone, shop or gate photo, or one shop see another's
+   customers.** Eight smaller notes, most already known (for example: a
+   guest can type someone else's phone number, because numbers are not
+   checked; gate photos are never deleted).
+3. **C-27: before placing an order, every buyer now reads a short notice**
+   in English or Amharic, right above "Place order": who sells, pay the
+   shop when the order arrives, check the goods before paying and before
+   giving the handover code, and how to raise a problem. A guest is told
+   plainly that they cannot report a problem afterwards, so they should
+   check everything at the door. **It is a draft (PROVISIONAL)**: you
+   change the words in one file, `apps/api/markx/orders/notice.py`.
+4. **No existing test was changed.** The new tests fail on the old code and
+   pass on the new.
+
+**What needs you:** F-30 (your wording of the notice, the Amharic check, a
+support contact for guests, whether orders should record which notice was
+shown), and when to fix R17-1.
+
+**For the next engineer:** read D-110 first. The notice's words are only in
+`markx/orders/notice.py`; `selectors.quote_out(db, quote, lang, guest=...)`
+puts them in both review steps, and the two quote routes take `lang` now.
+R17-1 is open: add the gate-photo and logo routes to nginx's upload
+location before any real upload goes through nginx.
 
 ---
 
