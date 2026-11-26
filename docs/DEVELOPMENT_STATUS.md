@@ -2194,6 +2194,31 @@ Be careful with these. They were written and never exercised.
 
 ## Tests executed
 
+**Pre-launch review and C-27** (D-110), on 26 November 2026, branch
+`claude/markx-prelaunch-review-c27-x5sizp` from `main` at `b6f0429`
+(complete history). PostgreSQL 17 in a container on this machine (the
+distribution's PostgreSQL 16 cannot create the test database: it lacks the
+builtin locale); no MinIO here, so the storage and backup tests ran only in
+CI. The whole suite was started here and stopped at 6 %: this machine ran it
+far slower than CI; **the whole suite's result is CI's**, on the pull
+request.
+
+```text
+the new tests, tests/api/test_d110_order_notice.py        ->  9 passed
+the new tests on b6f0429 (worktree, the new test file only) ->  cannot load: markx.orders.notice does not exist
+  with only markx/orders/notice.py copied in               ->  7 failed (KeyError: 'notice'), 2 passed (the two
+                                                              tests of the module itself)
+the existing tests nearest the change, on this branch (cart, checkout, D-106 to D-109, phone digits, seller
+  isolation, stock-hold limits, tracking, the four contention files) and the new file
+                                                          ->  259 passed in 5 min 59 s
+ruff check / ruff format --check / mypy markx             ->  passed / formatted / no issues in 162 files
+alembic upgrade head / alembic check                      ->  at 0024 / no new upgrade operations
+check_openapi_copy --exact openapi.json / the web's copy  ->  both match the API exactly
+apps/web: npm run lint / typecheck / test / build         ->  passed / passed / 231 passed in 24 files / built
+  src/lib/order-notice.test.ts on b6f0429                 ->  cannot load (./order-notice is new)
+browser journeys                                          ->  not run here; CI's Browser journeys on the pull request
+```
+
 **F-27 and F-28** (D-109), on 25 November 2026, branch
 `claude/lucid-babbage-38jzfq` from `main` at `e06bd83` (complete history).
 PostgreSQL 17.12 and MinIO in containers, with `MARKX_TEST_MINIO_REQUIRED=1`,
