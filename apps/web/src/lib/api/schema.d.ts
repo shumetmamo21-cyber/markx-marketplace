@@ -1684,7 +1684,8 @@ export interface paths {
         /**
          * Quote Guest Checkout
          * @description A guest's review step: every price, fee and total, computed by the
-         *     server, for the delivery address the guest typed.
+         *     server, for the delivery address the guest typed, and the notice the
+         *     guest reads before placing the order (C-27), in `lang`.
          */
         post: operations["quote_guest_checkout_api_v1_checkout_guest_quote_post"];
         delete?: never;
@@ -1726,7 +1727,9 @@ export interface paths {
         put?: never;
         /**
          * Quote Checkout
-         * @description The review step: every price, fee and total, computed by the server.
+         * @description The review step: every price, fee and total, computed by the server,
+         *     and the notice the buyer reads before placing the order (C-27), in
+         *     `lang`.
          */
         post: operations["quote_checkout_api_v1_checkout_quote_post"];
         delete?: never;
@@ -4949,6 +4952,20 @@ export interface components {
             /** Warranty Months */
             warranty_months: number;
         };
+        /**
+         * OrderNoticeOut
+         * @description The notice the buyer reads before placing the order (C-27, D-110).
+         */
+        OrderNoticeOut: {
+            /** Points */
+            points: string[];
+            /** Provisional */
+            provisional: boolean;
+            /** Title */
+            title: string;
+            /** Version */
+            version: string;
+        };
         /** OrderOut */
         OrderOut: {
             /** Address */
@@ -5678,6 +5695,7 @@ export interface components {
             groups: components["schemas"]["QuoteGroupOut"][];
             /** Items Total Santim */
             items_total_santim: number;
+            notice: components["schemas"]["OrderNoticeOut"];
             /** Price Changes */
             price_changes: {
                 [key: string]: unknown;
@@ -10318,7 +10336,9 @@ export interface operations {
     };
     quote_guest_checkout_api_v1_checkout_guest_quote_post: {
         parameters: {
-            query?: never;
+            query?: {
+                lang?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10371,7 +10391,9 @@ export interface operations {
     };
     quote_checkout_api_v1_checkout_quote_post: {
         parameters: {
-            query?: never;
+            query?: {
+                lang?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

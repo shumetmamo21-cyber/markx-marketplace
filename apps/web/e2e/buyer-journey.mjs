@@ -58,6 +58,14 @@ async function code(page, phone) {
   await buyer.getByRole('button', { name: 'Review' }).click();
   await buyer.getByText('Grand total').waitFor();
   const total = await buyer.locator('section:has-text("Grand total") p:has-text("Grand total") .price').innerText();
+  // C-27 (D-110): the notice before ordering, right above "Place order".
+  const notice = buyer.getByRole('region', { name: 'Before you place your order' });
+  await notice.waitFor();
+  const points = await notice.locator('li').allInnerTexts();
+  if (points.length !== 4 || !points[0].startsWith('You are buying from ') || !/within \d+ hours/.test(points[3])) {
+    throw new Error(`the notice before ordering is not right: ${JSON.stringify(points)}`);
+  }
+  console.log('  the notice before ordering:', points.length, 'points, starting', JSON.stringify(points[0]));
   await buyer.getByRole('button', { name: 'Place order' }).click();
   await buyer.waitForTimeout(3000);
   const alert = await buyer.locator('[role=alert]').allInnerTexts();

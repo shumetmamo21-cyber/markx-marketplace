@@ -104,6 +104,13 @@ try {
   await guest.getByText('ETB 50,000').first().waitFor();
   await guest.getByRole('button', { name: 'Review' }).click();
   await guest.getByText('Grand total').waitFor();
+  // C-27 (D-110): the notice before ordering, with the guest's way to raise a problem.
+  const notice = guest.getByRole('region', { name: 'Before you place your order' });
+  await notice.waitFor();
+  const points = await notice.locator('li').allInnerTexts();
+  expect(points.length === 4, `the notice before ordering has ${points.length} points`);
+  expect(points[0].startsWith('You are buying from '), `the notice does not say who sells: ${points[0]}`);
+  expect(points[3].startsWith('As a guest you cannot report a problem'), `the notice gives a guest the wrong way to raise a problem: ${points[3]}`);
   await checkAccessibility(guest, 'guest checkout, review (en)');
   await guest.screenshot({ path: join(SHOTS, 'guest-review-en.png'), fullPage: true });
   await guest.getByRole('button', { name: 'Place order' }).click();

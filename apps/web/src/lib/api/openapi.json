@@ -4533,6 +4533,39 @@
         "title": "OrderItemOut",
         "type": "object"
       },
+      "OrderNoticeOut": {
+        "additionalProperties": false,
+        "description": "The notice the buyer reads before placing the order (C-27, D-110).",
+        "properties": {
+          "points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "provisional": {
+            "title": "Provisional",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "provisional",
+          "title",
+          "points"
+        ],
+        "title": "OrderNoticeOut",
+        "type": "object"
+      },
       "OrderOut": {
         "additionalProperties": false,
         "properties": {
@@ -6417,6 +6450,9 @@
             "title": "Items Total Santim",
             "type": "integer"
           },
+          "notice": {
+            "$ref": "#/components/schemas/OrderNoticeOut"
+          },
           "price_changes": {
             "items": {
               "additionalProperties": true,
@@ -6437,7 +6473,8 @@
           "currency",
           "zone_code",
           "price_changes",
-          "groups"
+          "groups",
+          "notice"
         ],
         "title": "QuoteOut",
         "type": "object"
@@ -15444,8 +15481,21 @@
     },
     "/api/v1/checkout/guest/quote": {
       "post": {
-        "description": "A guest's review step: every price, fee and total, computed by the\nserver, for the delivery address the guest typed.",
+        "description": "A guest's review step: every price, fee and total, computed by the\nserver, for the delivery address the guest typed, and the notice the\nguest reads before placing the order (C-27), in `lang`.",
         "operationId": "quote_guest_checkout_api_v1_checkout_guest_quote_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -15508,8 +15558,21 @@
     },
     "/api/v1/checkout/quote": {
       "post": {
-        "description": "The review step: every price, fee and total, computed by the server.",
+        "description": "The review step: every price, fee and total, computed by the server,\nand the notice the buyer reads before placing the order (C-27), in\n`lang`.",
         "operationId": "quote_checkout_api_v1_checkout_quote_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "default": "am",
+              "pattern": "^(am|en)$",
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

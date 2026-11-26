@@ -7,7 +7,9 @@ import { browserApi, errorCode } from "@/lib/api/browser";
 import type { components } from "@/lib/api/schema";
 import { formatPrice } from "@/lib/format";
 import { apiErrorText, fill, type Locale, type Messages } from "@/lib/i18n";
+import { noticeReady } from "@/lib/order-notice";
 
+import { OrderNotice } from "./OrderNotice";
 import { ProblemNotice } from "./Resilience";
 
 type Schemas = components["schemas"];
@@ -88,7 +90,7 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
     setBusy(true);
     setProblem(null);
     const deliveries = Object.entries(methods).map(([store_slug, method]) => ({ store_slug, method }));
-    const { data, error } = await browserApi.POST("/api/v1/checkout/quote", { body: { address_id: addressId, deliveries } });
+    const { data, error } = await browserApi.POST("/api/v1/checkout/quote", { params: { query: { lang } }, body: { address_id: addressId, deliveries } });
     setBusy(false);
     if (error || !data) {
       const code = errorCode(error);
@@ -237,7 +239,8 @@ export function Checkout({ lang, t, addresses: initial, zones }: { lang: Locale;
           ))}
           <p className="flex justify-between text-lg"><span className="font-bold">{c.grandTotal}</span><span className="price">{formatPrice(quote.grand_total_santim, lang)}</span></p>
           <p className="text-sm text-slate">{c.next}</p>
-          <button type="button" disabled={busy} onClick={place} className="min-h-12 w-full rounded-card bg-adey text-lg font-bold disabled:opacity-60">
+          <OrderNotice notice={quote.notice} id="step4-notice" />
+          <button type="button" disabled={busy || !noticeReady(quote.notice)} onClick={place} className="min-h-12 w-full rounded-card bg-adey text-lg font-bold disabled:opacity-60">
             {busy ? c.placing : c.place}
           </button>
         </section>
