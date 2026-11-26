@@ -1,14 +1,15 @@
 # Development status
 
-**Last updated:** 25 November 2026, by the **F-27 and F-28 session**
-(D-109) on branch `claude/lucid-babbage-38jzfq`, from `main` at `e06bd83`
-with the complete history. **`e06bd83` is main's last merge commit before
-this work: the merge of pull request #16 (D-108)**, on the founder's
-written approval of 25 November 2026, without the independent review (the
-founder's decision); `main` passed CI #191 and Browser journeys #67 on it.
-This work's pull request is named in the section below. Before it, pull
-request #15 (D-107) was merged as `5794234`; pull request #14 (D-106) as
-`e1849be`; pull request #13 (D-105) as `6378764`; pull request #12 (D-104)
+**Last updated:** 26 November 2026, by the **pre-launch review and C-27
+session** (D-110) on branch `claude/markx-prelaunch-review-c27-x5sizp`, from
+`main` at `b6f0429` with the complete history. **Main's recent merge
+commits:** `b6f0429`, the merge of pull request #17 (D-109); `e06bd83`,
+pull request #16 (D-108); `5794234`, pull request #15 (D-107); `e1849be`,
+pull request #14 (D-106); all four merged without an independent review
+(the founder's decision), reviewed from outside by this session (below).
+This work's own pull request and its merge are in the section below and in
+"Tests executed", 26 November 2026. Before them: pull request #13 (D-105)
+as `6378764`; pull request #12 (D-104)
 as `9daaf57`; pull request #11 as `7093e6c`; pull request #10 (D-102) as
 `9b3658f`; pull request #9 (D-101) as `fe4546f`; the frontend resilience
 session (D-100, pull request #8) as `b79caab`; the order life-cycle
@@ -16,6 +17,33 @@ hardening session (D-099, pull request #7) as `fae2514`; the staff conflict
 and phone digits session (D-098, pull request #6) as `c70b338`; the checks
 and secret-scan session (D-097, pull request #5) as `d01fef7`, and the
 backup trust hardening session (D-096, pull request #4) as `773bbb6`.
+
+## Pre-launch review of pull requests #14 to #17, and C-27, the notice before ordering (26 November 2026, D-110)
+
+One pull request into `main` (its number and runs: "Tests executed", 26
+November 2026, D-110); the founder approved its merge in advance, a normal
+merge pinned to its last commit, once every check on that commit passes.
+**No migration. Nothing deployed; no server, account, bot, SMS, bucket or
+paid resource.** Details and two PROVISIONAL values (P-110-1, P-110-2):
+`docs/DECISIONS.md`, D-110; the founder's questions: F-30.
+
+**The review (read-only):** `docs/reports/2026-11-26-prs-14-17-prelaunch-review.md`.
+**One DEFECT, not fixed (the task was read-only): R17-1**, the production
+nginx refuses logo and gate-photo uploads above about 1 MB (the two new
+upload routes are missing from its upload location). No DEFECT in access to
+accounts, orders, addresses, phones, shops, gate photos or customers, in
+the limits, in upload safety or in backups; eight NOTES.
+
+| Item | What a person sees | Proof |
+| --- | --- | --- |
+| C-27 the notice before ordering (PROVISIONAL P-110-1) | On the review step of both checkouts, right above "Place order": "Before you place your order" with four points: who sells (the shops' legal names), paying the shop when the order arrives, checking the goods before paying and before giving the handover code, and how to raise a problem (signed in: from the order page within 72 hours, the setting's value; a guest: cannot report afterwards, so check at the door). English and Amharic. "Place order" waits for the notice | `tests/api/test_d110_order_notice.py` (9); `src/lib/order-notice.test.ts` (2); the buyer and guest journeys check the four points |
+| The words in one place | `apps/api/markx/orders/notice.py`, both languages side by side; the founder edits only that file | `test_the_notice_has_the_same_points_in_both_languages` |
+
+**On the old code** (`b6f0429` with only the new test files): the API test
+file cannot load (`markx.orders.notice` does not exist); with only that
+module copied in, **7 of 7 review-step tests fail** (no notice in the
+answer). The web test cannot load (its module is new). **No existing test
+or check was changed.**
 
 ## F-27 and F-28, decided by the founder (25 November 2026, D-109)
 
@@ -990,7 +1018,7 @@ Phases are the blueprint's P1 to P16 (section L.1).
 | P6 | Seller onboarding and dashboard | **Done on the API side.** Application, private document upload, staff review queue, verification levels with the checks behind the badge, owner and manager members, store page, payout account, dashboard counts. The web screens (session ten, D-075): application, documents, team, store settings, legal details, payout account, overview. Documents can live in a private S3 or R2 bucket (D-090). **Not done:** share cards and QR code, ownership transfer, closing a shop on the web, the real private bucket itself (F-01) |
 | P7 | Seller listings and inventory | **Done on the API side.** Offers, price history, inventory and movements, quick edit, product proposals, the ranked offers list, the check-in, the stale-offer job **now run by the worker**, and a staff takedown that holds (D-032). The web screens: offers with quick edit (session six), add an offer and the shop's own photos (session ten). **Not done:** the seller Telegram bot, product proposals from a seller on the web |
 | P8 | Search and product discovery | **Mostly done on the API side.** Search documents kept fresh through the outbox with an hourly rebuild (D-051); normalisation, letter merging and skeleton keys; prefix, sound and trigram matching; filters and sorting; suggestions and "did you mean"; the product-request form; the query log, the zero-result report and the synonym tool (D-052). **Throttled per address** (D-059). **Not done:** the two completion criteria (a golden set of 100 real queries, and timings at real size), "total cost to the door" as a sort, a delivery-speed filter (the rating filter exists: `min_rating`, D-080), edge caching and pages readable by search engines (they need the web app) |
-| P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Guest checkout (C-07) and limits for new accounts (AD-13), as the founder decided: D-108** (a guest orders with a name, an address and a number nobody confirmed, belongs to no account, pays at the door and gets the tracking link only); **F-27 and F-28 decided: D-109** (signed-in accounts have the new-buyer limits for their first 30 days; a guest may cancel from the link before the shop answers). **Not done:** the legal disclosure wording (a founder input) |
+| P9 | Cart and checkout | **Done on the API side, and on the web** (cart and checkout screens, D-055). Server-side cart for visitors and signed-in buyers, delivery choice and fees per store, the priced review step, `place_order` with server re-pricing, stock reservation and idempotency. Criteria 1 to 5 are met by automated tests. **Guest checkout (C-07) and limits for new accounts (AD-13), as the founder decided: D-108** (a guest orders with a name, an address and a number nobody confirmed, belongs to no account, pays at the door and gets the tracking link only); **F-27 and F-28 decided: D-109** (signed-in accounts have the new-buyer limits for their first 30 days; a guest may cancel from the link before the shop answers). **C-27, the notice before ordering: D-110**, a PROVISIONAL draft in both languages on both review steps; **not done:** the founder's own wording (F-30) |
 | P10 | Multi-seller orders | **Done on the API side, except the pieces listed.** Parent and seller orders, the state machine enforced by the database, status events, seller confirm and decline, the response deadline and the expiry job, buyer cancellation, notifications, shipments and payment intents; `ready`, `out_for_delivery` (seller or staff), `delivered` with the derived handover code and its five-attempt lockout, `completed` by the buyer or the worker with `commit_stock` and the fee charge, `delivery_failed`, retry, `returned`, the direct payment record, the overdue-hold cancellation. The tracking page by secure link without sign-in. The next-best offer after a decline or an expiry (D-049). Problems on a delivered order: `delivered -> disputed` by the buyer in the window, `disputed -> completed | refunded` by staff, Release 1 form with no money moved (D-050). Criteria 1, 2 and 4 are met by automated tests (`tests/api/test_fulfilment.py`, `tests/api/test_tracking.py`, `tests/api/test_disputes.py`). **Photos on a problem report** (D-062) and **reviews of completed items with the seller's reply** (D-066) exist on the API. The web screens for both, and the problem's messages and evidence photos, exist (session ten). **Not done:** photos on reviews, the bot. Criteria 3 and 5 need the bot and real buyers |
 | P11 | Admin operations | **Mostly done on the API side.** The orders desk, problem cases and decisions, seller review, search tools (earlier sessions); **the audit-log viewer, switches and risk limits, staff accounts, the dispatch board, the business dashboard, picture moderation and the operations status** (D-062, D-064, D-065). **Review moderation (AD-12) and the reports queue (AD-16)** too (D-066, D-067). **Data exports for an accountant** (D-068) and **seller performance figures with the weekly message** (D-073). Session nine built their admin screens (D-070 to D-072). The seller's performance screen exists (session ten, D-075). **Not done:** the runbooks, seller statements (Release 2) |
 | P12–P16 | Everything else | **Not started** (tables exist; no behaviour) |
@@ -1906,6 +1934,17 @@ Be careful with these. They were written and never exercised.
 
 ## Known problems
 
+- **26 November 2026, R17-1 (DEFECT, D-110 section 5), not fixed:** on
+  the production server, nginx lets only five upload routes send more than
+  1 MB; a shop's logo and a buyer's gate photo are not among them, so an
+  upload above about 1 MB is refused (413) before the API sees it. A
+  one-line fix in `infra/production/nginx/templates/markx.conf.template`;
+  the founder decides when.
+- **26 November 2026, C-27 (D-110):** the notice's words are an
+  engineering draft (P-110-1) awaiting the founder's wording and the native
+  editor's Amharic; orders do not record which version was shown
+  (P-110-2); no support contact exists for a guest after the handover
+  (UNKNOWN whether MarkX will have one, F-30).
 - **25 November 2026, guest checkout (D-108), what remains risky:** a guest who
   loses the tracking link cannot get it back (MarkX has no confirmed way to
   reach a guest, F-28); a guest may cancel only before the shop answers
