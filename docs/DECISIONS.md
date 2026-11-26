@@ -6249,6 +6249,13 @@ but sends the original when it cannot. No test runs uploads through nginx.
 `seller/[^/]+/store/logo` to that location's pattern and say "seven". The
 founder decides when; it is a one-line change.
 
+### 5a. The pull request
+
+**#18**, every check passed on `dafbdd9` (CI #195, Browser journeys #71);
+merged as **`9ce3c8d`**, a normal merge pinned to `dafbdd9`, on the
+founder's approval given in the task; main passed CI #196 and Browser
+journeys #72. This paragraph was added on the branch after the merge.
+
 ### 6. PROVISIONAL values
 
 | Id | Value | Why |

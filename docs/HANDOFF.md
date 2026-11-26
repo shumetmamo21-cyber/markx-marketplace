@@ -54,8 +54,9 @@ with the complete history. **Main's recent merge commits:** `b6f0429`
 D-107), `e1849be` (#14, D-106), all four merged without an independent
 review, the founder's decision. One pull request into `main`; the founder
 approved its merge in advance, a normal merge pinned to its last commit,
-once every check on that commit passes (its number, runs and merge commit:
-`docs/DEVELOPMENT_STATUS.md`, "Tests executed", 26 November 2026). **No
+once every check on that commit passes: **#18, every check passed on
+`dafbdd9` (CI #195, Browser journeys #71), merged as `9ce3c8d`; main
+passed CI #196 and Browser journeys #72.** **No
 migration. Nothing deployed; no server, account, bot, SMS, bucket or paid
 resource.** Details: `docs/DECISIONS.md`, D-110.
 

@@ -7,8 +7,9 @@ commits:** `b6f0429`, the merge of pull request #17 (D-109); `e06bd83`,
 pull request #16 (D-108); `5794234`, pull request #15 (D-107); `e1849be`,
 pull request #14 (D-106); all four merged without an independent review
 (the founder's decision), reviewed from outside by this session (below).
-This work's own pull request and its merge are in the section below and in
-"Tests executed", 26 November 2026. Before them: pull request #13 (D-105)
+This work's own pull request, **#18, merged as `9ce3c8d`** (main passed
+CI #196 and Browser journeys #72), is in the section below and in "Tests
+executed", 26 November 2026. Before them: pull request #13 (D-105)
 as `6378764`; pull request #12 (D-104)
 as `9daaf57`; pull request #11 as `7093e6c`; pull request #10 (D-102) as
 `9b3658f`; pull request #9 (D-101) as `fe4546f`; the frontend resilience
@@ -2217,6 +2218,12 @@ check_openapi_copy --exact openapi.json / the web's copy  ->  both match the API
 apps/web: npm run lint / typecheck / test / build         ->  passed / passed / 231 passed in 24 files / built
   src/lib/order-notice.test.ts on b6f0429                 ->  cannot load (./order-notice is new)
 browser journeys                                          ->  not run here; CI's Browser journeys on the pull request
+GitHub, pull request #18 (https://github.com/shumetmamo21-cyber/markx-marketplace/pull/18), on dafbdd9:
+  CI #195                                                 ->  every job passed (API with the whole suite, web app,
+                                                              containers, security, production stack rehearsal)
+  Browser journeys #71                                    ->  passed (the buyer and guest journeys check the notice)
+merged as 9ce3c8d (a normal merge pinned to dafbdd9, the branch kept), on the founder's approval given in the task
+main at 9ce3c8d: CI #196 -> passed; Browser journeys #72 -> passed
 ```
 
 **F-27 and F-28** (D-109), on 25 November 2026, branch

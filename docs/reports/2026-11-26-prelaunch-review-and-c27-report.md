@@ -162,7 +162,7 @@ instead of promising something that doesn't exist.
 - **Merged** as you approved: a normal merge (not a squash), pinned to
   `dafbdd9`, with the branch kept.
 - **New main commit:** `9ce3c8d` (`9ce3c8dff96332d455109fd9d0d74651c7510b20`).
-- **Main's checks on `9ce3c8d`:** see "Main after the merge" below.
+- **Main's checks on `9ce3c8d`:** CI #196 and Browser journeys #72 both passed.
 
 ### Main's recent merge commits
 
@@ -177,7 +177,7 @@ instead of promising something that doesn't exist.
 
 ### Main after the merge
 
-Running when this file was first committed: CI #196 and Browser journeys #72 on `9ce3c8d`. Their result is added below once they finish.
+**Main passes its checks on `9ce3c8d`:** CI #196 passed and Browser journeys #72 passed.
 
 ---
 
